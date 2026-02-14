@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YMU Gala 2026 Management</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-brand">YMU Gala 2026</div>
+            <div class="nav-menu">
+                <a href="#" class="nav-link active" data-page="dashboard">Dashboard</a>
+                <a href="#" class="nav-link" data-page="vendors">Vendors</a>
+                <a href="#" class="nav-link" data-page="budget">Budget</a>
+                <a href="#" class="nav-link" data-page="timeline">Timeline</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="container">
+        <!-- Dashboard Page -->
+        <div id="dashboard" class="page active">
+            <div class="page-header">
+                <h1>Gala Dashboard</h1>
+            </div>
+
+            <!-- Countdown -->
+            <div class="countdown-card">
+                <div class="countdown-content">
+                    <h2>Event Countdown</h2>
+                    <div id="countdown" class="countdown-display">
+                        <div class="countdown-item">
+                            <span class="countdown-number" id="days">0</span>
+                            <span class="countdown-label">Days</span>
+                        </div>
+                        <div class="countdown-item">
+                            <span class="countdown-number" id="hours">0</span>
+                            <span class="countdown-label">Hours</span>
+                        </div>
+                        <div class="countdown-item">
+                            <span class="countdown-number" id="minutes">0</span>
+                            <span class="countdown-label">Minutes</span>
+                        </div>
+                    </div>
+                    <p class="event-date">April 25, 2026 at 6:00 PM</p>
+                </div>
+            </div>
+
+            <!-- Stats Grid -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon budget-icon">$</div>
+                    <div class="stat-content">
+                        <div class="stat-label">Total Budget</div>
+                        <div class="stat-value" id="total-budget">$0</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon spent-icon">$</div>
+                    <div class="stat-content">
+                        <div class="stat-label">Total Spent</div>
+                        <div class="stat-value" id="total-spent">$0</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon remaining-icon">$</div>
+                    <div class="stat-content">
+                        <div class="stat-label">Remaining</div>
+                        <div class="stat-value" id="total-remaining">$0</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon vendor-icon">✓</div>
+                    <div class="stat-content">
+                        <div class="stat-label">Vendors Confirmed</div>
+                        <div class="stat-value" id="vendors-confirmed">0</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Budget Progress -->
+            <div class="card">
+                <div class="card-header">
+                    <h2>Budget Overview</h2>
+                </div>
+                <div class="card-body">
+                    <div class="progress-container">
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="budget-progress" style="width: 0%"></div>
+                        </div>
+                        <div class="progress-labels">
+                            <span id="budget-percentage">0%</span>
+                            <span>of budget spent</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Vendor Status -->
+            <div class="card">
+                <div class="card-header">
+                    <h2>Vendor Status</h2>
+                </div>
+                <div class="card-body">
+                    <div class="status-grid" id="vendor-status-grid">
+                        <div class="status-item">
+                            <span class="status-label">Confirmed</span>
+                            <span class="status-count confirmed" id="vendor-confirmed-count">0</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">Pending</span>
+                            <span class="status-count pending" id="vendor-pending-count">0</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">Issues</span>
+                            <span class="status-count issue" id="vendor-issue-count">0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Upcoming Deadlines -->
+            <div class="card">
+                <div class="card-header">
+                    <h2>Upcoming Deadlines</h2>
+                </div>
+                <div class="card-body">
+                    <div id="upcoming-deadlines" class="deadline-list">
+                        <p class="empty-state">No upcoming deadlines</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Vendors Page -->
+        <div id="vendors" class="page">
+            <div class="page-header">
+                <h1>Vendors</h1>
+                <button class="btn btn-primary" id="add-vendor-btn">+ Add Vendor</button>
+            </div>
+
+            <!-- Search and Filter -->
+            <div class="toolbar">
+                <input type="text" id="vendor-search" class="search-input" placeholder="Search vendors...">
+                <select id="vendor-category-filter" class="filter-select">
+                    <option value="">All Categories</option>
+                </select>
+                <select id="vendor-status-filter" class="filter-select">
+                    <option value="">All Statuses</option>
+                    <option value="confirmed">Confirmed</option>
+                    <option value="pending">Pending</option>
+                    <option value="issue">Issue</option>
+                </select>
+            </div>
+
+            <!-- Vendors Table -->
+            <div class="card">
+                <div class="table-container">
+                    <table class="data-table" id="vendors-table">
+                        <thead>
+                            <tr>
+                                <th>Vendor Name</th>
+                                <th>Category</th>
+                                <th>Contact</th>
+                                <th>Amount</th>
+                                <th>Status</th>
+                                <th>Payment Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="vendors-tbody">
+                            <tr>
+                                <td colspan="7" class="empty-state">No vendors found</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Budget Page -->
+        <div id="budget" class="page">
+            <div class="page-header">
+                <h1>Budget</h1>
+                <button class="btn btn-primary" id="add-budget-item-btn">+ Add Item</button>
+            </div>
+
+            <!-- Budget Summary -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-content">
+                        <div class="stat-label">Total Budgeted</div>
+                        <div class="stat-value" id="budget-total">$0</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-content">
+                        <div class="stat-label">Total Spent</div>
+                        <div class="stat-value" id="budget-spent">$0</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-content">
+                        <div class="stat-label">Remaining</div>
+                        <div class="stat-value" id="budget-remaining">$0</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Budget by Category -->
+            <div class="card">
+                <div class="card-header">
+                    <h2>Budget by Category</h2>
+                </div>
+                <div class="card-body">
+                    <div id="budget-categories" class="budget-categories">
+                        <p class="empty-state">No budget items</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Budget Items Table -->
+            <div class="card">
+                <div class="card-header">
+                    <h2>All Budget Items</h2>
+                </div>
+                <div class="table-container">
+                    <table class="data-table" id="budget-table">
+                        <thead>
+                            <tr>
+                                <th>Vendor/Item</th>
+                                <th>Category</th>
+                                <th>Budgeted</th>
+                                <th>Actual</th>
+                                <th>Difference</th>
+                                <th>Payment Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="budget-tbody">
+                            <tr>
+                                <td colspan="7" class="empty-state">No budget items</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Timeline Page -->
+        <div id="timeline" class="page">
+            <div class="page-header">
+                <h1>Timeline</h1>
+                <button class="btn btn-primary" id="add-timeline-item-btn">+ Add Task</button>
+            </div>
+
+            <!-- Timeline Stats -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-content">
+                        <div class="stat-label">Total Tasks</div>
+                        <div class="stat-value" id="timeline-total">0</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-content">
+                        <div class="stat-label">Completed</div>
+                        <div class="stat-value" id="timeline-completed">0</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-content">
+                        <div class="stat-label">In Progress</div>
+                        <div class="stat-value" id="timeline-in-progress">0</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-content">
+                        <div class="stat-label">Overdue</div>
+                        <div class="stat-value warning" id="timeline-overdue">0</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Timeline Items -->
+            <div class="card">
+                <div class="card-header">
+                    <h2>All Tasks</h2>
+                </div>
+                <div class="card-body">
+                    <div id="timeline-items" class="timeline-container">
+                        <p class="empty-state">No tasks</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Vendor Modal -->
+    <div id="vendor-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="vendor-modal-title">Add Vendor</h2>
+                <button class="close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="vendor-form">
+                    <input type="hidden" id="vendor-id">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="vendor-name">Vendor Name *</label>
+                            <input type="text" id="vendor-name" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="vendor-category">Category *</label>
+                            <input type="text" id="vendor-category" required>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="vendor-contact">Contact Person</label>
+                            <input type="text" id="vendor-contact">
+                        </div>
+                        <div class="form-group">
+                            <label for="vendor-email">Email</label>
+                            <input type="email" id="vendor-email">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="vendor-phone">Phone</label>
+                            <input type="tel" id="vendor-phone">
+                        </div>
+                        <div class="form-group">
+                            <label for="vendor-amount">Amount</label>
+                            <input type="number" id="vendor-amount" step="0.01" min="0">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="vendor-status">Contract Status *</label>
+                            <select id="vendor-status" required>
+                                <option value="pending">Pending</option>
+                                <option value="confirmed">Confirmed</option>
+                                <option value="issue">Issue</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="vendor-payment-status">Payment Status</label>
+                            <select id="vendor-payment-status">
+                                <option value="not-paid">Not Paid</option>
+                                <option value="partial">Partial</option>
+                                <option value="paid">Paid</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="vendor-notes">Notes</label>
+                        <textarea id="vendor-notes" rows="3"></textarea>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-secondary cancel-btn">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Save Vendor</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Budget Item Modal -->
+    <div id="budget-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="budget-modal-title">Add Budget Item</h2>
+                <button class="close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="budget-form">
+                    <input type="hidden" id="budget-id">
+                    <div class="form-group">
+                        <label for="budget-vendor">Vendor/Item Name *</label>
+                        <input type="text" id="budget-vendor" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="budget-category">Category *</label>
+                        <input type="text" id="budget-category" required>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="budget-budgeted">Budgeted Amount *</label>
+                            <input type="number" id="budget-budgeted" step="0.01" min="0" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="budget-actual">Actual Amount</label>
+                            <input type="number" id="budget-actual" step="0.01" min="0">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="budget-payment-status">Payment Status</label>
+                        <select id="budget-payment-status">
+                            <option value="not-paid">Not Paid</option>
+                            <option value="partial">Partial</option>
+                            <option value="paid">Paid</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="budget-notes">Notes</label>
+                        <textarea id="budget-notes" rows="3"></textarea>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-secondary cancel-btn">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Save Item</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Timeline Item Modal -->
+    <div id="timeline-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="timeline-modal-title">Add Task</h2>
+                <button class="close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="timeline-form">
+                    <input type="hidden" id="timeline-id">
+                    <div class="form-group">
+                        <label for="timeline-task">Task *</label>
+                        <input type="text" id="timeline-task" required>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="timeline-due-date">Due Date</label>
+                            <input type="date" id="timeline-due-date">
+                        </div>
+                        <div class="form-group">
+                            <label for="timeline-status">Status *</label>
+                            <select id="timeline-status" required>
+                                <option value="not-started">Not Started</option>
+                                <option value="in-progress">In Progress</option>
+                                <option value="complete">Complete</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="timeline-responsible">Responsible Person</label>
+                        <input type="text" id="timeline-responsible">
+                    </div>
+                    <div class="form-group">
+                        <label for="timeline-notes">Notes</label>
+                        <textarea id="timeline-notes" rows="3"></textarea>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-secondary cancel-btn">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Save Task</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js"></script>
+
+    <!-- App Scripts -->
+    <script src="js/config.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>

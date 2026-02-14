@@ -1,0 +1,40 @@
+# Firebase credentials (NEVER commit this!)
+config/firebase-credentials.json
+
+# Node modules
+node_modules/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Sensitive documents (adjust as needed)
+documents/contracts/*
+documents/invoices/*
+!documents/contracts/.gitkeep
+!documents/invoices/.gitkeep
+!documents/misc/.gitkeep
+
+# Temporary files
+*.tmp
+*.bak
