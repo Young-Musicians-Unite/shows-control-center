@@ -3,7 +3,8 @@ const state = {
     vendors: [],
     budget: [],
     timeline: [],
-    currentPage: 'dashboard'
+    currentPage: 'dashboard',
+    currentDay: 'Thursday'  // For timeline filtering
 };
 
 // Event date
@@ -21,6 +22,8 @@ function initializeApp() {
     loadAllData();
     setupFormHandlers();
     setupSearchAndFilter();
+    setupDayTabs();
+    setupBudgetSorting();
 }
 
 // Navigation
@@ -330,29 +333,36 @@ function renderBudgetCategories() {
     }).join('');
 }
 
-function renderBudgetTable() {
+function renderBudgetTable(filterCategory = null) {
     const tbody = document.getElementById('budget-tbody');
 
-    if (state.budget.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No budget items</td></tr>';
+    let budgetToRender = state.budget;
+
+    // Filter by category if specified
+    if (filterCategory) {
+        budgetToRender = state.budget.filter(item => item.category === filterCategory);
+    }
+
+    if (budgetToRender.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No budget items found</td></tr>';
         return;
     }
 
-    tbody.innerHTML = state.budget.map(item => {
+    tbody.innerHTML = budgetToRender.map(item => {
         const budgeted = parseFloat(item.budgeted) || 0;
         const actual = parseFloat(item.actual) || 0;
-        const diff = budgeted - actual;
-        const diffClass = diff < 0 ? 'warning' : '';
+        const difference = budgeted - actual;
+        const diffClass = difference < 0 ? 'over-budget' : difference > 0 ? 'under-budget' : '';
 
         return `
             <tr>
-                <td>${escapeHtml(item.vendor || '')}</td>
-                <td>${escapeHtml(item.category || '')}</td>
+                <td>${escapeHtml(item.vendor)}</td>
+                <td>${escapeHtml(item.category)}</td>
                 <td>${formatCurrency(budgeted)}</td>
                 <td>${formatCurrency(actual)}</td>
-                <td class="${diffClass}">${formatCurrency(diff)}</td>
+                <td class="${diffClass}">${formatCurrency(Math.abs(difference))} ${difference < 0 ? 'over' : difference > 0 ? 'under' : ''}</td>
                 <td><span class="status-badge ${item.paymentStatus}">${formatPaymentStatus(item.paymentStatus)}</span></td>
-                <td>
+                <td class="actions">
                     <button class="btn btn-edit" onclick="editBudgetItem('${item.id}')">Edit</button>
                     <button class="btn btn-danger" onclick="deleteBudgetItem('${item.id}')">Delete</button>
                 </td>
@@ -365,41 +375,47 @@ function renderBudgetTable() {
 function renderTimeline() {
     const container = document.getElementById('timeline-items');
 
-    if (state.timeline.length === 0) {
-        container.innerHTML = '<p class="empty-state">No tasks</p>';
+    // Filter by current day
+    const filteredTimeline = state.timeline.filter(item => item.day === state.currentDay);
+
+    // Update day title
+    const dayTitle = document.getElementById('timeline-day-title');
+    if (dayTitle) {
+        dayTitle.textContent = `${state.currentDay} Timeline`;
+    }
+
+    if (filteredTimeline.length === 0) {
+        container.innerHTML = '<p class="empty-state">No tasks for this day</p>';
         return;
     }
 
-    // Sort by due date, with items without dates at the end
-    const sorted = [...state.timeline].sort((a, b) => {
-        if (!a.dueDate) return 1;
-        if (!b.dueDate) return -1;
-        return new Date(a.dueDate) - new Date(b.dueDate);
+    // Sort by time
+    const sorted = [...filteredTimeline].sort((a, b) => {
+        if (!a.time) return 1;
+        if (!b.time) return -1;
+        return a.time.localeCompare(b.time);
     });
 
-    const now = new Date();
-
     container.innerHTML = sorted.map(item => {
-        const isOverdue = item.dueDate && item.status !== 'complete' && new Date(item.dueDate) < now;
-        const isComplete = item.status === 'complete';
+        const isComplete = item.completed === true;
 
         return `
-            <div class="timeline-item ${isOverdue ? 'overdue' : ''} ${isComplete ? 'complete' : ''}">
+            <div class="timeline-item ${isComplete ? 'complete' : ''}">
                 <div class="timeline-checkbox">
                     <input type="checkbox"
                            ${isComplete ? 'checked' : ''}
                            onchange="toggleTaskComplete('${item.id}', this.checked)">
                 </div>
                 <div class="timeline-content">
+                    <div class="timeline-meta">
+                        ${item.time ? `<div class="timeline-meta-item"><strong>🕐 ${item.time}</strong></div>` : ''}
+                    </div>
                     <div class="timeline-task ${isComplete ? 'complete' : ''}">
-                        ${escapeHtml(item.task || '')}
+                        ${escapeHtml(item.event || '')}
                     </div>
                     <div class="timeline-meta">
-                        ${item.dueDate ? `<div class="timeline-meta-item">📅 ${formatDate(item.dueDate)}</div>` : ''}
                         ${item.responsible ? `<div class="timeline-meta-item">👤 ${escapeHtml(item.responsible)}</div>` : ''}
-                        <div class="timeline-meta-item">
-                            <span class="status-badge ${item.status}">${formatStatus(item.status)}</span>
-                        </div>
+                        ${item.staff ? `<div class="timeline-meta-item">👥 ${escapeHtml(item.staff)}</div>` : ''}
                     </div>
                 </div>
                 <div class="timeline-actions">
@@ -745,4 +761,43 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+// Day Tabs for Timeline
+function setupDayTabs() {
+    const dayTabs = document.querySelectorAll('.day-tab');
+
+    dayTabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            const day = tab.dataset.day;
+
+            // Update active state
+            dayTabs.forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+
+            // Update state and re-render
+            state.currentDay = day;
+            renderTimeline();
+        });
+    });
+}
+
+// Budget Category Sorting
+function setupBudgetSorting() {
+    const sortSelect = document.getElementById('budget-category-sort');
+
+    if (sortSelect) {
+        sortSelect.addEventListener('change', (e) => {
+            const selectedCategory = e.target.value;
+
+            if (!selectedCategory) {
+                // Show all items if no category selected
+                renderBudgetTable();
+                return;
+            }
+
+            // Filter and render only items from selected category
+            renderBudgetTable(selectedCategory);
+        });
+    }
 }

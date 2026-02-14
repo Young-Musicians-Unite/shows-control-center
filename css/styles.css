@@ -1168,3 +1168,54 @@ body {
         font-size: 1.6rem;
     }
 }
+
+/* Day Tabs for Timeline */
+.day-tabs {
+    display: flex;
+    gap: 0;
+    margin-bottom: 1.5rem;
+    background: white;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+.day-tab {
+    flex: 1;
+    padding: 1rem 1.5rem;
+    background: white;
+    border: none;
+    border-right: 1px solid #e0e6ed;
+    color: #5a6c7d;
+    font-size: 1rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.day-tab:last-child {
+    border-right: none;
+}
+
+.day-tab:hover {
+    background: #f5f7fa;
+    color: #3498db;
+}
+
+.day-tab.active {
+    background: #3498db;
+    color: white;
+    font-weight: 600;
+}
+
+/* Toolbar styles for budget sorting */
+.card-header .toolbar {
+    display: inline-block;
+    margin-left: auto;
+}
+
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}

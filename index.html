@@ -227,6 +227,18 @@
             <div class="card">
                 <div class="card-header">
                     <h2>All Budget Items</h2>
+                    <div class="toolbar">
+                        <select id="budget-category-sort" class="filter-select">
+                            <option value="">Sort by Category</option>
+                            <option value="6811a - Talent/Performers & Hosts">Talent/Performers & Hosts</option>
+                            <option value="6811b - A/V Production">A/V Production</option>
+                            <option value="6811c - Venue & Permits">Venue & Permits</option>
+                            <option value="6811d - Food & Beverage	">Food & Beverage</option>
+                            <option value="6811e - Staff & Labor">Staff & Labor</option>
+                            <option value="6811f - Marketing, Promotion & Branding">Marketing, Promotion & Branding</option>
+                            <option value="6811g - Decor & Miscellaneous Supplies">Decor & Miscellaneous Supplies</option>
+                        </select>
+                    </div>
                 </div>
                 <div class="table-container">
                     <table class="data-table" id="budget-table">
@@ -286,14 +298,21 @@
                 </div>
             </div>
 
+            <!-- Day Tabs -->
+            <div class="day-tabs">
+                <button class="day-tab active" data-day="Thursday">Thursday (Apr 23)</button>
+                <button class="day-tab" data-day="Friday">Friday (Apr 24)</button>
+                <button class="day-tab" data-day="Saturday">Saturday (Apr 25)</button>
+            </div>
+
             <!-- Timeline Items -->
             <div class="card">
                 <div class="card-header">
-                    <h2>All Tasks</h2>
+                    <h2 id="timeline-day-title">Thursday Timeline</h2>
                 </div>
                 <div class="card-body">
                     <div id="timeline-items" class="timeline-container">
-                        <p class="empty-state">No tasks</p>
+                        <p class="empty-state">No tasks for this day</p>
                     </div>
                 </div>
             </div>
@@ -387,7 +406,16 @@
                     </div>
                     <div class="form-group">
                         <label for="budget-category">Category *</label>
-                        <input type="text" id="budget-category" required>
+                        <select id="budget-category" required>
+                            <option value="">Select a category</option>
+                            <option value="6811a - Talent/Performers & Hosts">Talent/Performers & Hosts</option>
+                            <option value="6811b - A/V Production">A/V Production</option>
+                            <option value="6811c - Venue & Permits">Venue & Permits</option>
+                            <option value="6811d - Food & Beverage	">Food & Beverage</option>
+                            <option value="6811e - Staff & Labor">Staff & Labor</option>
+                            <option value="6811f - Marketing, Promotion & Branding">Marketing, Promotion & Branding</option>
+                            <option value="6811g - Decor & Miscellaneous Supplies">Decor & Miscellaneous Supplies</option>
+                        </select>
                     </div>
                     <div class="form-row">
                         <div class="form-group">
