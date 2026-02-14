@@ -1849,8 +1849,9 @@ function resizeCanvas() {
 function drawGrid() {
     if (!state.canvas) return;
 
-    const width = document.getElementById('stage-width').value || 40;
-    const height = document.getElementById('stage-height').value || 30;
+    // Use fixed dimensions for grid scale calculation
+    const width = 40;  // Default width in feet
+    const height = 30; // Default height in feet
 
     // Calculate pixels per foot (scale to fit canvas)
     const canvasWidth = state.canvas.width;
@@ -1993,16 +1994,6 @@ function setupStagePlotControls() {
         deletePlotBtn.addEventListener('click', deletePlot);
     }
 
-    // Apply dimensions button
-    const applyDimensionsBtn = document.getElementById('apply-dimensions-btn');
-    if (applyDimensionsBtn) {
-        applyDimensionsBtn.addEventListener('click', () => {
-            drawGrid();
-            updateCanvasInfo();
-            triggerAutoSave();
-        });
-    }
-
     // Print button
     const printPlotBtn = document.getElementById('print-plot-btn');
     if (printPlotBtn) {
@@ -2091,8 +2082,9 @@ async function createNewPlot() {
     const plotName = prompt('Enter a name for this stage plot:');
     if (!plotName) return;
 
-    const width = parseInt(document.getElementById('stage-width').value) || 40;
-    const height = parseInt(document.getElementById('stage-height').value) || 30;
+    // Use fixed dimensions
+    const width = 40;
+    const height = 30;
 
     const plotData = {
         name: plotName,
@@ -2176,10 +2168,6 @@ function loadPlot(plotId) {
         plotNameInput.value = plot.name || '';
         plotNameInput.disabled = false;
     }
-
-    // Update dimensions
-    document.getElementById('stage-width').value = plot.width || 40;
-    document.getElementById('stage-height').value = plot.height || 30;
 
     // Clear canvas and delete existing stage
     if (state.canvas) {
@@ -2267,8 +2255,9 @@ function triggerAutoSave() {
 async function savePlot() {
     if (!state.currentPlotId || !state.canvas) return;
 
-    const width = parseInt(document.getElementById('stage-width').value) || 40;
-    const height = parseInt(document.getElementById('stage-height').value) || 30;
+    // Use fixed dimensions
+    const width = 40;
+    const height = 30;
 
     const canvasData = state.canvas.toJSON();
 
@@ -2305,8 +2294,9 @@ function updateSaveStatus(status) {
 
 // Update Canvas Info
 function updateCanvasInfo() {
-    const width = document.getElementById('stage-width').value || 40;
-    const height = document.getElementById('stage-height').value || 30;
+    // Use fixed dimensions
+    const width = 40;
+    const height = 30;
 
     const dimensionsSpan = document.getElementById('canvas-dimensions');
     if (dimensionsSpan) {
@@ -2755,8 +2745,8 @@ function startDrawingRectangle(e) {
     state.drawingStartPoint = { x: pointer.x, y: pointer.y };
 
     // Get pixels per foot for live dimension display
-    const width = parseInt(document.getElementById('stage-width').value) || 40;
-    const height = parseInt(document.getElementById('stage-height').value) || 30;
+    const width = 40;
+    const height = 30;
     const canvasWidth = state.canvas.width;
     const canvasHeight = state.canvas.height;
     const pixelsPerFoot = Math.min(canvasWidth / width, canvasHeight / height);
@@ -3294,8 +3284,9 @@ function printPlot() {
     // Create a new window for printing
     const printWindow = window.open('', '_blank');
 
-    const width = document.getElementById('stage-width').value || 40;
-    const height = document.getElementById('stage-height').value || 30;
+    // Use fixed dimensions
+    const width = 40;
+    const height = 30;
     const plotName = state.currentPlotId ?
         state.stagePlots.find(p => p.id === state.currentPlotId)?.name || 'Untitled Plot' :
         'Untitled Plot';

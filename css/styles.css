@@ -2811,25 +2811,6 @@ body.menu-open {
     font-size: 0.95rem;
 }
 
-.dimension-controls {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.dimension-controls label {
-    font-weight: 600;
-    color: #2c3e50;
-}
-
-.dimension-input {
-    width: 70px;
-    padding: 0.5rem;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    text-align: center;
-}
-
 .plot-name-control {
     display: flex;
     align-items: center;
@@ -3078,15 +3059,13 @@ body.menu-open {
         gap: 1rem;
     }
 
-    .plot-selector,
-    .dimension-controls {
+    .plot-selector {
         flex-direction: column;
         align-items: stretch;
         width: 100%;
     }
 
-    .plot-dropdown,
-    .dimension-input {
+    .plot-dropdown {
         width: 100%;
     }
 
@@ -3134,13 +3113,11 @@ body.menu-open {
         background: #1a1a1a;
     }
 
-    .plot-selector label,
-    .dimension-controls label {
+    .plot-selector label {
         color: #e0e0e0;
     }
 
-    .plot-dropdown,
-    .dimension-input {
+    .plot-dropdown {
         background: #222;
         color: #e0e0e0;
         border-color: #444;
