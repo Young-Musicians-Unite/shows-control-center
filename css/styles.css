@@ -2790,6 +2790,30 @@ body.menu-open {
     border-radius: 8px;
     margin-bottom: 1.5rem;
     flex-wrap: wrap;
+    justify-content: space-between;
+}
+
+.controls-left,
+.controls-center,
+.controls-right {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.controls-left {
+    flex: 0 1 auto;
+}
+
+.controls-center {
+    flex: 1 1 auto;
+    justify-content: center;
+}
+
+.controls-right {
+    flex: 0 1 auto;
+    margin-left: auto;
 }
 
 .plot-selector {
@@ -2843,7 +2867,8 @@ body.menu-open {
 }
 
 .drawing-controls .btn {
-    min-width: 120px;
+    min-width: auto;
+    white-space: nowrap;
 }
 
 .tool-mode-toggle {
@@ -2889,7 +2914,6 @@ body.menu-open {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    margin-left: 1rem;
     padding: 0.5rem;
     background: rgba(52, 152, 219, 0.1);
     border-radius: 4px;
@@ -2920,9 +2944,9 @@ body.menu-open {
 }
 
 .save-status {
-    margin-left: auto;
     font-size: 0.9rem;
     color: #666;
+    white-space: nowrap;
 }
 
 .save-status.saving .status-text::before {
@@ -3059,6 +3083,14 @@ body.menu-open {
         gap: 1rem;
     }
 
+    .controls-left,
+    .controls-center,
+    .controls-right {
+        flex-direction: column;
+        width: 100%;
+        margin-left: 0;
+    }
+
     .plot-selector {
         flex-direction: column;
         align-items: stretch;
@@ -3070,7 +3102,6 @@ body.menu-open {
     }
 
     .save-status {
-        margin-left: 0;
         text-align: center;
     }
 

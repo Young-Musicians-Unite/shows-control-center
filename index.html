@@ -369,36 +369,42 @@
 
             <!-- Plot Controls -->
             <div class="plot-controls">
-                <div class="plot-selector">
-                    <label>Plot:</label>
-                    <select id="plot-select" class="plot-dropdown">
-                        <option value="">Select a plot...</option>
-                    </select>
-                    <button class="btn btn-primary btn-sm" id="new-plot-btn">+ New Plot</button>
-                    <button class="btn btn-danger btn-sm" id="delete-plot-btn">Delete</button>
-                </div>
-                <div class="plot-name-control">
-                    <label>Plot Name:</label>
-                    <input type="text" id="plot-name-input" placeholder="Enter plot name..." class="plot-name-input">
-                </div>
-                <div class="drawing-controls">
-                    <button class="btn btn-secondary btn-sm" id="draw-stage-btn">✏️ Draw Stage</button>
-                    <button class="btn btn-secondary btn-sm" id="finish-drawing-btn" style="display: none;">✓ Finish</button>
-                    <button class="btn btn-secondary btn-sm" id="edit-stage-btn" style="display: none;">🔓 Edit Stage</button>
-                    <div class="tool-mode-toggle" style="display: none;" id="tool-mode-container">
-                        <label class="tool-mode-label">Tool:</label>
-                        <button class="btn btn-sm tool-mode-btn active" id="draw-rect-tool-btn" title="Draw rectangles">📐 Draw</button>
-                        <button class="btn btn-sm tool-mode-btn" id="move-tool-btn" title="Move and position rectangles">🤚 Move</button>
+                <div class="controls-left">
+                    <div class="plot-selector">
+                        <label>Plot:</label>
+                        <select id="plot-select" class="plot-dropdown">
+                            <option value="">Select a plot...</option>
+                        </select>
+                        <button class="btn btn-primary btn-sm" id="new-plot-btn">+ New Plot</button>
+                        <button class="btn btn-danger btn-sm" id="delete-plot-btn">Delete</button>
                     </div>
+                    <div class="plot-name-control">
+                        <label>Plot Name:</label>
+                        <input type="text" id="plot-name-input" placeholder="Enter plot name..." class="plot-name-input">
+                    </div>
+                </div>
+                <div class="controls-center">
+                    <div class="drawing-controls">
+                        <button class="btn btn-secondary btn-sm" id="draw-stage-btn">✏️ Draw Stage</button>
+                        <button class="btn btn-secondary btn-sm" id="finish-drawing-btn" style="display: none;">✓ Finish</button>
+                        <button class="btn btn-secondary btn-sm" id="edit-stage-btn" style="display: none;">🔓 Edit Stage</button>
+                        <div class="tool-mode-toggle" style="display: none;" id="tool-mode-container">
+                            <label class="tool-mode-label">Tool:</label>
+                            <button class="btn btn-sm tool-mode-btn active" id="draw-rect-tool-btn" title="Draw rectangles">📐 Draw</button>
+                            <button class="btn btn-sm tool-mode-btn" id="move-tool-btn" title="Move and position rectangles">🤚 Move</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="controls-right">
                     <div class="zoom-controls">
                         <button class="btn btn-sm" id="zoom-out-btn" title="Zoom out">🔍−</button>
                         <span class="zoom-level" id="zoom-level">100%</span>
                         <button class="btn btn-sm" id="zoom-in-btn" title="Zoom in">🔍+</button>
                         <button class="btn btn-sm" id="fit-screen-btn" title="Fit to screen">⊡ Fit</button>
                     </div>
-                </div>
-                <div class="save-status" id="save-status">
-                    <span class="status-text"></span>
+                    <div class="save-status" id="save-status">
+                        <span class="status-text"></span>
+                    </div>
                 </div>
             </div>
 
