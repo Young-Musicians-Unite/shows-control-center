@@ -31,5 +31,6 @@ const collections = {
     mainStageInputs: db.collection('mainStageInputs'),
     cocktailStageInputs: db.collection('cocktailStageInputs'),
     staff: db.collection('staff'),
-    eventInfo: db.collection('event-info')
+    eventInfo: db.collection('event-info'),
+    stagePlots: db.collection('stagePlots')
 };

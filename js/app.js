@@ -6,9 +6,18 @@ const state = {
     mainStageInputs: [],
     cocktailStageInputs: [],
     staff: [],
+    stagePlots: [],
     currentPage: 'dashboard',
     currentDay: 'Thursday',  // For timeline filtering
-    currentStage: 'main'  // For stage input filtering
+    currentStage: 'main',  // For stage input filtering
+    currentStagePlotType: 'main',  // For stage plot tabs
+    currentPlotId: null,  // Currently selected plot
+    canvas: null,  // Fabric.js canvas instance
+    autoSaveTimeout: null,  // For debounced auto-save
+    isDrawingStage: false,  // Drawing mode flag
+    stagePolygon: null,  // The stage outline polygon
+    dimensionLabels: [],  // Dimension text labels for stage
+    angleMode: 'orthogonal'  // 'orthogonal' (90°) or 'angle45' (45°)
 };
 
 // Event date
@@ -31,6 +40,10 @@ function initializeApp() {
     setupStageTabs();
     setupBudgetSorting();
     setupExportAndPrint();
+    setupStagePlotTabs();
+    setupStagePlotControls();
+    setupKeyboardShortcuts();
+    setupPlotNameInput();
 }
 
 // Navigation
@@ -115,6 +128,7 @@ function switchPage(pageName) {
         if (pageName === 'timeline') renderTimeline();
         if (pageName === 'input-lists') renderStageInputs();
         if (pageName === 'staff') renderStaff();
+        if (pageName === 'stage-plots') initializeStagePlots();
     }
 }
 
@@ -151,6 +165,7 @@ function loadAllData() {
     loadMainStageInputs();
     loadCocktailStageInputs();
     loadStaff();
+    loadStagePlots();
 }
 
 function loadVendors() {
@@ -1828,4 +1843,1505 @@ function exportStaffToExcel() {
     const today = new Date().toISOString().split('T')[0];
     XLSX.writeFile(wb, `Staff_Contact_List_${today}.xlsx`);
 }
+
+// =============================================
+// STAGE PLOTS FUNCTIONS
+// =============================================
+
+// Load Stage Plots from Firestore
+function loadStagePlots() {
+    collections.stagePlots.onSnapshot((snapshot) => {
+        state.stagePlots = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        }));
+        if (state.currentPage === 'stage-plots') {
+            updatePlotSelector();
+        }
+    }, (error) => {
+        console.error('Error loading stage plots:', error);
+    });
+}
+
+// Initialize Stage Plots page
+function initializeStagePlots() {
+    if (!state.canvas) {
+        setupCanvas();
+    }
+    updatePlotSelector();
+    updateCanvasInfo();
+}
+
+// Setup Fabric.js Canvas
+function setupCanvas() {
+    const canvasElement = document.getElementById('stage-canvas');
+    if (!canvasElement) return;
+
+    // Initialize Fabric.js canvas
+    state.canvas = new fabric.Canvas('stage-canvas', {
+        width: 800,
+        height: 600,
+        backgroundColor: '#ffffff',
+        selection: true
+    });
+
+    // Draw grid background
+    drawGrid();
+
+    // Add event listeners for auto-save
+    state.canvas.on('object:modified', () => {
+        triggerAutoSave();
+    });
+
+    state.canvas.on('object:added', () => {
+        triggerAutoSave();
+    });
+
+    state.canvas.on('object:removed', () => {
+        triggerAutoSave();
+    });
+
+    // Add double-click handler for editing dimension labels and element labels
+    state.canvas.on('mouse:dblclick', (e) => {
+        if (e.target && e.target.isDimensionLabel) {
+            editDimensionLabel(e.target);
+        } else if (e.target && e.target.isStageElement) {
+            editElementLabel(e.target);
+        }
+    });
+}
+
+// Draw grid on canvas
+function drawGrid() {
+    if (!state.canvas) return;
+
+    const width = document.getElementById('stage-width').value || 40;
+    const height = document.getElementById('stage-height').value || 30;
+
+    // Calculate pixels per foot (scale to fit canvas)
+    const canvasWidth = state.canvas.width;
+    const canvasHeight = state.canvas.height;
+    const pixelsPerFoot = Math.min(
+        canvasWidth / width,
+        canvasHeight / height
+    );
+
+    // Clear existing grid lines
+    const objects = state.canvas.getObjects();
+    objects.forEach(obj => {
+        if (obj.gridLine) {
+            state.canvas.remove(obj);
+        }
+    });
+
+    // Draw vertical grid lines
+    for (let i = 0; i <= width; i++) {
+        const line = new fabric.Line([
+            i * pixelsPerFoot, 0,
+            i * pixelsPerFoot, height * pixelsPerFoot
+        ], {
+            stroke: '#e0e0e0',
+            strokeWidth: 1,
+            selectable: false,
+            evented: false,
+            gridLine: true
+        });
+        state.canvas.add(line);
+        state.canvas.sendToBack(line);
+    }
+
+    // Draw horizontal grid lines
+    for (let i = 0; i <= height; i++) {
+        const line = new fabric.Line([
+            0, i * pixelsPerFoot,
+            width * pixelsPerFoot, i * pixelsPerFoot
+        ], {
+            stroke: '#e0e0e0',
+            strokeWidth: 1,
+            selectable: false,
+            evented: false,
+            gridLine: true
+        });
+        state.canvas.add(line);
+        state.canvas.sendToBack(line);
+    }
+
+    state.canvas.renderAll();
+}
+
+// Setup Stage Plot Tab Switching
+function setupStagePlotTabs() {
+    const stagePlotTabs = document.querySelectorAll('.day-tab[data-stage-type]');
+
+    stagePlotTabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            const stageType = tab.dataset.stageType;
+
+            // Update active state
+            stagePlotTabs.forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+
+            // Update state
+            state.currentStagePlotType = stageType;
+
+            // Reset plot selection and update selector
+            state.currentPlotId = null;
+            updatePlotSelector();
+
+            // Clear canvas
+            if (state.canvas) {
+                state.canvas.clear();
+                state.canvas.backgroundColor = '#ffffff';
+                drawGrid();
+            }
+        });
+    });
+}
+
+// Setup Stage Plot Controls
+function setupStagePlotControls() {
+    // Plot selector dropdown
+    const plotSelect = document.getElementById('plot-select');
+    if (plotSelect) {
+        plotSelect.addEventListener('change', (e) => {
+            const plotId = e.target.value;
+            if (plotId) {
+                loadPlot(plotId);
+            } else {
+                // Clear canvas if no plot selected
+                if (state.canvas) {
+                    deleteStage();  // Clean up stage first
+                    state.canvas.clear();
+                    state.canvas.backgroundColor = '#ffffff';
+                    drawGrid();
+                }
+                state.currentPlotId = null;
+
+                // Clear and disable plot name input
+                const plotNameInput = document.getElementById('plot-name-input');
+                if (plotNameInput) {
+                    plotNameInput.value = '';
+                    plotNameInput.disabled = true;
+                }
+            }
+        });
+    }
+
+    // New plot button
+    const newPlotBtn = document.getElementById('new-plot-btn');
+    if (newPlotBtn) {
+        newPlotBtn.addEventListener('click', createNewPlot);
+    }
+
+    // Delete plot button
+    const deletePlotBtn = document.getElementById('delete-plot-btn');
+    if (deletePlotBtn) {
+        deletePlotBtn.addEventListener('click', deletePlot);
+    }
+
+    // Apply dimensions button
+    const applyDimensionsBtn = document.getElementById('apply-dimensions-btn');
+    if (applyDimensionsBtn) {
+        applyDimensionsBtn.addEventListener('click', () => {
+            drawGrid();
+            updateCanvasInfo();
+            triggerAutoSave();
+        });
+    }
+
+    // Print button
+    const printPlotBtn = document.getElementById('print-plot-btn');
+    if (printPlotBtn) {
+        printPlotBtn.addEventListener('click', printPlot);
+    }
+
+    // Draw Stage button
+    const drawStageBtn = document.getElementById('draw-stage-btn');
+    if (drawStageBtn) {
+        drawStageBtn.addEventListener('click', toggleDrawingMode);
+    }
+
+    // Finish Drawing button
+    const finishDrawingBtn = document.getElementById('finish-drawing-btn');
+    if (finishDrawingBtn) {
+        finishDrawingBtn.addEventListener('click', finishDrawingStage);
+    }
+
+    // Edit Stage button
+    const editStageBtn = document.getElementById('edit-stage-btn');
+    if (editStageBtn) {
+        editStageBtn.addEventListener('click', unlockStage);
+    }
+
+    // Element library buttons
+    const elementButtons = document.querySelectorAll('.element-btn');
+    elementButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const elementType = btn.dataset.element;
+            addElementToCanvas(elementType);
+        });
+    });
+
+    // Angle mode buttons
+    const orthogonalModeBtn = document.getElementById('orthogonal-mode-btn');
+    const angle45ModeBtn = document.getElementById('angle45-mode-btn');
+
+    if (orthogonalModeBtn) {
+        orthogonalModeBtn.addEventListener('click', () => {
+            setAngleMode('orthogonal');
+        });
+    }
+
+    if (angle45ModeBtn) {
+        angle45ModeBtn.addEventListener('click', () => {
+            setAngleMode('angle45');
+        });
+    }
+}
+
+// Update Plot Selector Dropdown
+function updatePlotSelector() {
+    const plotSelect = document.getElementById('plot-select');
+    if (!plotSelect) return;
+
+    // Filter plots by current stage type
+    const filteredPlots = state.stagePlots.filter(
+        plot => plot.stageType === state.currentStagePlotType
+    );
+
+    // Sort alphabetically by name
+    filteredPlots.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+    // Update dropdown
+    plotSelect.innerHTML = '<option value="">Select a plot...</option>' +
+        filteredPlots.map(plot =>
+            `<option value="${plot.id}">${escapeHtml(plot.name)}</option>`
+        ).join('');
+
+    // Select current plot if any
+    if (state.currentPlotId) {
+        plotSelect.value = state.currentPlotId;
+    }
+}
+
+// Create New Plot
+async function createNewPlot() {
+    const plotName = prompt('Enter a name for this stage plot:');
+    if (!plotName) return;
+
+    const width = parseInt(document.getElementById('stage-width').value) || 40;
+    const height = parseInt(document.getElementById('stage-height').value) || 30;
+
+    const plotData = {
+        name: plotName,
+        stageType: state.currentStagePlotType,
+        width: width,
+        height: height,
+        canvasData: null,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    };
+
+    try {
+        const docRef = await collections.stagePlots.add(plotData);
+        state.currentPlotId = docRef.id;
+
+        // Update plot name input
+        const plotNameInput = document.getElementById('plot-name-input');
+        if (plotNameInput) {
+            plotNameInput.value = plotName;
+            plotNameInput.disabled = false;
+        }
+
+        // Clear canvas and redraw grid
+        if (state.canvas) {
+            state.canvas.clear();
+            state.canvas.backgroundColor = '#ffffff';
+            drawGrid();
+        }
+
+        updateSaveStatus('Saved');
+    } catch (error) {
+        console.error('Error creating plot:', error);
+        alert('Error creating plot. Please try again.');
+    }
+}
+
+// Delete Plot
+async function deletePlot() {
+    if (!state.currentPlotId) {
+        alert('Please select a plot to delete.');
+        return;
+    }
+
+    const plot = state.stagePlots.find(p => p.id === state.currentPlotId);
+    if (!plot) return;
+
+    if (!confirm(`Are you sure you want to delete "${plot.name}"?`)) {
+        return;
+    }
+
+    try {
+        await collections.stagePlots.doc(state.currentPlotId).delete();
+
+        // Clear current plot
+        state.currentPlotId = null;
+
+        // Clear canvas
+        if (state.canvas) {
+            state.canvas.clear();
+            state.canvas.backgroundColor = '#ffffff';
+            drawGrid();
+        }
+
+        updateSaveStatus('Deleted');
+    } catch (error) {
+        console.error('Error deleting plot:', error);
+        alert('Error deleting plot. Please try again.');
+    }
+}
+
+// Load Plot from Firestore
+function loadPlot(plotId) {
+    const plot = state.stagePlots.find(p => p.id === plotId);
+    if (!plot) return;
+
+    state.currentPlotId = plotId;
+
+    // Update plot name input
+    const plotNameInput = document.getElementById('plot-name-input');
+    if (plotNameInput) {
+        plotNameInput.value = plot.name || '';
+        plotNameInput.disabled = false;
+    }
+
+    // Update dimensions
+    document.getElementById('stage-width').value = plot.width || 40;
+    document.getElementById('stage-height').value = plot.height || 30;
+
+    // Clear canvas and delete existing stage
+    if (state.canvas) {
+        deleteStage();  // Clean up old stage first
+        state.canvas.clear();
+        state.canvas.backgroundColor = '#ffffff';
+        drawGrid();
+
+        // Load canvas data if it exists
+        if (plot.canvasData) {
+            state.canvas.loadFromJSON(plot.canvasData, () => {
+                state.canvas.renderAll();
+                // Redraw grid to ensure it's in the background
+                drawGrid();
+
+                // Find and restore stage polygon and dimension labels references
+                state.canvas.getObjects().forEach(obj => {
+                    if (obj.isStageOutline) {
+                        state.stagePolygon = obj;
+                        // Show Edit Stage button since stage exists
+                        const drawBtn = document.getElementById('draw-stage-btn');
+                        const editBtn = document.getElementById('edit-stage-btn');
+                        if (drawBtn && editBtn) {
+                            drawBtn.style.display = 'none';
+                            editBtn.style.display = 'inline-block';
+                        }
+                    }
+                    if (obj.isDimensionLabel) {
+                        state.dimensionLabels.push(obj);
+                    }
+                });
+            });
+        }
+    }
+
+    updateCanvasInfo();
+    updateSaveStatus('Loaded');
+}
+
+// Trigger Auto-Save (debounced)
+function triggerAutoSave() {
+    // Clear existing timeout
+    if (state.autoSaveTimeout) {
+        clearTimeout(state.autoSaveTimeout);
+    }
+
+    // Set new timeout for 500ms
+    state.autoSaveTimeout = setTimeout(() => {
+        savePlot();
+    }, 500);
+
+    updateSaveStatus('Saving...');
+}
+
+// Save Plot to Firestore
+async function savePlot() {
+    if (!state.currentPlotId || !state.canvas) return;
+
+    const width = parseInt(document.getElementById('stage-width').value) || 40;
+    const height = parseInt(document.getElementById('stage-height').value) || 30;
+
+    const canvasData = state.canvas.toJSON();
+
+    const plotData = {
+        width: width,
+        height: height,
+        canvasData: canvasData,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    };
+
+    try {
+        await collections.stagePlots.doc(state.currentPlotId).update(plotData);
+        updateSaveStatus('Saved');
+    } catch (error) {
+        console.error('Error saving plot:', error);
+        updateSaveStatus('Error saving');
+    }
+}
+
+// Update Save Status Indicator
+function updateSaveStatus(status) {
+    const saveStatus = document.getElementById('save-status');
+    if (saveStatus) {
+        saveStatus.textContent = status;
+
+        // Reset to empty after 2 seconds if saved successfully
+        if (status === 'Saved') {
+            setTimeout(() => {
+                saveStatus.textContent = '';
+            }, 2000);
+        }
+    }
+}
+
+// Update Canvas Info
+function updateCanvasInfo() {
+    const width = document.getElementById('stage-width').value || 40;
+    const height = document.getElementById('stage-height').value || 30;
+
+    const dimensionsSpan = document.getElementById('canvas-dimensions');
+    if (dimensionsSpan) {
+        dimensionsSpan.textContent = `${width}ft × ${height}ft`;
+    }
+}
+
+// Add Element to Canvas
+function addElementToCanvas(elementType) {
+    if (!state.canvas) return;
+
+    const element = createStageElement(elementType);
+    if (element) {
+        // Position in center of canvas
+        element.set({
+            left: state.canvas.width / 2,
+            top: state.canvas.height / 2,
+            originX: 'center',
+            originY: 'center'
+        });
+
+        state.canvas.add(element);
+        state.canvas.setActiveObject(element);
+        state.canvas.renderAll();
+    }
+}
+
+// Create Stage Element (Factory Function) - Using Emojis
+function createStageElement(type) {
+    const elementDefinitions = {
+        // Audio
+        'drum-kit': { emoji: '🥁', label: 'Drums' },
+        'mic-stand': { emoji: '🎤', label: 'Mic' },
+        'floor-monitor': { emoji: '🔊', label: 'Monitor' },
+        'di-box': { emoji: '📦', label: 'DI' },
+        'speaker-cab': { emoji: '🔈', label: 'Speaker' },
+
+        // Instruments
+        'keyboard-88': { emoji: '🎹', label: 'Piano' },
+        'keyboard-61': { emoji: '🎹', label: 'Keyboard' },
+        'pedalboard': { emoji: '🎛️', label: 'Pedalboard' },
+        'guitar': { emoji: '🎸', label: 'Guitar' },
+        'bass': { emoji: '🎸', label: 'Bass' },
+        'guitar-amp': { emoji: '🔊', label: 'Guitar Amp' },
+        'bass-amp': { emoji: '🔊', label: 'Bass Amp' },
+        'music-stand': { emoji: '🎵', label: 'Stand' },
+
+        // Furniture
+        'table-round': { emoji: '⭕', label: 'Table' },
+        'table-rect': { emoji: '🟫', label: 'Table' },
+        'table': { emoji: '🟫', label: 'Table' },
+        'chair': { emoji: '💺', label: 'Chair' },
+        'stool': { emoji: '💺', label: 'Stool' },
+        'podium': { emoji: '🗣️', label: 'Podium' },
+
+        // Stage
+        'riser': { emoji: '🔲', label: 'Riser' },
+        'stage-riser': { emoji: '🔲', label: 'Riser' },
+        'stairs': { emoji: '🪜', label: 'Stairs' },
+        'backdrop': { emoji: '🎬', label: 'Backdrop' },
+
+        // Technical
+        'pa-speaker': { emoji: '📢', label: 'PA' },
+        'spotlight': { emoji: '💡', label: 'Light' },
+        'camera': { emoji: '📹', label: 'Camera' },
+        'projection-screen': { emoji: '🖥️', label: 'Screen' },
+        'mixer': { emoji: '🎚️', label: 'Mixer' },
+        'mixer-console': { emoji: '🎚️', label: 'Mixer' },
+
+        // Markers
+        'performer': { emoji: '🧍', label: 'Person' },
+        'text-label': { emoji: '📝', label: 'Label' },
+        'rectangle': { emoji: '▭', label: 'Rectangle' },
+        'arrow-marker': { emoji: '➡️', label: 'Arrow' },
+        'x-marker': { emoji: '❌', label: 'X' },
+        'star-marker': { emoji: '⭐', label: 'Star' }
+    };
+
+    const def = elementDefinitions[type];
+    if (!def) return null;
+
+    // Create emoji text with larger size and comprehensive font fallbacks
+    const emojiText = new fabric.Text(def.emoji, {
+        fontSize: 50,
+        fontFamily: '"Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", "Android Emoji", "EmojiSymbols", Arial, sans-serif',
+        fill: '#000000',
+        textAlign: 'center',
+        originX: 'center',
+        originY: 'center'
+    });
+
+    // Create label text with background for better readability
+    const labelText = new fabric.Text(def.label, {
+        fontSize: 13,
+        fontFamily: 'Arial, sans-serif',
+        fontWeight: 'bold',
+        fill: '#2c3e50',
+        textAlign: 'center',
+        backgroundColor: 'rgba(255, 255, 255, 0.9)',
+        padding: 4,
+        top: 45,  // Increased spacing to prevent overlap
+        originX: 'center',
+        originY: 'center'
+    });
+
+    // Group emoji and label together
+    const group = new fabric.Group([emojiText, labelText], {
+        left: 0,
+        top: 0,
+        lockScalingFlip: true,
+        hasRotatingPoint: true,
+        cornerStyle: 'circle',
+        transparentCorners: false,
+        cornerColor: '#c9a961',
+        cornerStrokeColor: '#000',
+        borderColor: '#c9a961',
+        isStageElement: true,  // Mark as editable element
+        elementType: type  // Store element type
+    });
+
+    return group;
+}
+
+// Setup Keyboard Shortcuts (Delete key)
+function setupKeyboardShortcuts() {
+    document.addEventListener('keydown', (e) => {
+        // Delete or Backspace key
+        if ((e.key === 'Delete' || e.key === 'Backspace') && state.canvas) {
+            // Prevent default backspace behavior (going back in browser)
+            if (e.key === 'Backspace' && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+                e.preventDefault();
+            }
+
+            // Only delete if we're not in an input field
+            if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+                const activeObjects = state.canvas.getActiveObjects();
+                if (activeObjects.length > 0) {
+                    activeObjects.forEach(obj => {
+                        state.canvas.remove(obj);
+                    });
+                    state.canvas.discardActiveObject();
+                    state.canvas.renderAll();
+                    triggerAutoSave();
+                }
+            }
+        }
+
+        // Escape key - cancel drawing mode
+        if (e.key === 'Escape' && state.isDrawingStage) {
+            cancelDrawingMode();
+        }
+
+        // Enter key - finish drawing
+        if (e.key === 'Enter' && state.isDrawingStage) {
+            finishDrawingStage();
+        }
+    });
+}
+
+// Drawing Mode Variables
+let drawingPoints = [];
+let drawingLines = [];
+let tempCircles = [];
+let snapIndicator = null;  // Visual feedback for snap-to-close
+const SNAP_DISTANCE = 20;  // Pixels to snap to first point
+
+// Toggle Drawing Mode
+function toggleDrawingMode() {
+    if (!state.canvas) return;
+
+    state.isDrawingStage = !state.isDrawingStage;
+
+    const drawBtn = document.getElementById('draw-stage-btn');
+    const finishBtn = document.getElementById('finish-drawing-btn');
+
+    if (state.isDrawingStage) {
+        // Enter drawing mode
+        drawBtn.style.display = 'none';
+        finishBtn.style.display = 'inline-block';
+
+        // Show angle mode toggle
+        const angleModeContainer = document.getElementById('angle-mode-container');
+        if (angleModeContainer) {
+            angleModeContainer.style.display = 'flex';
+        }
+
+        // Disable selection
+        state.canvas.selection = false;
+        state.canvas.forEachObject(obj => {
+            obj.selectable = false;
+        });
+
+        // Reset drawing arrays
+        drawingPoints = [];
+        drawingLines = [];
+        tempCircles = [];
+
+        // Add click handler for drawing
+        state.canvas.on('mouse:down', handleDrawingClick);
+
+        // Add mouse move handler for snap indicator
+        state.canvas.on('mouse:move', handleDrawingMouseMove);
+
+        updateSaveStatus('Drawing mode active - ' + (state.angleMode === 'orthogonal' ? '90° mode' : '45° mode'));
+    } else {
+        cancelDrawingMode();
+    }
+}
+
+// Handle Mouse Move While Drawing (for snap indicator)
+function handleDrawingMouseMove(e) {
+    if (!state.isDrawingStage || drawingPoints.length < 3) return;
+
+    const pointer = state.canvas.getPointer(e.e);
+    const firstPoint = drawingPoints[0];
+    const dx = pointer.x - firstPoint.x;
+    const dy = pointer.y - firstPoint.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+
+    // Show snap indicator when near first point
+    if (distance < SNAP_DISTANCE) {
+        if (!snapIndicator) {
+            snapIndicator = new fabric.Circle({
+                left: firstPoint.x,
+                top: firstPoint.y,
+                radius: SNAP_DISTANCE,
+                fill: 'transparent',
+                stroke: '#c9a961',
+                strokeWidth: 2,
+                strokeDashArray: [5, 5],
+                selectable: false,
+                evented: false,
+                originX: 'center',
+                originY: 'center'
+            });
+            state.canvas.add(snapIndicator);
+        }
+    } else {
+        // Remove snap indicator when far from first point
+        if (snapIndicator) {
+            state.canvas.remove(snapIndicator);
+            snapIndicator = null;
+        }
+    }
+
+    state.canvas.renderAll();
+}
+
+// Convert decimal feet to feet and inches format
+function feetToFeetInches(decimalFeet) {
+    const feet = Math.floor(decimalFeet);
+    const inches = Math.round((decimalFeet - feet) * 12);
+
+    // Handle case where inches rounds to 12
+    if (inches === 12) {
+        return `${feet + 1}'0"`;
+    } else if (inches === 0) {
+        return `${feet}'0"`;
+    } else {
+        return `${feet}'${inches}"`;
+    }
+}
+
+// Parse feet-inches format or decimal feet to decimal
+function parseFeetInches(input) {
+    // Remove extra spaces
+    input = input.trim();
+
+    // Try to match feet-inches format: 20'6" or 20' 6" or 20ft 6in
+    const feetInchesPattern = /(\d+)['ft]?\s*(\d+)?["in]?/i;
+    const match = input.match(feetInchesPattern);
+
+    if (match) {
+        const feet = parseInt(match[1]) || 0;
+        const inches = parseInt(match[2]) || 0;
+        return feet + (inches / 12);
+    }
+
+    // Otherwise, try to parse as decimal
+    const decimal = parseFloat(input);
+    if (!isNaN(decimal)) {
+        return decimal;
+    }
+
+    return null;
+}
+
+// Snap point to 90-degree angle (orthogonal) from previous point
+function snapToOrthogonal(prevPoint, currentPoint) {
+    const dx = currentPoint.x - prevPoint.x;
+    const dy = currentPoint.y - prevPoint.y;
+
+    // Determine if more horizontal or vertical
+    if (Math.abs(dx) > Math.abs(dy)) {
+        // More horizontal - snap to 0° or 180°
+        return { x: currentPoint.x, y: prevPoint.y };
+    } else {
+        // More vertical - snap to 90° or 270°
+        return { x: prevPoint.x, y: currentPoint.y };
+    }
+}
+
+// Snap point to 45-degree angle from previous point
+function snapTo45Degrees(prevPoint, currentPoint) {
+    const dx = currentPoint.x - prevPoint.x;
+    const dy = currentPoint.y - prevPoint.y;
+
+    // Calculate angle in degrees
+    let angle = Math.atan2(dy, dx) * (180 / Math.PI);
+
+    // Round to nearest 45 degrees
+    const snappedAngle = Math.round(angle / 45) * 45;
+
+    // Calculate distance
+    const distance = Math.sqrt(dx * dx + dy * dy);
+
+    // Calculate new point at snapped angle
+    const radians = snappedAngle * (Math.PI / 180);
+    return {
+        x: prevPoint.x + distance * Math.cos(radians),
+        y: prevPoint.y + distance * Math.sin(radians)
+    };
+}
+
+// Set angle mode for drawing
+function setAngleMode(mode) {
+    state.angleMode = mode;
+
+    // Update button active states
+    const orthogonalBtn = document.getElementById('orthogonal-mode-btn');
+    const angle45Btn = document.getElementById('angle45-mode-btn');
+
+    if (orthogonalBtn && angle45Btn) {
+        orthogonalBtn.classList.remove('active');
+        angle45Btn.classList.remove('active');
+
+        if (mode === 'orthogonal') {
+            orthogonalBtn.classList.add('active');
+        } else {
+            angle45Btn.classList.add('active');
+        }
+    }
+
+    // Update status if in drawing mode
+    if (state.isDrawingStage) {
+        updateSaveStatus('Drawing mode active - ' + (mode === 'orthogonal' ? '90° mode' : '45° mode'));
+    }
+}
+
+// Handle Click While Drawing
+function handleDrawingClick(e) {
+    if (!state.isDrawingStage) return;
+
+    let pointer = state.canvas.getPointer(e.e);
+
+    // Check if we should snap to first point to close the shape
+    if (drawingPoints.length >= 3) {
+        const firstPoint = drawingPoints[0];
+        const dx = pointer.x - firstPoint.x;
+        const dy = pointer.y - firstPoint.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        // If close to first point, snap to it and finish drawing
+        if (distance < SNAP_DISTANCE) {
+            finishDrawingStage();
+            return;
+        }
+    }
+
+    // Snap to angle based on current mode
+    if (drawingPoints.length > 0) {
+        const prevPoint = drawingPoints[drawingPoints.length - 1];
+        if (state.angleMode === 'orthogonal') {
+            pointer = snapToOrthogonal(prevPoint, pointer);
+        } else {
+            pointer = snapTo45Degrees(prevPoint, pointer);
+        }
+    }
+
+    // Add point
+    drawingPoints.push({ x: pointer.x, y: pointer.y });
+
+    // Draw circle at point
+    const circle = new fabric.Circle({
+        left: pointer.x,
+        top: pointer.y,
+        radius: 5,
+        fill: '#c9a961',
+        selectable: false,
+        evented: false,
+        originX: 'center',
+        originY: 'center'
+    });
+    state.canvas.add(circle);
+    tempCircles.push(circle);
+
+    // Draw line from previous point
+    if (drawingPoints.length > 1) {
+        const prevPoint = drawingPoints[drawingPoints.length - 2];
+        const line = new fabric.Line([prevPoint.x, prevPoint.y, pointer.x, pointer.y], {
+            stroke: '#c9a961',
+            strokeWidth: 3,
+            selectable: false,
+            evented: false
+        });
+        state.canvas.add(line);
+        drawingLines.push(line);
+    }
+
+    state.canvas.renderAll();
+}
+
+// Finish Drawing Stage
+function finishDrawingStage() {
+    if (!state.isDrawingStage || drawingPoints.length < 3) {
+        alert('Please place at least 3 points to create a stage outline.');
+        return;
+    }
+
+    // Remove temporary circles and lines
+    tempCircles.forEach(circle => state.canvas.remove(circle));
+    drawingLines.forEach(line => state.canvas.remove(line));
+
+    // Create polygon from points
+    const polygon = new fabric.Polygon(drawingPoints, {
+        fill: 'rgba(201, 169, 97, 0.2)',
+        stroke: '#c9a961',
+        strokeWidth: 3,
+        selectable: false,  // Locked by default
+        evented: false,     // Not interactive when locked
+        objectCaching: false,
+        isStageOutline: true  // Custom property to identify the stage
+    });
+
+    state.canvas.add(polygon);
+    state.canvas.sendToBack(polygon);
+    state.stagePolygon = polygon;
+
+    // Calculate pixels per foot for dimension scaling
+    const width = parseInt(document.getElementById('stage-width').value) || 40;
+    const height = parseInt(document.getElementById('stage-height').value) || 30;
+    const canvasWidth = state.canvas.width;
+    const canvasHeight = state.canvas.height;
+    const pixelsPerFoot = Math.min(canvasWidth / width, canvasHeight / height);
+
+    // Add dimension labels for each line segment
+    state.dimensionLabels = [];
+    for (let i = 0; i < drawingPoints.length; i++) {
+        const p1 = drawingPoints[i];
+        const p2 = drawingPoints[(i + 1) % drawingPoints.length];
+
+        // Calculate distance in pixels
+        const dx = p2.x - p1.x;
+        const dy = p2.y - p1.y;
+        const distancePixels = Math.sqrt(dx * dx + dy * dy);
+
+        // Convert to feet
+        const distanceFeet = distancePixels / pixelsPerFoot;
+
+        // Calculate midpoint
+        const midX = (p1.x + p2.x) / 2;
+        const midY = (p1.y + p2.y) / 2;
+
+        // Create dimension label
+        const label = new fabric.Text(feetToFeetInches(distanceFeet), {
+            left: midX,
+            top: midY,
+            fontSize: 12,
+            fontFamily: 'Arial, sans-serif',
+            fontWeight: 'bold',
+            fill: '#c9a961',
+            backgroundColor: 'rgba(255, 255, 255, 0.8)',
+            padding: 3,
+            originX: 'center',
+            originY: 'center',
+            selectable: true,  // Make clickable
+            evented: true,     // Enable events
+            lockMovementX: true,  // Lock position
+            lockMovementY: true,
+            lockRotation: true,
+            lockScalingX: true,
+            lockScalingY: true,
+            hasControls: false,  // Hide resize handles
+            hasBorders: true,
+            borderColor: '#c9a961',
+            isDimensionLabel: true,
+            segmentIndex: i  // Store which segment this labels
+        });
+
+        state.canvas.add(label);
+        state.dimensionLabels.push(label);
+    }
+
+    // Show Edit Stage button, hide Draw Stage button
+    const drawBtn = document.getElementById('draw-stage-btn');
+    const editBtn = document.getElementById('edit-stage-btn');
+    if (drawBtn && editBtn) {
+        drawBtn.style.display = 'none';
+        editBtn.style.display = 'inline-block';
+    }
+
+    // Exit drawing mode
+    cancelDrawingMode();
+
+    state.canvas.renderAll();
+    triggerAutoSave();
+}
+
+// Fix rectangle geometry - force perpendicular corners for orthogonal shapes
+function fixRectangleGeometry(points, updatedSegments, pixelsPerFoot) {
+    // Only attempt rectangle fix if exactly 4 sides
+    if (points.length !== 4) return;
+
+    // Check if we're in orthogonal mode and updated parallel walls
+    if (state.angleMode !== 'orthogonal' || updatedSegments.length < 2) return;
+
+    // Determine if updated segments are horizontal or vertical
+    const firstSegIdx = updatedSegments[0];
+    const p1 = points[firstSegIdx];
+    const p2 = points[(firstSegIdx + 1) % points.length];
+    const dx = Math.abs(p2.x - p1.x);
+    const dy = Math.abs(p2.y - p1.y);
+
+    const isHorizontal = dx > dy;
+
+    if (isHorizontal) {
+        // Updated horizontal walls - fix vertical walls
+        // Get Y positions of the two horizontal walls
+        const y1 = (points[0].y + points[1].y) / 2;  // Top wall Y
+        const y2 = (points[2].y + points[3].y) / 2;  // Bottom wall Y
+
+        // Get X positions of vertical walls (keep them as is)
+        const x1 = points[0].x;  // Left X
+        const x2 = points[1].x;  // Right X
+
+        // Reconstruct rectangle with perfect 90° corners
+        points[0] = { x: x1, y: y1 };  // Top-left
+        points[1] = { x: x2, y: y1 };  // Top-right
+        points[2] = { x: x2, y: y2 };  // Bottom-right
+        points[3] = { x: x1, y: y2 };  // Bottom-left
+    } else {
+        // Updated vertical walls - fix horizontal walls
+        // Get X positions of the two vertical walls
+        const x1 = (points[0].x + points[3].x) / 2;  // Left wall X
+        const x2 = (points[1].x + points[2].x) / 2;  // Right wall X
+
+        // Get Y positions of horizontal walls (keep them as is)
+        const y1 = points[0].y;  // Top Y
+        const y2 = points[2].y;  // Bottom Y
+
+        // Reconstruct rectangle with perfect 90° corners
+        points[0] = { x: x1, y: y1 };  // Top-left
+        points[1] = { x: x2, y: y1 };  // Top-right
+        points[2] = { x: x2, y: y2 };  // Bottom-right
+        points[3] = { x: x1, y: y2 };  // Bottom-left
+    }
+}
+
+// Find parallel segments in the polygon
+function findParallelSegments(points, segmentIndex, angleTolerance = 5) {
+    const parallelSegments = [];
+
+    const p1 = points[segmentIndex];
+    const p2 = points[(segmentIndex + 1) % points.length];
+
+    // Calculate angle of the target segment (in degrees)
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    const targetAngle = Math.atan2(dy, dx) * (180 / Math.PI);
+
+    // Check all other segments
+    for (let i = 0; i < points.length; i++) {
+        if (i === segmentIndex) continue;  // Skip the segment itself
+
+        const q1 = points[i];
+        const q2 = points[(i + 1) % points.length];
+
+        const dx2 = q2.x - q1.x;
+        const dy2 = q2.y - q1.y;
+        let segmentAngle = Math.atan2(dy2, dx2) * (180 / Math.PI);
+
+        // Normalize angles to [0, 180) for comparison (parallel lines can point opposite directions)
+        let normalizedTarget = ((targetAngle % 180) + 180) % 180;
+        let normalizedSegment = ((segmentAngle % 180) + 180) % 180;
+
+        // Check if angles are within tolerance
+        const angleDiff = Math.abs(normalizedTarget - normalizedSegment);
+
+        if (angleDiff < angleTolerance || angleDiff > (180 - angleTolerance)) {
+            parallelSegments.push(i);
+        }
+    }
+
+    return parallelSegments;
+}
+
+// Edit Dimension Label (Double-click handler)
+function editDimensionLabel(label) {
+    if (!state.stagePolygon || !label.isDimensionLabel) return;
+
+    const segmentIndex = label.segmentIndex;
+    const currentText = label.text;
+
+    // Parse current dimension from feet-inches format
+    const currentDimension = parseFeetInches(currentText);
+
+    // Prompt for new dimension
+    const newDimensionStr = prompt(
+        `Enter new dimension:\n(Current: ${currentText})\n\nFormats accepted: 20'6" or 20.5`,
+        currentText
+    );
+    if (!newDimensionStr) return;  // User cancelled
+
+    const newDimension = parseFeetInches(newDimensionStr);
+    if (!newDimension || newDimension <= 0) {
+        alert('Please enter a valid dimension (e.g., 20\'6" or 20.5)');
+        return;
+    }
+
+    // Get stage dimensions for scaling
+    const width = parseInt(document.getElementById('stage-width').value) || 40;
+    const height = parseInt(document.getElementById('stage-height').value) || 30;
+    const canvasWidth = state.canvas.width;
+    const canvasHeight = state.canvas.height;
+    const pixelsPerFoot = Math.min(canvasWidth / width, canvasHeight / height);
+
+    // Get polygon points
+    const points = state.stagePolygon.points;
+
+    // Smart dimension linking: find parallel walls
+    const parallelSegments = findParallelSegments(points, segmentIndex);
+    let segmentsToUpdate = [segmentIndex];  // Always update the current segment
+
+    if (parallelSegments.length > 0) {
+        // Ask user if they want to update parallel walls
+        const parallelCount = parallelSegments.length;
+        const message = parallelCount === 1
+            ? 'Found 1 parallel wall. Update it to match this dimension?'
+            : `Found ${parallelCount} parallel walls. Update them all to match this dimension?`;
+
+        const updateParallel = confirm(message);
+        if (updateParallel) {
+            segmentsToUpdate = segmentsToUpdate.concat(parallelSegments);
+        }
+    }
+    // Update all selected segments with smart geometry preservation
+    const newDistancePixels = newDimension * pixelsPerFoot;
+
+    // Calculate midpoints and angles for all segments to update
+    const segmentData = segmentsToUpdate.map(segIdx => {
+        const p1 = points[segIdx];
+        const p2 = points[(segIdx + 1) % points.length];
+        const dx = p2.x - p1.x;
+        const dy = p2.y - p1.y;
+        const angle = Math.atan2(dy, dx);
+        const midX = (p1.x + p2.x) / 2;
+        const midY = (p1.y + p2.y) / 2;
+        return { segIdx, midX, midY, angle, p1Index: segIdx, p2Index: (segIdx + 1) % points.length };
+    });
+
+    // Update each segment from its center point
+    for (const data of segmentData) {
+        const halfDist = newDistancePixels / 2;
+
+        // Calculate new p1 and p2 centered on the midpoint
+        const newP1 = {
+            x: data.midX - halfDist * Math.cos(data.angle),
+            y: data.midY - halfDist * Math.sin(data.angle)
+        };
+        const newP2 = {
+            x: data.midX + halfDist * Math.cos(data.angle),
+            y: data.midY + halfDist * Math.sin(data.angle)
+        };
+
+        // Update the points
+        points[data.p1Index] = newP1;
+        points[data.p2Index] = newP2;
+    }
+
+    // Fix connecting segments to close the polygon properly
+    // For each point, if it was updated by multiple segments, average the positions
+    const pointUpdates = {};
+    for (const data of segmentData) {
+        // Track which points were modified
+        if (!pointUpdates[data.p1Index]) pointUpdates[data.p1Index] = [];
+        if (!pointUpdates[data.p2Index]) pointUpdates[data.p2Index] = [];
+
+        pointUpdates[data.p1Index].push(points[data.p1Index]);
+        pointUpdates[data.p2Index].push(points[data.p2Index]);
+    }
+
+    // Average positions for points that were updated multiple times
+    for (const [pointIndex, positions] of Object.entries(pointUpdates)) {
+        if (positions.length > 1) {
+            const avgX = positions.reduce((sum, p) => sum + p.x, 0) / positions.length;
+            const avgY = positions.reduce((sum, p) => sum + p.y, 0) / positions.length;
+            points[parseInt(pointIndex)] = { x: avgX, y: avgY };
+        }
+    }
+
+    // Fix rectangle geometry if in orthogonal mode
+    fixRectangleGeometry(points, segmentsToUpdate, pixelsPerFoot);
+
+    // Remove old polygon and dimension labels
+    state.canvas.remove(state.stagePolygon);
+    state.dimensionLabels.forEach(lbl => state.canvas.remove(lbl));
+    state.dimensionLabels = [];
+
+    // Recreate polygon with updated points
+    const polygon = new fabric.Polygon(points, {
+        fill: 'rgba(201, 169, 97, 0.2)',
+        stroke: '#c9a961',
+        strokeWidth: 3,
+        selectable: false,
+        evented: false,
+        objectCaching: false,
+        isStageOutline: true
+    });
+
+    state.canvas.add(polygon);
+    state.canvas.sendToBack(polygon);
+    state.stagePolygon = polygon;
+
+    // Recreate all dimension labels with updated values
+    for (let i = 0; i < points.length; i++) {
+        const pt1 = points[i];
+        const pt2 = points[(i + 1) % points.length];
+
+        // Calculate distance
+        const deltaX = pt2.x - pt1.x;
+        const deltaY = pt2.y - pt1.y;
+        const distPx = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+        const distFt = distPx / pixelsPerFoot;
+
+        // Calculate midpoint
+        const midX = (pt1.x + pt2.x) / 2;
+        const midY = (pt1.y + pt2.y) / 2;
+
+        // Create new label
+        const newLabel = new fabric.Text(feetToFeetInches(distFt), {
+            left: midX,
+            top: midY,
+            fontSize: 12,
+            fontFamily: 'Arial, sans-serif',
+            fontWeight: 'bold',
+            fill: '#c9a961',
+            backgroundColor: 'rgba(255, 255, 255, 0.8)',
+            padding: 3,
+            originX: 'center',
+            originY: 'center',
+            selectable: true,
+            evented: true,
+            lockMovementX: true,
+            lockMovementY: true,
+            lockRotation: true,
+            lockScalingX: true,
+            lockScalingY: true,
+            hasControls: false,
+            hasBorders: true,
+            borderColor: '#c9a961',
+            isDimensionLabel: true,
+            segmentIndex: i
+        });
+
+        state.canvas.add(newLabel);
+        state.dimensionLabels.push(newLabel);
+    }
+
+    state.canvas.renderAll();
+    triggerAutoSave();
+
+    // Update status message
+    const statusMessage = segmentsToUpdate.length > 1
+        ? `Dimension updated (${segmentsToUpdate.length} parallel walls)`
+        : 'Dimension updated';
+    updateSaveStatus(statusMessage);
+}
+
+// Edit Element Label (Double-click handler)
+function editElementLabel(elementGroup) {
+    if (!elementGroup || !elementGroup.isStageElement) return;
+
+    // Get the label object from the group (it's the second item, index 1)
+    const objects = elementGroup.getObjects();
+    const labelObj = objects[1];  // Index 0 is emoji, index 1 is label
+
+    if (!labelObj) return;
+
+    const currentLabel = labelObj.text;
+
+    // Prompt for new label
+    const newLabel = prompt('Enter new label for this element:', currentLabel);
+    if (!newLabel || newLabel === currentLabel) return;  // User cancelled or no change
+
+    // Update the label text
+    labelObj.set('text', newLabel);
+
+    // Mark as dirty and re-render
+    elementGroup.dirty = true;
+    elementGroup.setCoords();
+    state.canvas.renderAll();
+    triggerAutoSave();
+    updateSaveStatus('Label updated');
+}
+
+// Unlock Stage for Editing
+function unlockStage() {
+    if (!state.stagePolygon) return;
+
+    // Remove the existing stage and dimension labels
+    if (state.stagePolygon) {
+        state.canvas.remove(state.stagePolygon);
+        state.stagePolygon = null;
+    }
+
+    state.dimensionLabels.forEach(label => state.canvas.remove(label));
+    state.dimensionLabels = [];
+
+    // Show Draw Stage button, hide Edit Stage button
+    const drawBtn = document.getElementById('draw-stage-btn');
+    const editBtn = document.getElementById('edit-stage-btn');
+    if (drawBtn && editBtn) {
+        drawBtn.style.display = 'inline-block';
+        editBtn.style.display = 'none';
+    }
+
+    state.canvas.renderAll();
+    triggerAutoSave();
+
+    alert('Stage unlocked. Click "Draw Stage" to redraw the stage outline.');
+}
+
+// Delete Stage (called when clearing canvas or loading new plot)
+function deleteStage() {
+    if (state.stagePolygon) {
+        state.canvas.remove(state.stagePolygon);
+        state.stagePolygon = null;
+    }
+
+    state.dimensionLabels.forEach(label => state.canvas.remove(label));
+    state.dimensionLabels = [];
+
+    // Reset buttons
+    const drawBtn = document.getElementById('draw-stage-btn');
+    const editBtn = document.getElementById('edit-stage-btn');
+    if (drawBtn && editBtn) {
+        drawBtn.style.display = 'inline-block';
+        editBtn.style.display = 'none';
+    }
+}
+
+// Cancel Drawing Mode
+function cancelDrawingMode() {
+    state.isDrawingStage = false;
+
+    const drawBtn = document.getElementById('draw-stage-btn');
+    const finishBtn = document.getElementById('finish-drawing-btn');
+
+    if (drawBtn && finishBtn) {
+        drawBtn.style.display = 'inline-block';
+        finishBtn.style.display = 'none';
+    }
+
+    // Hide angle mode toggle
+    const angleModeContainer = document.getElementById('angle-mode-container');
+    if (angleModeContainer) {
+        angleModeContainer.style.display = 'none';
+    }
+
+    // Remove temporary circles and lines
+    if (tempCircles && tempCircles.length > 0) {
+        tempCircles.forEach(circle => state.canvas.remove(circle));
+    }
+    if (drawingLines && drawingLines.length > 0) {
+        drawingLines.forEach(line => state.canvas.remove(line));
+    }
+
+    // Remove snap indicator
+    if (snapIndicator) {
+        state.canvas.remove(snapIndicator);
+        snapIndicator = null;
+    }
+
+    // Reset arrays
+    drawingPoints = [];
+    drawingLines = [];
+    tempCircles = [];
+
+    // Re-enable selection
+    if (state.canvas) {
+        state.canvas.selection = true;
+        state.canvas.forEachObject(obj => {
+            obj.selectable = true;
+        });
+
+        // Remove drawing handlers
+        state.canvas.off('mouse:down', handleDrawingClick);
+        state.canvas.off('mouse:move', handleDrawingMouseMove);
+    }
+
+    updateSaveStatus('');
+}
+
+// Setup Plot Name Input
+function setupPlotNameInput() {
+    const plotNameInput = document.getElementById('plot-name-input');
+    if (!plotNameInput) return;
+
+    // Update plot name on blur
+    plotNameInput.addEventListener('blur', async () => {
+        if (!state.currentPlotId) return;
+
+        const newName = plotNameInput.value.trim();
+        if (!newName) {
+            alert('Plot name cannot be empty');
+            // Restore previous name
+            const plot = state.stagePlots.find(p => p.id === state.currentPlotId);
+            if (plot) {
+                plotNameInput.value = plot.name;
+            }
+            return;
+        }
+
+        try {
+            await collections.stagePlots.doc(state.currentPlotId).update({
+                name: newName,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            updateSaveStatus('Plot name updated');
+        } catch (error) {
+            console.error('Error updating plot name:', error);
+            alert('Error updating plot name. Please try again.');
+        }
+    });
+
+    // Update on Enter key
+    plotNameInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            plotNameInput.blur();
+        }
+    });
+}
+
+// Print Plot
+function printPlot() {
+    if (!state.canvas) return;
+
+    // Export canvas as data URL
+    const dataURL = state.canvas.toDataURL({
+        format: 'png',
+        quality: 1.0,
+        multiplier: 2  // Higher resolution for printing
+    });
+
+    // Create a new window for printing
+    const printWindow = window.open('', '_blank');
+
+    const width = document.getElementById('stage-width').value || 40;
+    const height = document.getElementById('stage-height').value || 30;
+    const plotName = state.currentPlotId ?
+        state.stagePlots.find(p => p.id === state.currentPlotId)?.name || 'Untitled Plot' :
+        'Untitled Plot';
+    const stageTypeName = state.currentStagePlotType === 'main' ? 'Main Stage' : 'Cocktail Stage';
+
+    printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>${plotName} - ${stageTypeName}</title>
+            <style>
+                body {
+                    font-family: 'Segoe UI', Arial, sans-serif;
+                    margin: 20px;
+                    padding: 0;
+                }
+                h1 {
+                    color: #c9a961;
+                    margin-bottom: 5px;
+                }
+                .subtitle {
+                    color: #666;
+                    margin-bottom: 10px;
+                    font-size: 14px;
+                }
+                .dimensions {
+                    margin-bottom: 20px;
+                    font-size: 14px;
+                    color: #333;
+                }
+                img {
+                    max-width: 100%;
+                    height: auto;
+                    border: 1px solid #ddd;
+                }
+                @media print {
+                    body { margin: 0; }
+                    img { max-width: 100%; page-break-inside: avoid; }
+                }
+            </style>
+        </head>
+        <body>
+            <h1>${plotName}</h1>
+            <div class="subtitle">${stageTypeName}</div>
+            <div class="dimensions">Stage Dimensions: ${width}ft × ${height}ft</div>
+            <img src="${dataURL}" alt="Stage Plot">
+        </body>
+        </html>
+    `);
+
+    printWindow.document.close();
+
+    // Wait for image to load then print
+    printWindow.onload = () => {
+        setTimeout(() => {
+            printWindow.print();
+        }, 250);
+    };
+}
+
+// Make functions globally accessible
+window.toggleCategorySection = toggleCategorySection;
+window.makeBudgetRowEditable = makeBudgetRowEditable;
+window.saveBudgetRowChanges = saveBudgetRowChanges;
+window.cancelBudgetRowEdit = cancelBudgetRowEdit;
+window.makeRowEditable = makeRowEditable;
+window.saveRowChanges = saveRowChanges;
+window.cancelRowEdit = cancelRowEdit;
+window.makeStageRowEditable = makeStageRowEditable;
 

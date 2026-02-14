@@ -2780,3 +2780,408 @@ body.menu-open {
         border-top-color: #333;
     }
 }
+
+/* =============================================
+   STAGE PLOTS PAGE
+   Canvas-based stage plot builder
+   ============================================= */
+
+/* Plot Controls */
+.plot-controls {
+    display: flex;
+    gap: 2rem;
+    align-items: center;
+    padding: 1.5rem;
+    background: #f8f9fa;
+    border-radius: 8px;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.plot-selector {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.plot-selector label {
+    font-weight: 600;
+    color: #2c3e50;
+}
+
+.plot-dropdown {
+    min-width: 200px;
+    padding: 0.5rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 0.95rem;
+}
+
+.dimension-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.dimension-controls label {
+    font-weight: 600;
+    color: #2c3e50;
+}
+
+.dimension-input {
+    width: 70px;
+    padding: 0.5rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    text-align: center;
+}
+
+.plot-name-control {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.plot-name-control label {
+    font-weight: 600;
+    color: #2c3e50;
+}
+
+.plot-name-input {
+    min-width: 200px;
+    padding: 0.5rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 0.95rem;
+}
+
+.plot-name-input:disabled {
+    background: #f5f5f5;
+    color: #999;
+}
+
+.drawing-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.drawing-controls .btn {
+    min-width: 120px;
+}
+
+.angle-mode-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-left: 1rem;
+    padding: 0.5rem;
+    background: rgba(201, 169, 97, 0.1);
+    border-radius: 4px;
+}
+
+.angle-mode-label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #2c3e50;
+    margin: 0;
+}
+
+.angle-mode-btn {
+    min-width: 50px !important;
+    padding: 0.4rem 0.8rem;
+    font-size: 0.85rem;
+    font-weight: bold;
+    background: white;
+    border: 2px solid #ddd;
+    color: #666;
+    transition: all 0.2s ease;
+}
+
+.angle-mode-btn:hover {
+    border-color: #c9a961;
+    color: #c9a961;
+}
+
+.angle-mode-btn.active {
+    background: #c9a961;
+    border-color: #c9a961;
+    color: white;
+}
+
+.save-status {
+    margin-left: auto;
+    font-size: 0.9rem;
+    color: #666;
+}
+
+.save-status.saving .status-text::before {
+    content: "⏳ Saving...";
+    color: #f39c12;
+}
+
+.save-status.saved .status-text::before {
+    content: "✓ Saved";
+    color: #27ae60;
+}
+
+.btn-sm {
+    padding: 0.4rem 0.8rem;
+    font-size: 0.85rem;
+}
+
+/* Main Container */
+.stage-plot-container {
+    display: flex;
+    gap: 1.5rem;
+    height: calc(100vh - 400px);
+    min-height: 600px;
+}
+
+/* Element Library Sidebar */
+.element-library {
+    width: 220px;
+    background: white;
+    border-radius: 8px;
+    padding: 1.5rem 1rem;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    overflow-y: auto;
+    flex-shrink: 0;
+}
+
+.element-library h3 {
+    margin: 0 0 1rem 0;
+    font-size: 1.1rem;
+    color: #2c3e50;
+    border-bottom: 2px solid #c9a961;
+    padding-bottom: 0.5rem;
+}
+
+.library-section {
+    margin-bottom: 1.5rem;
+}
+
+.library-section h4 {
+    font-size: 0.85rem;
+    color: #7f8c8d;
+    text-transform: uppercase;
+    margin: 0 0 0.5rem 0;
+    letter-spacing: 0.5px;
+}
+
+.element-btn {
+    display: block;
+    width: 100%;
+    padding: 0.6rem 0.8rem;
+    margin-bottom: 0.4rem;
+    background: #f8f9fa;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    text-align: left;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-size: 0.9rem;
+}
+
+.element-btn:hover {
+    background: #e8f4f8;
+    border-color: #3498db;
+    transform: translateX(3px);
+}
+
+.element-btn:active {
+    background: #d4e9f3;
+}
+
+/* Canvas Area */
+.canvas-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    overflow: hidden;
+}
+
+.canvas-wrapper {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #fafafa;
+    padding: 2rem;
+    overflow: auto;
+}
+
+#stage-canvas {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    background: white;
+}
+
+.canvas-info {
+    padding: 1rem 1.5rem;
+    background: #f8f9fa;
+    border-top: 1px solid #e0e0e0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+#canvas-dimensions {
+    font-weight: 600;
+    color: #2c3e50;
+    margin: 0;
+}
+
+.canvas-help {
+    font-size: 0.85rem;
+    color: #7f8c8d;
+    margin: 0;
+}
+
+/* Mobile Optimization */
+@media (max-width: 768px) {
+    .plot-controls {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 1rem;
+    }
+
+    .plot-selector,
+    .dimension-controls {
+        flex-direction: column;
+        align-items: stretch;
+        width: 100%;
+    }
+
+    .plot-dropdown,
+    .dimension-input {
+        width: 100%;
+    }
+
+    .save-status {
+        margin-left: 0;
+        text-align: center;
+    }
+
+    .stage-plot-container {
+        flex-direction: column;
+        height: auto;
+        min-height: 500px;
+    }
+
+    .element-library {
+        width: 100%;
+        max-height: 200px;
+        padding: 1rem;
+    }
+
+    .library-section {
+        margin-bottom: 1rem;
+    }
+
+    .element-btn {
+        padding: 0.5rem;
+        font-size: 0.85rem;
+    }
+
+    .canvas-wrapper {
+        padding: 1rem;
+        min-height: 400px;
+    }
+
+    .canvas-info {
+        flex-direction: column;
+        gap: 0.5rem;
+        text-align: center;
+    }
+}
+
+/* Dark Mode */
+@media (max-width: 768px) and (prefers-color-scheme: dark) {
+    .plot-controls {
+        background: #1a1a1a;
+    }
+
+    .plot-selector label,
+    .dimension-controls label {
+        color: #e0e0e0;
+    }
+
+    .plot-dropdown,
+    .dimension-input {
+        background: #222;
+        color: #e0e0e0;
+        border-color: #444;
+    }
+
+    .element-library {
+        background: #1a1a1a;
+    }
+
+    .element-library h3 {
+        color: #e0e0e0;
+    }
+
+    .library-section h4 {
+        color: #999;
+    }
+
+    .element-btn {
+        background: #2a2a2a;
+        border-color: #444;
+        color: #e0e0e0;
+    }
+
+    .element-btn:hover {
+        background: #333;
+        border-color: #5dade2;
+    }
+
+    .canvas-area {
+        background: #1a1a1a;
+    }
+
+    .canvas-wrapper {
+        background: #222;
+    }
+
+    .canvas-info {
+        background: #1a1a1a;
+        border-top-color: #333;
+    }
+
+    #canvas-dimensions {
+        color: #e0e0e0;
+    }
+
+    .canvas-help {
+        color: #999;
+    }
+}
+
+/* Print Styles for Stage Plots */
+@media print {
+    .element-library,
+    .plot-controls,
+    .canvas-info,
+    .page-header {
+        display: none !important;
+    }
+
+    .stage-plot-container {
+        display: block;
+    }
+
+    .canvas-wrapper {
+        padding: 0;
+        background: white;
+    }
+
+    #stage-canvas {
+        box-shadow: none;
+        max-width: 100%;
+    }
+}

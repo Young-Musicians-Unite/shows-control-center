@@ -23,6 +23,7 @@
                 <a href="#" class="nav-link" data-page="timeline">Timeline</a>
                 <a href="#" class="nav-link" data-page="input-lists">Input Lists</a>
                 <a href="#" class="nav-link" data-page="staff">Staff</a>
+                <a href="#" class="nav-link" data-page="stage-plots">Stage Plots</a>
             </div>
         </div>
     </nav>
@@ -350,6 +351,122 @@
                 <p class="empty-state">No staff members added</p>
             </div>
         </div>
+
+        <!-- Stage Plots Page -->
+        <div id="stage-plots" class="page">
+            <div class="page-header">
+                <h1>Stage Plots</h1>
+                <div class="header-actions">
+                    <button class="btn btn-secondary" id="print-plot-btn">🖨️ Print</button>
+                </div>
+            </div>
+
+            <!-- Stage Tabs -->
+            <div class="day-tabs">
+                <button class="day-tab active" data-stage-type="main">Main Stage</button>
+                <button class="day-tab" data-stage-type="cocktail">Cocktail Stage</button>
+            </div>
+
+            <!-- Plot Controls -->
+            <div class="plot-controls">
+                <div class="plot-selector">
+                    <label>Plot:</label>
+                    <select id="plot-select" class="plot-dropdown">
+                        <option value="">Select a plot...</option>
+                    </select>
+                    <button class="btn btn-primary btn-sm" id="new-plot-btn">+ New Plot</button>
+                    <button class="btn btn-danger btn-sm" id="delete-plot-btn">Delete</button>
+                </div>
+                <div class="plot-name-control">
+                    <label>Plot Name:</label>
+                    <input type="text" id="plot-name-input" placeholder="Enter plot name..." class="plot-name-input">
+                </div>
+                <div class="dimension-controls">
+                    <label>Stage Dimensions:</label>
+                    <input type="number" id="stage-width" placeholder="Width" min="10" max="200" value="40" class="dimension-input">
+                    <span>ft ×</span>
+                    <input type="number" id="stage-height" placeholder="Depth" min="10" max="200" value="30" class="dimension-input">
+                    <span>ft</span>
+                    <button class="btn btn-secondary btn-sm" id="apply-dimensions-btn">Apply</button>
+                </div>
+                <div class="drawing-controls">
+                    <button class="btn btn-secondary btn-sm" id="draw-stage-btn">✏️ Draw Stage</button>
+                    <button class="btn btn-secondary btn-sm" id="finish-drawing-btn" style="display: none;">✓ Finish</button>
+                    <button class="btn btn-secondary btn-sm" id="edit-stage-btn" style="display: none;">🔓 Edit Stage</button>
+                    <div class="angle-mode-toggle" style="display: none;" id="angle-mode-container">
+                        <label class="angle-mode-label">Angle Mode:</label>
+                        <button class="btn btn-sm angle-mode-btn active" id="orthogonal-mode-btn" title="90° angles only (rectangles)">90°</button>
+                        <button class="btn btn-sm angle-mode-btn" id="angle45-mode-btn" title="45° angle increments">45°</button>
+                    </div>
+                </div>
+                <div class="save-status" id="save-status">
+                    <span class="status-text"></span>
+                </div>
+            </div>
+
+            <!-- Main Content Area -->
+            <div class="stage-plot-container">
+                <!-- Element Library Sidebar -->
+                <div class="element-library" id="element-library">
+                    <h3>Element Library</h3>
+                    <div class="library-section">
+                        <h4>Audio</h4>
+                        <button class="element-btn" data-element="drum-kit">🥁 Drum Kit</button>
+                        <button class="element-btn" data-element="mic-stand">🎤 Mic Stand</button>
+                        <button class="element-btn" data-element="floor-monitor">🔊 Monitor</button>
+                        <button class="element-btn" data-element="di-box">📦 DI Box</button>
+                        <button class="element-btn" data-element="speaker-cab">🔈 Speaker</button>
+                    </div>
+                    <div class="library-section">
+                        <h4>Instruments</h4>
+                        <button class="element-btn" data-element="keyboard-88">🎹 Piano</button>
+                        <button class="element-btn" data-element="keyboard-61">🎹 Keyboard</button>
+                        <button class="element-btn" data-element="pedalboard">🎛️ Pedalboard</button>
+                        <button class="element-btn" data-element="guitar">🎸 Guitar</button>
+                        <button class="element-btn" data-element="bass">🎸 Bass</button>
+                        <button class="element-btn" data-element="guitar-amp">🔊 Guitar Amp</button>
+                        <button class="element-btn" data-element="bass-amp">🔊 Bass Amp</button>
+                        <button class="element-btn" data-element="music-stand">🎵 Music Stand</button>
+                    </div>
+                    <div class="library-section">
+                        <h4>Furniture</h4>
+                        <button class="element-btn" data-element="chair">💺 Chair</button>
+                        <button class="element-btn" data-element="stool">💺 Stool</button>
+                        <button class="element-btn" data-element="table">🟫 Table</button>
+                        <button class="element-btn" data-element="podium">🗣️ Podium</button>
+                    </div>
+                    <div class="library-section">
+                        <h4>Stage</h4>
+                        <button class="element-btn" data-element="riser">🔲 Riser</button>
+                        <button class="element-btn" data-element="stairs">🪜 Stairs</button>
+                        <button class="element-btn" data-element="backdrop">🎬 Backdrop</button>
+                    </div>
+                    <div class="library-section">
+                        <h4>Technical</h4>
+                        <button class="element-btn" data-element="spotlight">💡 Light</button>
+                        <button class="element-btn" data-element="camera">📹 Camera</button>
+                        <button class="element-btn" data-element="mixer">🎛️ Mixer</button>
+                    </div>
+                    <div class="library-section">
+                        <h4>Markers</h4>
+                        <button class="element-btn" data-element="performer">👤 Performer</button>
+                        <button class="element-btn" data-element="text-label">📝 Label</button>
+                        <button class="element-btn" data-element="rectangle">⬜ Rectangle</button>
+                    </div>
+                </div>
+
+                <!-- Canvas Area -->
+                <div class="canvas-area">
+                    <div class="canvas-wrapper" id="canvas-wrapper">
+                        <canvas id="stage-canvas"></canvas>
+                    </div>
+                    <div class="canvas-info">
+                        <p id="canvas-dimensions">Stage: 40' × 30'</p>
+                        <p class="canvas-help">Click elements to add • Drag to move • Rotate handles to rotate • Double-click to label</p>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Staff Modal -->
@@ -588,6 +705,9 @@
 
     <!-- SheetJS for Excel Export -->
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+
+    <!-- Fabric.js for Stage Plot Canvas -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.0/fabric.min.js"></script>
 
     <!-- App Scripts -->
     <script src="js/config.js"></script>
