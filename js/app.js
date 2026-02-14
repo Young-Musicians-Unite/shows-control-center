@@ -20,6 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function initializeApp() {
     setupNavigation();
+    setupHamburgerMenu();
     setupModals();
     setupCountdown();
     loadAllData();
@@ -44,8 +45,57 @@ function setupNavigation() {
             // Update active state
             navLinks.forEach(l => l.classList.remove('active'));
             link.classList.add('active');
+
+            // Close mobile menu when clicking a link
+            closeHamburgerMenu();
         });
     });
+}
+
+// Hamburger Menu
+function setupHamburgerMenu() {
+    const hamburger = document.getElementById('hamburger');
+    const navMenu = document.getElementById('nav-menu');
+
+    if (!hamburger || !navMenu) return;
+
+    // Toggle menu on hamburger click
+    hamburger.addEventListener('click', () => {
+        const isActive = hamburger.classList.contains('active');
+
+        if (isActive) {
+            closeHamburgerMenu();
+        } else {
+            openHamburgerMenu();
+        }
+    });
+
+    // Close menu when clicking outside
+    document.addEventListener('click', (e) => {
+        if (!hamburger.contains(e.target) && !navMenu.contains(e.target)) {
+            closeHamburgerMenu();
+        }
+    });
+}
+
+function openHamburgerMenu() {
+    const hamburger = document.getElementById('hamburger');
+    const navMenu = document.getElementById('nav-menu');
+
+    hamburger.classList.add('active');
+    navMenu.classList.add('active');
+    document.body.classList.add('menu-open');
+}
+
+function closeHamburgerMenu() {
+    const hamburger = document.getElementById('hamburger');
+    const navMenu = document.getElementById('nav-menu');
+
+    if (hamburger && navMenu) {
+        hamburger.classList.remove('active');
+        navMenu.classList.remove('active');
+        document.body.classList.remove('menu-open');
+    }
 }
 
 function switchPage(pageName) {

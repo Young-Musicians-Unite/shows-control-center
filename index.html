@@ -11,7 +11,12 @@
     <nav class="navbar">
         <div class="nav-container">
             <div class="nav-brand">YMU Gala 2026</div>
-            <div class="nav-menu">
+            <button class="hamburger" id="hamburger" aria-label="Toggle menu">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+            <div class="nav-menu" id="nav-menu">
                 <a href="#" class="nav-link active" data-page="dashboard">Dashboard</a>
                 <a href="#" class="nav-link" data-page="vendors">Vendors</a>
                 <a href="#" class="nav-link" data-page="budget">Budget</a>
@@ -247,34 +252,6 @@
                     <button class="btn btn-secondary" id="print-timeline-btn">🖨️ Print</button>
                     <button class="btn btn-secondary" id="export-timeline-btn">📊 Export to Excel</button>
                     <button class="btn btn-primary" id="add-timeline-item-btn">+ Add Task</button>
-                </div>
-            </div>
-
-            <!-- Timeline Stats -->
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <div class="stat-content">
-                        <div class="stat-label">Total Tasks</div>
-                        <div class="stat-value" id="timeline-total">0</div>
-                    </div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-content">
-                        <div class="stat-label">Completed</div>
-                        <div class="stat-value" id="timeline-completed">0</div>
-                    </div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-content">
-                        <div class="stat-label">In Progress</div>
-                        <div class="stat-value" id="timeline-in-progress">0</div>
-                    </div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-content">
-                        <div class="stat-label">Overdue</div>
-                        <div class="stat-value warning" id="timeline-overdue">0</div>
-                    </div>
                 </div>
             </div>
 

@@ -1925,17 +1925,13 @@ tr.editing td {
 /* Landscape Phones */
 @media (max-width: 768px) and (orientation: landscape) {
     .navbar {
-        position: relative; /* Allow scrolling past navbar */
+        position: sticky; /* Keep navbar visible but allow scrolling */
+        top: 0;
     }
 
-    .nav-menu {
-        flex-direction: row;
-        overflow-x: auto;
-        -webkit-overflow-scrolling: touch;
-    }
-
-    .nav-link {
-        white-space: nowrap;
+    /* Hamburger menu works in landscape too */
+    .nav-menu.active {
+        max-height: 300px; /* Slightly smaller in landscape */
     }
 
     .modal-content {
@@ -2497,3 +2493,122 @@ body.force-dark-mode {
     ... same styles as above but without @media query ...
 }
 */
+
+/* =============================================
+   HAMBURGER MENU FOR MOBILE
+   ============================================= */
+
+/* Hamburger button - hidden on desktop */
+.hamburger {
+    display: none;
+    flex-direction: column;
+    justify-content: space-around;
+    width: 30px;
+    height: 25px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    z-index: 101;
+}
+
+.hamburger span {
+    width: 30px;
+    height: 3px;
+    background: #c9a961;
+    border-radius: 2px;
+    transition: all 0.3s ease;
+    transform-origin: center;
+}
+
+/* Hamburger animation when active */
+.hamburger.active span:nth-child(1) {
+    transform: rotate(45deg) translate(7px, 7px);
+}
+
+.hamburger.active span:nth-child(2) {
+    opacity: 0;
+}
+
+.hamburger.active span:nth-child(3) {
+    transform: rotate(-45deg) translate(7px, -7px);
+}
+
+/* Mobile Navigation Styles */
+@media (max-width: 768px) {
+    /* Show hamburger on mobile */
+    .hamburger {
+        display: flex;
+    }
+
+    /* Navigation container adjustments */
+    .nav-container {
+        position: relative;
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 1rem;
+    }
+
+    .nav-brand {
+        padding: 1rem 0;
+        font-size: 1.4rem;
+        width: auto;
+    }
+
+    /* Hide nav menu by default on mobile */
+    .nav-menu {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: linear-gradient(180deg, #0f2621 0%, #1a3a35 100%);
+        flex-direction: column;
+        width: 100%;
+        max-height: 0;
+        overflow: hidden;
+        transition: max-height 0.3s ease, box-shadow 0.3s ease;
+        box-shadow: none;
+    }
+
+    /* Show nav menu when active */
+    .nav-menu.active {
+        max-height: 400px;
+        box-shadow: 0 8px 16px rgba(0,0,0,0.3);
+    }
+
+    /* Nav links in mobile menu */
+    .nav-link {
+        padding: 1rem 1.5rem;
+        border-bottom: 1px solid rgba(201, 169, 97, 0.2);
+        text-align: left;
+        width: 100%;
+    }
+
+    .nav-link:last-child {
+        border-bottom: none;
+    }
+
+    .nav-link.active {
+        border-bottom: 1px solid rgba(201, 169, 97, 0.3);
+        border-left: 3px solid #c9a961;
+    }
+}
+
+/* Prevent body scroll when menu is open */
+body.menu-open {
+    overflow: hidden;
+}
+
+/* Dark mode hamburger */
+@media (prefers-color-scheme: dark) {
+    @media (max-width: 768px) {
+        .hamburger span {
+            background: #d4b896;
+        }
+
+        .nav-menu {
+            background: linear-gradient(180deg, #0a1614 0%, #0f1f1c 100%);
+        }
+    }
+}
