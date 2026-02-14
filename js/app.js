@@ -21,7 +21,10 @@ const state = {
     currentDrawingRect: null,  // Rectangle being drawn
     drawingStartPoint: null,  // Starting point for rectangle draw
     stageLocked: false,  // Whether stage is locked
-    snapDistance: 10  // Pixels for snap-to-align
+    snapDistance: 10,  // Pixels for snap-to-align
+    zoom: 1.0,  // Current zoom level (1.0 = 100%)
+    isPanning: false,  // Whether user is panning the canvas
+    panStart: null  // Starting point for panning
 };
 
 // Event date
@@ -45,6 +48,7 @@ function initializeApp() {
     setupExportAndPrint();
     setupStagePlotTabs();
     setupStagePlotControls();
+    setupZoomControls();
     setupKeyboardShortcuts();
     setupPlotNameInput();
 }
@@ -1752,10 +1756,21 @@ function setupCanvas() {
     console.log('Canvas element found, initializing Fabric.js canvas');
     console.log('fabric object exists:', typeof fabric !== 'undefined');
 
-    // Initialize Fabric.js canvas
+    // Calculate responsive canvas size based on available space
+    const canvasWrapper = document.querySelector('.canvas-wrapper');
+    const maxWidth = canvasWrapper ? canvasWrapper.clientWidth - 80 : 1000; // Subtract padding
+    const maxHeight = canvasWrapper ? canvasWrapper.clientHeight - 80 : 700; // Subtract padding
+
+    // Use responsive size, but with reasonable limits
+    const canvasWidth = Math.min(maxWidth, 1200);
+    const canvasHeight = Math.min(maxHeight, 900);
+
+    console.log('Calculated canvas size:', canvasWidth, 'x', canvasHeight);
+
+    // Initialize Fabric.js canvas with responsive size
     state.canvas = new fabric.Canvas('stage-canvas', {
-        width: 800,
-        height: 600,
+        width: canvasWidth,
+        height: canvasHeight,
         backgroundColor: '#ffffff',
         selection: true
     });
@@ -1764,6 +1779,9 @@ function setupCanvas() {
 
     // Draw grid background
     drawGrid();
+
+    // Initialize zoom display
+    updateZoomDisplay();
 
     // Add event listeners for auto-save
     state.canvas.on('object:modified', () => {
@@ -1786,6 +1804,45 @@ function setupCanvas() {
             editRectangleDimension(e.target);
         }
     });
+
+    // Add window resize handler for responsive canvas
+    let resizeTimeout;
+    window.addEventListener('resize', () => {
+        clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(() => {
+            resizeCanvas();
+        }, 250); // Debounce resize events
+    });
+}
+
+// Resize Canvas to Fit Viewport
+function resizeCanvas() {
+    if (!state.canvas) return;
+
+    const canvasWrapper = document.querySelector('.canvas-wrapper');
+    if (!canvasWrapper) return;
+
+    const maxWidth = canvasWrapper.clientWidth - 80;
+    const maxHeight = canvasWrapper.clientHeight - 80;
+
+    const newWidth = Math.min(maxWidth, 1200);
+    const newHeight = Math.min(maxHeight, 900);
+
+    // Only resize if dimensions actually changed significantly
+    if (Math.abs(state.canvas.width - newWidth) > 50 ||
+        Math.abs(state.canvas.height - newHeight) > 50) {
+
+        console.log('Resizing canvas to:', newWidth, 'x', newHeight);
+
+        state.canvas.setDimensions({
+            width: newWidth,
+            height: newHeight
+        });
+
+        // Redraw grid with new size
+        drawGrid();
+        state.canvas.renderAll();
+    }
 }
 
 // Draw grid on canvas
@@ -1811,14 +1868,33 @@ function drawGrid() {
         }
     });
 
+    // Account for zoom level - draw more grid lines when zoomed out
+    const zoom = state.zoom || 1.0;
+    const viewportWidth = canvasWidth / zoom;
+    const viewportHeight = canvasHeight / zoom;
+
+    // Calculate how many grid lines we need to cover the visible viewport
+    const numVerticalLines = Math.ceil(viewportWidth / pixelsPerFoot) + 2;
+    const numHorizontalLines = Math.ceil(viewportHeight / pixelsPerFoot) + 2;
+
+    // Get viewport transform to know where we're viewing
+    const vpt = state.canvas.viewportTransform;
+    const viewportLeft = -vpt[4] / zoom;
+    const viewportTop = -vpt[5] / zoom;
+
+    // Calculate starting grid position (aligned to grid)
+    const startX = Math.floor(viewportLeft / pixelsPerFoot) * pixelsPerFoot;
+    const startY = Math.floor(viewportTop / pixelsPerFoot) * pixelsPerFoot;
+
     // Draw vertical grid lines
-    for (let i = 0; i <= width; i++) {
+    for (let i = 0; i <= numVerticalLines; i++) {
+        const x = startX + (i * pixelsPerFoot);
         const line = new fabric.Line([
-            i * pixelsPerFoot, 0,
-            i * pixelsPerFoot, height * pixelsPerFoot
+            x, startY,
+            x, startY + (numHorizontalLines * pixelsPerFoot)
         ], {
             stroke: '#e0e0e0',
-            strokeWidth: 1,
+            strokeWidth: 1 / zoom, // Adjust stroke width for zoom
             selectable: false,
             evented: false,
             gridLine: true
@@ -1828,13 +1904,14 @@ function drawGrid() {
     }
 
     // Draw horizontal grid lines
-    for (let i = 0; i <= height; i++) {
+    for (let i = 0; i <= numHorizontalLines; i++) {
+        const y = startY + (i * pixelsPerFoot);
         const line = new fabric.Line([
-            0, i * pixelsPerFoot,
-            width * pixelsPerFoot, i * pixelsPerFoot
+            startX, y,
+            startX + (numVerticalLines * pixelsPerFoot), y
         ], {
             stroke: '#e0e0e0',
-            strokeWidth: 1,
+            strokeWidth: 1 / zoom, // Adjust stroke width for zoom
             selectable: false,
             evented: false,
             gridLine: true
@@ -2351,6 +2428,136 @@ function createStageElement(type) {
     });
 
     return group;
+}
+
+// Setup Zoom Controls
+function setupZoomControls() {
+    const zoomInBtn = document.getElementById('zoom-in-btn');
+    const zoomOutBtn = document.getElementById('zoom-out-btn');
+    const fitScreenBtn = document.getElementById('fit-screen-btn');
+
+    if (!zoomInBtn || !zoomOutBtn || !fitScreenBtn) return;
+
+    // Zoom In
+    zoomInBtn.addEventListener('click', () => {
+        zoomCanvas(1.2); // Zoom in by 20%
+    });
+
+    // Zoom Out
+    zoomOutBtn.addEventListener('click', () => {
+        zoomCanvas(0.8); // Zoom out by 20%
+    });
+
+    // Fit to Screen
+    fitScreenBtn.addEventListener('click', () => {
+        fitCanvasToScreen();
+    });
+
+    // Mouse wheel zoom (hold Ctrl/Cmd to zoom)
+    if (state.canvas) {
+        state.canvas.on('mouse:wheel', (opt) => {
+            const e = opt.e;
+
+            // Only zoom if Ctrl (Windows/Linux) or Cmd (Mac) is pressed
+            if (e.ctrlKey || e.metaKey) {
+                e.preventDefault();
+                e.stopPropagation();
+
+                const delta = e.deltaY;
+                let zoom = state.canvas.getZoom();
+
+                // Zoom in or out based on scroll direction
+                zoom *= 0.999 ** delta;
+
+                // Limit zoom range
+                if (zoom > 5) zoom = 5;
+                if (zoom < 0.1) zoom = 0.1;
+
+                // Zoom towards mouse pointer
+                const point = new fabric.Point(opt.e.offsetX, opt.e.offsetY);
+                state.canvas.zoomToPoint(point, zoom);
+
+                state.zoom = zoom;
+                updateZoomDisplay();
+                drawGrid(); // Redraw grid for new zoom level
+            }
+        });
+
+        // Pan/drag canvas when zoomed in (using Space + drag or middle mouse button)
+        state.canvas.on('mouse:down', (opt) => {
+            const e = opt.e;
+
+            // Enable panning with Space key or middle mouse button
+            if (e.button === 1 || e.code === 'Space' || state.zoom > 1) {
+                state.isPanning = true;
+                state.panStart = { x: e.clientX, y: e.clientY };
+                state.canvas.selection = false; // Disable selection while panning
+            }
+        });
+
+        state.canvas.on('mouse:move', (opt) => {
+            if (state.isPanning && state.panStart) {
+                const e = opt.e;
+                const vpt = state.canvas.viewportTransform;
+
+                vpt[4] += e.clientX - state.panStart.x;
+                vpt[5] += e.clientY - state.panStart.y;
+
+                state.canvas.requestRenderAll();
+                state.panStart = { x: e.clientX, y: e.clientY };
+            }
+        });
+
+        state.canvas.on('mouse:up', () => {
+            if (state.isPanning) {
+                drawGrid(); // Redraw grid after panning
+            }
+            state.isPanning = false;
+            state.panStart = null;
+            state.canvas.selection = true; // Re-enable selection
+        });
+    }
+}
+
+// Zoom Canvas
+function zoomCanvas(factor) {
+    if (!state.canvas) return;
+
+    let zoom = state.canvas.getZoom();
+    zoom *= factor;
+
+    // Limit zoom range
+    if (zoom > 5) zoom = 5;
+    if (zoom < 0.1) zoom = 0.1;
+
+    // Zoom to center of canvas
+    const center = state.canvas.getCenter();
+    state.canvas.zoomToPoint(new fabric.Point(center.left, center.top), zoom);
+
+    state.zoom = zoom;
+    updateZoomDisplay();
+    drawGrid(); // Redraw grid for new zoom level
+}
+
+// Fit Canvas to Screen
+function fitCanvasToScreen() {
+    if (!state.canvas) return;
+
+    // Reset zoom to 1.0 and center viewport
+    state.canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
+    state.zoom = 1.0;
+    updateZoomDisplay();
+    drawGrid(); // Redraw grid for reset zoom
+    state.canvas.renderAll();
+}
+
+// Update Zoom Level Display
+function updateZoomDisplay() {
+    const zoomDisplay = document.getElementById('zoom-level');
+    if (zoomDisplay) {
+        const percentage = Math.round(state.zoom * 100);
+        zoomDisplay.textContent = `${percentage}%`;
+    }
 }
 
 // Setup Keyboard Shortcuts (Delete key)
