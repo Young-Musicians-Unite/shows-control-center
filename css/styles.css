@@ -2943,6 +2943,36 @@ body.menu-open {
     background: #e8f4f8;
 }
 
+.undo-redo-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem;
+    background: rgba(149, 165, 166, 0.1);
+    border-radius: 4px;
+}
+
+.undo-redo-controls .btn {
+    min-width: auto;
+    padding: 0.4rem 0.6rem;
+    font-size: 0.85rem;
+    background: white;
+    border: 2px solid #ddd;
+    color: #666;
+    transition: all 0.2s ease;
+}
+
+.undo-redo-controls .btn:hover:not(:disabled) {
+    border-color: #95a5a6;
+    color: #2c3e50;
+    background: #ecf0f1;
+}
+
+.undo-redo-controls .btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
 .save-status {
     font-size: 0.9rem;
     color: #666;

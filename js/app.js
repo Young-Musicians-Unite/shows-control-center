@@ -24,7 +24,10 @@ const state = {
     snapDistance: 10,  // Pixels for snap-to-align
     zoom: 1.0,  // Current zoom level (1.0 = 100%)
     isPanning: false,  // Whether user is panning the canvas
-    panStart: null  // Starting point for panning
+    panStart: null,  // Starting point for panning
+    undoStack: [],  // History of canvas states for undo
+    redoStack: [],  // History of undone states for redo
+    isUndoRedoing: false  // Flag to prevent history recording during undo/redo
 };
 
 // Event date
@@ -49,6 +52,7 @@ function initializeApp() {
     setupStagePlotTabs();
     setupStagePlotControls();
     setupZoomControls();
+    setupUndoRedo();
     setupKeyboardShortcuts();
     setupPlotNameInput();
 }
@@ -1994,6 +1998,12 @@ function setupStagePlotControls() {
         deletePlotBtn.addEventListener('click', deletePlot);
     }
 
+    // Duplicate plot button
+    const duplicatePlotBtn = document.getElementById('duplicate-plot-btn');
+    if (duplicatePlotBtn) {
+        duplicatePlotBtn.addEventListener('click', duplicatePlot);
+    }
+
     // Print button
     const printPlotBtn = document.getElementById('print-plot-btn');
     if (printPlotBtn) {
@@ -2079,8 +2089,8 @@ function updatePlotSelector() {
 
 // Create New Plot
 async function createNewPlot() {
-    const plotName = prompt('Enter a name for this stage plot:');
-    if (!plotName) return;
+    // Create plot with default "Untitled Plot" name
+    const plotName = 'Untitled Plot';
 
     // Use fixed dimensions
     const width = 40;
@@ -2100,11 +2110,25 @@ async function createNewPlot() {
         const docRef = await collections.stagePlots.add(plotData);
         state.currentPlotId = docRef.id;
 
-        // Update plot name input
+        // Reload all data to update the dropdown
+        await loadAllData();
+
+        // Select the new plot in dropdown
+        const plotSelect = document.getElementById('plot-select');
+        if (plotSelect) {
+            plotSelect.value = docRef.id;
+        }
+
+        // Update plot name input and focus it for easy renaming
         const plotNameInput = document.getElementById('plot-name-input');
         if (plotNameInput) {
             plotNameInput.value = plotName;
             plotNameInput.disabled = false;
+            // Focus and select all text so user can immediately type new name
+            setTimeout(() => {
+                plotNameInput.focus();
+                plotNameInput.select();
+            }, 100);
         }
 
         // Clear canvas and redraw grid
@@ -2114,7 +2138,12 @@ async function createNewPlot() {
             drawGrid();
         }
 
-        updateSaveStatus('Saved');
+        // Clear undo/redo stacks for new plot
+        state.undoStack = [];
+        state.redoStack = [];
+        updateUndoRedoButtons();
+
+        updateSaveStatus('New plot created');
     } catch (error) {
         console.error('Error creating plot:', error);
         alert('Error creating plot. Please try again.');
@@ -2155,12 +2184,66 @@ async function deletePlot() {
     }
 }
 
+// Duplicate Plot
+async function duplicatePlot() {
+    if (!state.currentPlotId) {
+        alert('Please select a plot to duplicate.');
+        return;
+    }
+
+    const originalPlot = state.stagePlots.find(p => p.id === state.currentPlotId);
+    if (!originalPlot) return;
+
+    const newName = prompt('Enter a name for the duplicated plot:', `${originalPlot.name} (Copy)`);
+    if (!newName) return;
+
+    try {
+        // Create new plot with same data
+        const duplicatedPlotData = {
+            name: newName,
+            stageType: originalPlot.stageType,
+            width: originalPlot.width || 40,
+            height: originalPlot.height || 30,
+            canvasData: originalPlot.canvasData, // Copy the canvas data
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        };
+
+        const docRef = await collections.stagePlots.add(duplicatedPlotData);
+
+        // Load the new duplicated plot
+        state.currentPlotId = docRef.id;
+
+        // Reload all plots to update dropdown
+        await loadAllData();
+
+        // Select the new plot in dropdown
+        const plotSelect = document.getElementById('plot-select');
+        if (plotSelect) {
+            plotSelect.value = docRef.id;
+        }
+
+        // Load the plot
+        loadPlot(docRef.id);
+
+        updateSaveStatus('Duplicated');
+    } catch (error) {
+        console.error('Error duplicating plot:', error);
+        alert('Error duplicating plot. Please try again.');
+    }
+}
+
 // Load Plot from Firestore
 function loadPlot(plotId) {
     const plot = state.stagePlots.find(p => p.id === plotId);
     if (!plot) return;
 
     state.currentPlotId = plotId;
+
+    // Clear undo/redo stacks when loading a different plot
+    state.undoStack = [];
+    state.redoStack = [];
+    updateUndoRedoButtons();
 
     // Update plot name input
     const plotNameInput = document.getElementById('plot-name-input');
@@ -2550,9 +2633,119 @@ function updateZoomDisplay() {
     }
 }
 
+// Undo/Redo Functionality
+function saveCanvasState() {
+    if (state.isUndoRedoing || !state.canvas || !state.currentPlotId) return;
+
+    const canvasState = state.canvas.toJSON();
+    state.undoStack.push(JSON.stringify(canvasState));
+
+    // Limit history to 30 states
+    if (state.undoStack.length > 30) {
+        state.undoStack.shift();
+    }
+
+    // Clear redo stack when new action is performed
+    state.redoStack = [];
+    updateUndoRedoButtons();
+}
+
+function undo() {
+    if (state.undoStack.length === 0 || !state.canvas) return;
+
+    // Save current state to redo stack
+    const currentState = state.canvas.toJSON();
+    state.redoStack.push(JSON.stringify(currentState));
+
+    // Restore previous state
+    const previousState = state.undoStack.pop();
+    state.isUndoRedoing = true;
+
+    state.canvas.loadFromJSON(previousState, () => {
+        state.canvas.renderAll();
+        drawGrid(); // Redraw grid
+        state.isUndoRedoing = false;
+        updateUndoRedoButtons();
+        triggerAutoSave();
+    });
+}
+
+function redo() {
+    if (state.redoStack.length === 0 || !state.canvas) return;
+
+    // Save current state to undo stack
+    const currentState = state.canvas.toJSON();
+    state.undoStack.push(JSON.stringify(currentState));
+
+    // Restore next state
+    const nextState = state.redoStack.pop();
+    state.isUndoRedoing = true;
+
+    state.canvas.loadFromJSON(nextState, () => {
+        state.canvas.renderAll();
+        drawGrid(); // Redraw grid
+        state.isUndoRedoing = false;
+        updateUndoRedoButtons();
+        triggerAutoSave();
+    });
+}
+
+function updateUndoRedoButtons() {
+    const undoBtn = document.getElementById('undo-btn');
+    const redoBtn = document.getElementById('redo-btn');
+
+    if (undoBtn) {
+        undoBtn.disabled = state.undoStack.length === 0;
+    }
+    if (redoBtn) {
+        redoBtn.disabled = state.redoStack.length === 0;
+    }
+}
+
+function setupUndoRedo() {
+    const undoBtn = document.getElementById('undo-btn');
+    const redoBtn = document.getElementById('redo-btn');
+
+    if (undoBtn) {
+        undoBtn.addEventListener('click', undo);
+    }
+    if (redoBtn) {
+        redoBtn.addEventListener('click', redo);
+    }
+
+    // Hook into canvas events to save state
+    if (state.canvas) {
+        state.canvas.on('object:added', () => {
+            if (!state.isUndoRedoing) saveCanvasState();
+        });
+        state.canvas.on('object:modified', () => {
+            if (!state.isUndoRedoing) saveCanvasState();
+        });
+        state.canvas.on('object:removed', () => {
+            if (!state.isUndoRedoing) saveCanvasState();
+        });
+    }
+}
+
 // Setup Keyboard Shortcuts (Delete key)
 function setupKeyboardShortcuts() {
     document.addEventListener('keydown', (e) => {
+        // Undo: Ctrl+Z or Cmd+Z
+        if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+            if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+                e.preventDefault();
+                undo();
+            }
+        }
+
+        // Redo: Ctrl+Shift+Z or Cmd+Shift+Z
+        if ((e.ctrlKey || e.metaKey) && e.key === 'z' && e.shiftKey) {
+            if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+                e.preventDefault();
+                redo();
+            }
+        }
+
         // Delete or Backspace key
         if ((e.key === 'Delete' || e.key === 'Backspace') && state.canvas) {
             // Prevent default backspace behavior (going back in browser)
@@ -3255,6 +3448,16 @@ function setupPlotNameInput() {
                 name: newName,
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp()
             });
+
+            // Update the plot in local state
+            const plot = state.stagePlots.find(p => p.id === state.currentPlotId);
+            if (plot) {
+                plot.name = newName;
+            }
+
+            // Update the dropdown to show the new name
+            updatePlotSelector();
+
             updateSaveStatus('Plot name updated');
         } catch (error) {
             console.error('Error updating plot name:', error);
@@ -3291,6 +3494,11 @@ function printPlot() {
         state.stagePlots.find(p => p.id === state.currentPlotId)?.name || 'Untitled Plot' :
         'Untitled Plot';
     const stageTypeName = state.currentStagePlotType === 'main' ? 'Main Stage' : 'Cocktail Stage';
+    const today = new Date().toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+    });
 
     printWindow.document.write(`
         <!DOCTYPE html>
@@ -3298,41 +3506,137 @@ function printPlot() {
         <head>
             <title>${plotName} - ${stageTypeName}</title>
             <style>
-                body {
-                    font-family: 'Segoe UI', Arial, sans-serif;
-                    margin: 20px;
+                * {
+                    margin: 0;
                     padding: 0;
+                    box-sizing: border-box;
+                }
+                body {
+                    font-family: 'Segoe UI', 'Arial', sans-serif;
+                    padding: 40px;
+                    background: white;
+                }
+                .header {
+                    border-bottom: 3px solid #c9a961;
+                    padding-bottom: 20px;
+                    margin-bottom: 30px;
+                }
+                .event-title {
+                    color: #2c3e50;
+                    font-size: 24px;
+                    font-weight: 300;
+                    margin-bottom: 5px;
+                    text-transform: uppercase;
+                    letter-spacing: 2px;
                 }
                 h1 {
                     color: #c9a961;
-                    margin-bottom: 5px;
+                    font-size: 32px;
+                    margin-bottom: 8px;
+                    font-weight: 600;
                 }
                 .subtitle {
-                    color: #666;
-                    margin-bottom: 10px;
-                    font-size: 14px;
+                    color: #7f8c8d;
+                    font-size: 16px;
+                    margin-bottom: 5px;
                 }
-                .dimensions {
-                    margin-bottom: 20px;
-                    font-size: 14px;
-                    color: #333;
+                .info-grid {
+                    display: grid;
+                    grid-template-columns: repeat(3, 1fr);
+                    gap: 20px;
+                    margin-bottom: 30px;
+                    padding: 15px;
+                    background: #f8f9fa;
+                    border-radius: 8px;
+                }
+                .info-item {
+                    text-align: center;
+                }
+                .info-label {
+                    font-size: 12px;
+                    color: #7f8c8d;
+                    text-transform: uppercase;
+                    letter-spacing: 1px;
+                    margin-bottom: 5px;
+                }
+                .info-value {
+                    font-size: 18px;
+                    color: #2c3e50;
+                    font-weight: 600;
+                }
+                .plot-container {
+                    border: 2px solid #e0e0e0;
+                    border-radius: 8px;
+                    padding: 20px;
+                    background: white;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
                 }
                 img {
-                    max-width: 100%;
+                    width: 100%;
                     height: auto;
-                    border: 1px solid #ddd;
+                    display: block;
+                    border-radius: 4px;
+                }
+                .footer {
+                    margin-top: 30px;
+                    padding-top: 20px;
+                    border-top: 1px solid #e0e0e0;
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    font-size: 12px;
+                    color: #95a5a6;
+                }
+                .footer-left {
+                    font-style: italic;
+                }
+                .footer-right {
+                    text-align: right;
                 }
                 @media print {
-                    body { margin: 0; }
-                    img { max-width: 100%; page-break-inside: avoid; }
+                    body {
+                        padding: 20px;
+                    }
+                    .plot-container {
+                        box-shadow: none;
+                    }
                 }
             </style>
         </head>
         <body>
-            <h1>${plotName}</h1>
-            <div class="subtitle">${stageTypeName}</div>
-            <div class="dimensions">Stage Dimensions: ${width}ft × ${height}ft</div>
-            <img src="${dataURL}" alt="Stage Plot">
+            <div class="header">
+                <div class="event-title">YMU Gala 2026</div>
+                <h1>${plotName}</h1>
+                <div class="subtitle">${stageTypeName} Plot</div>
+            </div>
+
+            <div class="info-grid">
+                <div class="info-item">
+                    <div class="info-label">Event Date</div>
+                    <div class="info-value">April 25, 2026</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Stage Dimensions</div>
+                    <div class="info-value">${width}' × ${height}'</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Scale</div>
+                    <div class="info-value">1 ft = 1 grid</div>
+                </div>
+            </div>
+
+            <div class="plot-container">
+                <img src="${dataURL}" alt="Stage Plot">
+            </div>
+
+            <div class="footer">
+                <div class="footer-left">
+                    Young Musicians Unite • 2026 Gala Event
+                </div>
+                <div class="footer-right">
+                    Printed: ${today}
+                </div>
+            </div>
         </body>
         </html>
     `);

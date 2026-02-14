@@ -376,6 +376,7 @@
                             <option value="">Select a plot...</option>
                         </select>
                         <button class="btn btn-primary btn-sm" id="new-plot-btn">+ New Plot</button>
+                        <button class="btn btn-secondary btn-sm" id="duplicate-plot-btn">📋 Duplicate</button>
                         <button class="btn btn-danger btn-sm" id="delete-plot-btn">Delete</button>
                     </div>
                     <div class="plot-name-control">
@@ -392,6 +393,10 @@
                             <label class="tool-mode-label">Tool:</label>
                             <button class="btn btn-sm tool-mode-btn active" id="draw-rect-tool-btn" title="Draw rectangles">📐 Draw</button>
                             <button class="btn btn-sm tool-mode-btn" id="move-tool-btn" title="Move and position rectangles">🤚 Move</button>
+                        </div>
+                        <div class="undo-redo-controls">
+                            <button class="btn btn-sm" id="undo-btn" title="Undo (Ctrl+Z)" disabled>↶ Undo</button>
+                            <button class="btn btn-sm" id="redo-btn" title="Redo (Ctrl+Shift+Z)" disabled>↷ Redo</button>
                         </div>
                     </div>
                 </div>
