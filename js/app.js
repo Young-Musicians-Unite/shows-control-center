@@ -5,6 +5,7 @@ const state = {
     timeline: [],
     mainStageInputs: [],
     cocktailStageInputs: [],
+    staff: [],
     currentPage: 'dashboard',
     currentDay: 'Thursday',  // For timeline filtering
     currentStage: 'main'  // For stage input filtering
@@ -113,6 +114,7 @@ function switchPage(pageName) {
         if (pageName === 'budget') renderBudget();
         if (pageName === 'timeline') renderTimeline();
         if (pageName === 'input-lists') renderStageInputs();
+        if (pageName === 'staff') renderStaff();
     }
 }
 
@@ -148,6 +150,7 @@ function loadAllData() {
     loadTimeline();
     loadMainStageInputs();
     loadCocktailStageInputs();
+    loadStaff();
 }
 
 function loadVendors() {
@@ -607,6 +610,7 @@ function setupModals() {
     document.getElementById('add-vendor-btn').addEventListener('click', () => openVendorModal());
     document.getElementById('add-budget-item-btn').addEventListener('click', () => openBudgetModal());
     document.getElementById('add-timeline-item-btn').addEventListener('click', () => openTimelineModal());
+    document.getElementById('add-staff-btn').addEventListener('click', () => openStaffModal());
 }
 
 function closeAllModals() {
@@ -707,6 +711,7 @@ function setupFormHandlers() {
     document.getElementById('vendor-form').addEventListener('submit', handleVendorSubmit);
     document.getElementById('budget-form').addEventListener('submit', handleBudgetSubmit);
     document.getElementById('timeline-form').addEventListener('submit', handleTimelineSubmit);
+    document.getElementById('staff-form').addEventListener('submit', handleStaffSubmit);
 }
 
 async function handleVendorSubmit(e) {
@@ -1660,3 +1665,126 @@ function exportStageInputsToExcel() {
     const today = new Date().toISOString().split('T')[0];
     XLSX.writeFile(wb, `Stage_Input_Lists_${today}.xlsx`);
 }
+
+// =============================================
+// STAFF FUNCTIONS
+// =============================================
+
+function loadStaff() {
+    collections.staff.onSnapshot((snapshot) => {
+        state.staff = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        }));
+        if (state.currentPage === 'staff') {
+            renderStaff();
+        }
+    }, (error) => {
+        console.error('Error loading staff:', error);
+    });
+}
+
+function renderStaff() {
+    const grid = document.getElementById('staff-grid');
+
+    if (state.staff.length === 0) {
+        grid.innerHTML = '<p class="empty-state">No staff members added yet. Click "Add Staff Member" to get started.</p>';
+        return;
+    }
+
+    grid.innerHTML = state.staff.map(member => `
+        <div class="staff-card">
+            <div class="staff-card-header">
+                <div class="staff-name">${escapeHtml(member.name || '')}</div>
+                <div class="staff-role">${escapeHtml(member.role || '')}</div>
+            </div>
+            ${member.responsibilities ? `
+                <div class="staff-responsibilities">${escapeHtml(member.responsibilities)}</div>
+            ` : ''}
+            <div class="staff-contact">
+                ${member.phone ? `
+                    <div class="staff-contact-item">
+                        <span class="staff-contact-icon">📞</span>
+                        <a href="tel:${escapeHtml(member.phone)}">${escapeHtml(member.phone)}</a>
+                    </div>
+                ` : ''}
+                ${member.email ? `
+                    <div class="staff-contact-item">
+                        <span class="staff-contact-icon">✉️</span>
+                        <a href="mailto:${escapeHtml(member.email)}">${escapeHtml(member.email)}</a>
+                    </div>
+                ` : ''}
+            </div>
+            <div class="staff-actions">
+                <button class="btn btn-edit" onclick="openStaffModal('${member.id}')">Edit</button>
+                <button class="btn btn-danger" onclick="deleteStaff('${member.id}')">Delete</button>
+            </div>
+        </div>
+    `).join('');
+}
+
+function openStaffModal(memberId = null) {
+    const modal = document.getElementById('staff-modal');
+    const form = document.getElementById('staff-form');
+    const title = document.getElementById('staff-modal-title');
+
+    form.reset();
+
+    if (memberId) {
+        const member = state.staff.find(s => s.id === memberId);
+        if (member) {
+            title.textContent = 'Edit Staff Member';
+            document.getElementById('staff-id').value = member.id;
+            document.getElementById('staff-name').value = member.name || '';
+            document.getElementById('staff-role').value = member.role || '';
+            document.getElementById('staff-responsibilities').value = member.responsibilities || '';
+            document.getElementById('staff-phone').value = member.phone || '';
+            document.getElementById('staff-email').value = member.email || '';
+        }
+    } else {
+        title.textContent = 'Add Staff Member';
+        document.getElementById('staff-id').value = '';
+    }
+
+    modal.classList.add('active');
+}
+
+async function handleStaffSubmit(e) {
+    e.preventDefault();
+
+    const staffData = {
+        name: document.getElementById('staff-name').value,
+        role: document.getElementById('staff-role').value,
+        responsibilities: document.getElementById('staff-responsibilities').value,
+        phone: document.getElementById('staff-phone').value,
+        email: document.getElementById('staff-email').value,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    };
+
+    const staffId = document.getElementById('staff-id').value;
+
+    try {
+        if (staffId) {
+            await collections.staff.doc(staffId).update(staffData);
+        } else {
+            staffData.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+            await collections.staff.add(staffData);
+        }
+        closeAllModals();
+    } catch (error) {
+        console.error('Error saving staff member:', error);
+        alert('Error saving staff member. Please try again.');
+    }
+}
+
+window.deleteStaff = async (id) => {
+    if (confirm('Are you sure you want to remove this staff member?')) {
+        try {
+            await collections.staff.doc(id).delete();
+        } catch (error) {
+            console.error('Error deleting staff member:', error);
+            alert('Error deleting staff member. Please try again.');
+        }
+    }
+};
+

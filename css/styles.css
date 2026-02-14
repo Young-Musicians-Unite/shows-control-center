@@ -2612,3 +2612,172 @@ body.menu-open {
         }
     }
 }
+
+/* =============================================
+   STAFF ROLES PAGE
+   Simple, clean card grid
+   ============================================= */
+
+.staff-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1.5rem;
+    margin-top: 2rem;
+}
+
+.staff-card {
+    background: white;
+    border-radius: 8px;
+    padding: 1.5rem;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.staff-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.staff-card-header {
+    margin-bottom: 1rem;
+    padding-bottom: 1rem;
+    border-bottom: 2px solid #c9a961;
+}
+
+.staff-name {
+    font-size: 1.3rem;
+    font-weight: 600;
+    color: #2c3e50;
+    margin-bottom: 0.25rem;
+}
+
+.staff-role {
+    font-size: 1rem;
+    color: #c9a961;
+    font-weight: 500;
+}
+
+.staff-responsibilities {
+    color: #555;
+    line-height: 1.6;
+    margin-bottom: 1rem;
+    font-size: 0.95rem;
+}
+
+.staff-contact {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.staff-contact-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: #2c3e50;
+    font-size: 0.9rem;
+}
+
+.staff-contact-item a {
+    color: #3498db;
+    text-decoration: none;
+    transition: color 0.2s ease;
+}
+
+.staff-contact-item a:hover {
+    color: #2980b9;
+    text-decoration: underline;
+}
+
+.staff-contact-icon {
+    width: 18px;
+    text-align: center;
+    color: #c9a961;
+}
+
+.staff-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid #e0e0e0;
+}
+
+.staff-actions .btn {
+    flex: 1;
+    font-size: 0.85rem;
+    padding: 0.5rem 1rem;
+}
+
+/* Mobile optimization */
+@media (max-width: 768px) {
+    .staff-grid {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+
+    .staff-card {
+        padding: 1.25rem;
+    }
+
+    .staff-name {
+        font-size: 1.2rem;
+    }
+
+    .staff-actions {
+        flex-direction: column;
+    }
+
+    .staff-actions .btn {
+        width: 100%;
+    }
+}
+
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+    .staff-card {
+        background: #1a1a1a;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    }
+
+    .staff-card:hover {
+        box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+    }
+
+    .staff-card-header {
+        border-bottom-color: #c9a961;
+    }
+
+    .staff-name {
+        color: #e0e0e0;
+    }
+
+    .staff-role {
+        color: #d4b896;
+    }
+
+    .staff-responsibilities {
+        color: #b0b0b0;
+    }
+
+    .staff-contact-item {
+        color: #e0e0e0;
+    }
+
+    .staff-contact-item a {
+        color: #5dade2;
+    }
+
+    .staff-contact-item a:hover {
+        color: #7fc8f8;
+    }
+
+    .staff-contact-icon {
+        color: #c9a961;
+    }
+
+    .staff-actions {
+        border-top-color: #333;
+    }
+}
