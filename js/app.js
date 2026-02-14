@@ -3,8 +3,11 @@ const state = {
     vendors: [],
     budget: [],
     timeline: [],
+    mainStageInputs: [],
+    cocktailStageInputs: [],
     currentPage: 'dashboard',
-    currentDay: 'Thursday'  // For timeline filtering
+    currentDay: 'Thursday',  // For timeline filtering
+    currentStage: 'main'  // For stage input filtering
 };
 
 // Event date
@@ -23,6 +26,7 @@ function initializeApp() {
     setupFormHandlers();
     setupSearchAndFilter();
     setupDayTabs();
+    setupStageTabs();
     setupBudgetSorting();
     setupExportAndPrint();
 }
@@ -58,6 +62,7 @@ function switchPage(pageName) {
         if (pageName === 'vendors') renderVendors();
         if (pageName === 'budget') renderBudget();
         if (pageName === 'timeline') renderTimeline();
+        if (pageName === 'input-lists') renderStageInputs();
     }
 }
 
@@ -91,6 +96,8 @@ function loadAllData() {
     loadVendors();
     loadBudget();
     loadTimeline();
+    loadMainStageInputs();
+    loadCocktailStageInputs();
 }
 
 function loadVendors() {
@@ -235,25 +242,27 @@ function renderVendors() {
 
     tbody.innerHTML = filtered.map(vendor => `
         <tr>
-            <td>${escapeHtml(vendor.name || '')}</td>
+            <td>${escapeHtml(vendor.vendor || '')}</td>
             <td>${escapeHtml(vendor.category || '')}</td>
             <td>
-                ${vendor.contactPerson ? escapeHtml(vendor.contactPerson) + '<br>' : ''}
+                ${vendor.contact ? escapeHtml(vendor.contact) + '<br>' : ''}
+                ${vendor.phone ? `<small>${escapeHtml(vendor.phone)}</small><br>` : ''}
                 ${vendor.email ? `<small>${escapeHtml(vendor.email)}</small>` : ''}
             </td>
-            <td>${vendor.amount ? formatCurrency(vendor.amount) : '-'}</td>
-            <td><span class="status-badge ${vendor.status}">${vendor.status || 'pending'}</span></td>
+            <td>${vendor.budgeted ? formatCurrency(vendor.budgeted) : '-'}</td>
+            <td>${vendor.actual ? formatCurrency(vendor.actual) : '-'}</td>
             <td><span class="status-badge ${vendor.paymentStatus}">${formatPaymentStatus(vendor.paymentStatus)}</span></td>
             <td>
-                <button class="btn btn-edit" onclick="editVendor('${vendor.id}')">Edit</button>
-                <button class="btn btn-danger" onclick="deleteVendor('${vendor.id}')">Delete</button>
+                <button class="btn btn-edit" onclick="editBudgetItem('${vendor.id}')">Edit</button>
+                <button class="btn btn-danger" onclick="deleteBudgetItem('${vendor.id}')">Delete</button>
             </td>
         </tr>
     `).join('');
 }
 
 function getFilteredVendors() {
-    let filtered = [...state.vendors];
+    // Read from budget collection instead of vendors
+    let filtered = [...state.budget];
 
     const searchTerm = document.getElementById('vendor-search')?.value.toLowerCase() || '';
     const categoryFilter = document.getElementById('vendor-category-filter')?.value || '';
@@ -261,8 +270,8 @@ function getFilteredVendors() {
 
     if (searchTerm) {
         filtered = filtered.filter(v =>
-            (v.name || '').toLowerCase().includes(searchTerm) ||
-            (v.contactPerson || '').toLowerCase().includes(searchTerm) ||
+            (v.vendor || '').toLowerCase().includes(searchTerm) ||
+            (v.contact || '').toLowerCase().includes(searchTerm) ||
             (v.email || '').toLowerCase().includes(searchTerm)
         );
     }
@@ -272,7 +281,7 @@ function getFilteredVendors() {
     }
 
     if (statusFilter) {
-        filtered = filtered.filter(v => v.status === statusFilter);
+        filtered = filtered.filter(v => v.paymentStatus === statusFilter);
     }
 
     return filtered;
@@ -281,7 +290,7 @@ function getFilteredVendors() {
 // Budget
 function renderBudget() {
     renderBudgetCategories();
-    renderBudgetTable();
+    renderBudgetGrouped();
 }
 
 function renderBudgetCategories() {
@@ -372,6 +381,103 @@ function renderBudgetTable(filterCategory = null) {
     }).join('');
 }
 
+// Render Budget Grouped by Category (Collapsible Sections)
+function renderBudgetGrouped() {
+    const container = document.getElementById('budget-grouped-container');
+
+    if (state.budget.length === 0) {
+        container.innerHTML = '<div class="card"><div class="card-body"><p class="empty-state">No budget items</p></div></div>';
+        return;
+    }
+
+    // Group items by category
+    const categorized = {};
+    state.budget.forEach(item => {
+        const cat = item.category || 'Uncategorized';
+        if (!categorized[cat]) {
+            categorized[cat] = [];
+        }
+        categorized[cat].push(item);
+    });
+
+    // Calculate totals for each category
+    const categoryTotals = {};
+    Object.keys(categorized).forEach(cat => {
+        const budgeted = categorized[cat].reduce((sum, item) => sum + (parseFloat(item.budgeted) || 0), 0);
+        const actual = categorized[cat].reduce((sum, item) => sum + (parseFloat(item.actual) || 0), 0);
+        categoryTotals[cat] = { budgeted, actual, count: categorized[cat].length };
+    });
+
+    // Sort categories alphabetically by code (6811a, 6811b, etc.)
+    const sortedCategories = Object.entries(categorized).sort((a, b) => {
+        return a[0].localeCompare(b[0]);
+    });
+
+    // Render each category as a collapsible card (default: collapsed)
+    container.innerHTML = sortedCategories.map(([category, items]) => {
+        const totals = categoryTotals[category];
+        const categoryId = category.replace(/[^a-zA-Z0-9]/g, '_');
+
+        return `
+            <div class="card budget-category-section">
+                <div class="card-header category-section-header" onclick="toggleCategorySection('${categoryId}')">
+                    <div style="display: flex; align-items: center; gap: 0.75rem; flex: 1;">
+                        <span class="category-arrow" id="arrow-${categoryId}">▶</span>
+                        <h3 style="margin: 0;">${escapeHtml(category)}</h3>
+                        <span class="category-count">${totals.count} items</span>
+                    </div>
+                    <div style="display: flex; gap: 1.5rem; font-size: 0.95rem;">
+                        <span><strong>Budgeted:</strong> ${formatCurrency(totals.budgeted)}</span>
+                        <span><strong>Spent:</strong> ${formatCurrency(totals.actual)}</span>
+                        <span><strong>Remaining:</strong> ${formatCurrency(totals.budgeted - totals.actual)}</span>
+                    </div>
+                </div>
+                <div class="category-section-content" id="content-${categoryId}" style="display: none;">
+                    <div class="table-container">
+                        <table class="data-table budget-table">
+                            <thead>
+                                <tr>
+                                    <th>Vendor/Item</th>
+                                    <th>Budgeted</th>
+                                    <th>Actual</th>
+                                    <th>Difference</th>
+                                    <th>Payment Status</th>
+                                    <th>Notes</th>
+                                    <th class="no-print">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${items.map(item => {
+                                    const budgeted = parseFloat(item.budgeted) || 0;
+                                    const actual = parseFloat(item.actual) || 0;
+                                    const difference = budgeted - actual;
+                                    const diffClass = difference < 0 ? 'over-budget' : difference > 0 ? 'under-budget' : '';
+
+                                    return `
+                                        <tr data-id="${item.id}" ondblclick="makeBudgetRowEditable(this)">
+                                            <td data-field="vendor" data-original="${escapeHtml(item.vendor || '')}">${escapeHtml(item.vendor || '')}</td>
+                                            <td data-field="budgeted" data-original="${budgeted}">${formatCurrency(budgeted)}</td>
+                                            <td data-field="actual" data-original="${actual}">${formatCurrency(actual)}</td>
+                                            <td class="${diffClass}">${formatCurrency(Math.abs(difference))} ${difference < 0 ? 'over' : difference > 0 ? 'under' : ''}</td>
+                                            <td data-field="paymentStatus" data-original="${item.paymentStatus || 'not-paid'}">
+                                                <span class="status-badge ${item.paymentStatus}">${formatPaymentStatus(item.paymentStatus)}</span>
+                                            </td>
+                                            <td data-field="notes" data-original="${escapeHtml(item.notes || '')}">${escapeHtml(item.notes || '')}</td>
+                                            <td class="actions no-print">
+                                                <button class="btn btn-danger" onclick="deleteBudgetItem('${item.id}')">Delete</button>
+                                            </td>
+                                        </tr>
+                                    `;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
 // Timeline
 function renderTimeline() {
     const tbody = document.getElementById('timeline-tbody');
@@ -411,18 +517,19 @@ function renderTimeline() {
         const isComplete = item.completed === true;
 
         return `
-            <tr class="${isComplete ? 'task-completed' : ''}">
+            <tr class="${isComplete ? 'task-completed' : ''}"
+                data-id="${item.id}"
+                ondblclick="makeRowEditable(this)">
                 <td class="checkbox-col">
                     <input type="checkbox"
                            ${isComplete ? 'checked' : ''}
                            onchange="toggleTaskComplete('${item.id}', this.checked)">
                 </td>
-                <td class="time-col">${item.time || ''}</td>
-                <td class="event-col ${isComplete ? 'task-completed' : ''}">${escapeHtml(item.event || '')}</td>
-                <td class="responsible-col">${escapeHtml(item.responsible || '')}</td>
-                <td class="staff-col">${escapeHtml(item.staff || '')}</td>
+                <td class="time-col" data-field="time" data-original="${escapeHtml(item.time || '')}">${formatTime12Hour(item.time)}</td>
+                <td class="event-col ${isComplete ? 'task-completed' : ''}" data-field="event" data-original="${escapeHtml(item.event || '')}">${escapeHtml(item.event || '')}</td>
+                <td class="responsible-col" data-field="responsible" data-original="${escapeHtml(item.responsible || '')}">${escapeHtml(item.responsible || '')}</td>
+                <td class="staff-col" data-field="staff" data-original="${escapeHtml(item.staff || '')}">${escapeHtml(item.staff || '')}</td>
                 <td class="actions-col no-print">
-                    <button class="btn btn-edit" onclick="editTimelineItem('${item.id}')">Edit</button>
                     <button class="btn btn-danger" onclick="deleteTimelineItem('${item.id}')">Delete</button>
                 </td>
             </tr>
@@ -502,6 +609,9 @@ function openBudgetModal(itemId = null) {
             document.getElementById('budget-id').value = item.id;
             document.getElementById('budget-vendor').value = item.vendor || '';
             document.getElementById('budget-category').value = item.category || '';
+            document.getElementById('budget-contact').value = item.contact || '';
+            document.getElementById('budget-phone').value = item.phone || '';
+            document.getElementById('budget-email').value = item.email || '';
             document.getElementById('budget-budgeted').value = item.budgeted || '';
             document.getElementById('budget-actual').value = item.actual || '';
             document.getElementById('budget-payment-status').value = item.paymentStatus || 'not-paid';
@@ -587,6 +697,9 @@ async function handleBudgetSubmit(e) {
     const budgetData = {
         vendor: document.getElementById('budget-vendor').value,
         category: document.getElementById('budget-category').value,
+        contact: document.getElementById('budget-contact').value,
+        phone: document.getElementById('budget-phone').value,
+        email: document.getElementById('budget-email').value,
         budgeted: parseFloat(document.getElementById('budget-budgeted').value) || 0,
         actual: parseFloat(document.getElementById('budget-actual').value) || 0,
         paymentStatus: document.getElementById('budget-payment-status').value,
@@ -742,6 +855,29 @@ function formatDate(dateString) {
     });
 }
 
+function formatTime12Hour(time24) {
+    if (!time24) return '';
+
+    // Handle various time formats
+    const timeParts = time24.toString().split(':');
+    if (timeParts.length < 2) return time24;
+
+    let hours = parseInt(timeParts[0]);
+    const minutes = timeParts[1];
+
+    // Determine AM/PM
+    const period = hours >= 12 ? 'PM' : 'AM';
+
+    // Convert to 12-hour format
+    if (hours === 0) {
+        hours = 12; // Midnight
+    } else if (hours > 12) {
+        hours = hours - 12;
+    }
+
+    return `${hours}:${minutes} ${period}`;
+}
+
 function formatPaymentStatus(status) {
     const map = {
         'paid': 'Paid',
@@ -785,6 +921,24 @@ function setupDayTabs() {
     });
 }
 
+function setupStageTabs() {
+    const stageTabs = document.querySelectorAll('.day-tab[data-stage]');
+
+    stageTabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            const stage = tab.dataset.stage;
+
+            // Update active state
+            stageTabs.forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+
+            // Update state and re-render
+            state.currentStage = stage;
+            renderStageInputs();
+        });
+    });
+}
+
 // Budget Category Sorting
 function setupBudgetSorting() {
     const sortSelect = document.getElementById('budget-category-sort');
@@ -817,6 +971,7 @@ function setupExportAndPrint() {
     const exportTimelineBtn = document.getElementById('export-timeline-btn');
     const exportBudgetBtn = document.getElementById('export-budget-btn');
     const exportVendorsBtn = document.getElementById('export-vendors-btn');
+    const exportStageBtn = document.getElementById('export-stage-btn');
 
     if (exportTimelineBtn) {
         exportTimelineBtn.addEventListener('click', exportTimelineToExcel);
@@ -827,6 +982,9 @@ function setupExportAndPrint() {
     if (exportVendorsBtn) {
         exportVendorsBtn.addEventListener('click', exportVendorsToExcel);
     }
+    if (exportStageBtn) {
+        exportStageBtn.addEventListener('click', exportStageInputsToExcel);
+    }
 }
 
 // Print Timeline Function
@@ -836,48 +994,51 @@ function printTimeline() {
 
 // Export Timeline to Excel
 function exportTimelineToExcel() {
-    // Filter by current day
-    const filteredTimeline = state.timeline.filter(item => item.day === state.currentDay);
-
-    // Sort by time
-    const sorted = [...filteredTimeline].sort((a, b) => {
-        if (!a.time) return 1;
-        if (!b.time) return -1;
-        return a.time.localeCompare(b.time);
-    });
-
-    // Prepare data for Excel
-    const data = sorted.map(item => ({
-        'Time': item.time || '',
-        'Event': item.event || '',
-        'Responsible': item.responsible || '',
-        'Staff': item.staff || '',
-        'Completed': item.completed ? 'Yes' : 'No'
-    }));
-
-    // Create worksheet
-    const ws = XLSX.utils.json_to_sheet(data);
-
-    // Set column widths
-    ws['!cols'] = [
-        { wch: 10 },  // Time
-        { wch: 50 },  // Event
-        { wch: 20 },  // Responsible
-        { wch: 20 },  // Staff
-        { wch: 10 }   // Completed
-    ];
-
     // Create workbook
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, `${state.currentDay} Timeline`);
 
-    // Generate filename with date
-    const dateMap = {
-        'Thursday': '2026-04-23',
-        'Friday': '2026-04-24',
-        'Saturday': '2026-04-25'
-    };
-    const filename = `YMU_Gala_${state.currentDay}_${dateMap[state.currentDay]}.xlsx`;
+    // Export ALL three days in separate sheets
+    const days = ['Thursday', 'Friday', 'Saturday'];
+
+    days.forEach(day => {
+        // Filter by day
+        const filteredTimeline = state.timeline.filter(item => item.day === day);
+
+        // Sort by time
+        const sorted = [...filteredTimeline].sort((a, b) => {
+            if (!a.time) return 1;
+            if (!b.time) return -1;
+            return a.time.localeCompare(b.time);
+        });
+
+        // Prepare data for Excel
+        const data = sorted.map(item => ({
+            'Time': item.time || '',
+            'Event': item.event || '',
+            'Responsible': item.responsible || '',
+            'Staff': item.staff || '',
+            'Completed': item.completed ? 'Yes' : 'No'
+        }));
+
+        // Create worksheet for this day
+        const ws = XLSX.utils.json_to_sheet(data);
+
+        // Set column widths
+        ws['!cols'] = [
+            { wch: 10 },  // Time
+            { wch: 50 },  // Event
+            { wch: 20 },  // Responsible
+            { wch: 20 },  // Staff
+            { wch: 10 }   // Completed
+        ];
+
+        // Add sheet to workbook
+        XLSX.utils.book_append_sheet(wb, ws, day);
+    });
+
+    // Generate filename with today's date
+    const today = new Date().toISOString().split('T')[0];
+    const filename = `YMU_Gala_Complete_Timeline_${today}.xlsx`;
 
     // Download
     XLSX.writeFile(wb, filename);
@@ -992,4 +1153,460 @@ function exportVendorsToExcel() {
     // Download
     const today = new Date().toISOString().split('T')[0];
     XLSX.writeFile(wb, `YMU_Gala_Vendors_${today}.xlsx`);
+}
+
+// Inline Editing for Timeline
+function makeRowEditable(row) {
+    // Skip if already in edit mode
+    if (row.classList.contains('editing')) return;
+
+    row.classList.add('editing');
+
+    // Get all editable cells (skip checkbox and actions)
+    const cells = row.querySelectorAll('td[data-field]');
+
+    cells.forEach(cell => {
+        const field = cell.dataset.field;
+        const original = cell.dataset.original;
+
+        // Create input field
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = original;
+        input.className = 'inline-edit-input';
+        input.dataset.field = field;
+
+        // Replace cell content with input
+        cell.textContent = '';
+        cell.appendChild(input);
+
+        // Auto-focus first input
+        if (field === 'time') {
+            input.focus();
+            input.select();
+        }
+
+        // Save on Enter, cancel on Escape
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                saveRowChanges(row);
+            } else if (e.key === 'Escape') {
+                cancelRowEdit(row);
+            }
+        });
+    });
+
+    // Add save/cancel buttons to actions column
+    const actionsCell = row.querySelector('.actions-col');
+    actionsCell.innerHTML = `
+        <button class="btn btn-primary" onclick="saveRowChanges(this.closest('tr'))">Save</button>
+        <button class="btn btn-secondary" onclick="cancelRowEdit(this.closest('tr'))">Cancel</button>
+    `;
+}
+
+function saveRowChanges(row) {
+    const id = row.dataset.id;
+    const inputs = row.querySelectorAll('.inline-edit-input');
+
+    const updates = {};
+    inputs.forEach(input => {
+        const field = input.dataset.field;
+        updates[field] = input.value;
+    });
+
+    // Convert 12hr time back to 24hr for storage
+    if (updates.time) {
+        updates.time = convertTo24Hour(updates.time);
+    }
+
+    // Update Firebase
+    collections.timeline.doc(id).update(updates)
+        .then(() => {
+            console.log('Timeline item updated successfully');
+            // The real-time listener will update the UI automatically
+        })
+        .catch((error) => {
+            console.error('Error updating timeline item:', error);
+            alert('Error saving changes. Please try again.');
+            cancelRowEdit(row);
+        });
+}
+
+function cancelRowEdit(row) {
+    // Simply re-render the timeline to restore original state
+    renderTimeline();
+}
+
+function convertTo24Hour(time12) {
+    // If already in 24hr format, return as is
+    if (!time12.includes('AM') && !time12.includes('PM')) {
+        return time12;
+    }
+
+    const [time, period] = time12.split(' ');
+    let [hours, minutes] = time.split(':');
+    hours = parseInt(hours);
+
+    if (period === 'PM' && hours !== 12) {
+        hours += 12;
+    } else if (period === 'AM' && hours === 12) {
+        hours = 0;
+    }
+
+    return `${hours.toString().padStart(2, '0')}:${minutes}`;
+}
+
+// Budget Category Accordion Toggle
+function toggleBudgetCategoryAccordion() {
+    const content = document.getElementById('budget-category-accordion');
+    const arrow = document.getElementById('budget-category-arrow');
+
+    if (content.style.display === 'none') {
+        content.style.display = 'block';
+        arrow.textContent = '▼';
+        localStorage.setItem('budgetCategoryAccordionOpen', 'true');
+    } else {
+        content.style.display = 'none';
+        arrow.textContent = '▶';
+        localStorage.setItem('budgetCategoryAccordionOpen', 'false');
+    }
+}
+
+// Toggle Category Section
+function toggleCategorySection(categoryId) {
+    const content = document.getElementById(`content-${categoryId}`);
+    const arrow = document.getElementById(`arrow-${categoryId}`);
+
+    if (content.style.display === 'none') {
+        content.style.display = 'block';
+        arrow.textContent = '▼';
+        localStorage.setItem(`category-${categoryId}`, 'open');
+    } else {
+        content.style.display = 'none';
+        arrow.textContent = '▶';
+        localStorage.setItem(`category-${categoryId}`, 'closed');
+    }
+}
+
+// Inline Editing for Budget Items
+function makeBudgetRowEditable(row) {
+    // Skip if already in edit mode
+    if (row.classList.contains('editing')) return;
+
+    row.classList.add('editing');
+
+    // Get all editable cells
+    const cells = row.querySelectorAll('td[data-field]');
+
+    cells.forEach(cell => {
+        const field = cell.dataset.field;
+        const original = cell.dataset.original;
+
+        // For payment status, create dropdown
+        if (field === 'paymentStatus') {
+            const select = document.createElement('select');
+            select.className = 'inline-edit-input';
+            select.dataset.field = field;
+            select.innerHTML = `
+                <option value="paid" ${original === 'paid' ? 'selected' : ''}>Paid</option>
+                <option value="partial" ${original === 'partial' ? 'selected' : ''}>Partial</option>
+                <option value="not-paid" ${original === 'not-paid' ? 'selected' : ''}>Not Paid</option>
+            `;
+            cell.textContent = '';
+            cell.appendChild(select);
+        }
+        // For budgeted and actual, create number input
+        else if (field === 'budgeted' || field === 'actual') {
+            const input = document.createElement('input');
+            input.type = 'number';
+            input.step = '0.01';
+            input.value = original;
+            input.className = 'inline-edit-input';
+            input.dataset.field = field;
+            cell.textContent = '';
+            cell.appendChild(input);
+
+            if (field === 'budgeted') {
+                input.focus();
+                input.select();
+            }
+        }
+        // For others, create text input
+        else {
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.value = original;
+            input.className = 'inline-edit-input';
+            input.dataset.field = field;
+            cell.textContent = '';
+            cell.appendChild(input);
+        }
+
+        // Add keyboard shortcuts
+        const inputElement = cell.querySelector('input, select');
+        inputElement.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                saveBudgetRowChanges(row);
+            } else if (e.key === 'Escape') {
+                cancelBudgetRowEdit(row);
+            }
+        });
+    });
+
+    // Add save/cancel buttons
+    const actionsCell = row.querySelector('.actions');
+    actionsCell.innerHTML = `
+        <button class="btn btn-primary" onclick="saveBudgetRowChanges(this.closest('tr'))">Save</button>
+        <button class="btn btn-secondary" onclick="cancelBudgetRowEdit(this.closest('tr'))">Cancel</button>
+    `;
+}
+
+function saveBudgetRowChanges(row) {
+    const id = row.dataset.id;
+    const inputs = row.querySelectorAll('.inline-edit-input');
+
+    const updates = {};
+    inputs.forEach(input => {
+        const field = input.dataset.field;
+        updates[field] = input.value;
+    });
+
+    // Convert number fields
+    if (updates.budgeted) updates.budgeted = parseFloat(updates.budgeted) || 0;
+    if (updates.actual) updates.actual = parseFloat(updates.actual) || 0;
+
+    // Update Firebase
+    collections.budget.doc(id).update(updates)
+        .then(() => {
+            console.log('Budget item updated successfully');
+            // Real-time listener will update the UI
+        })
+        .catch((error) => {
+            console.error('Error updating budget item:', error);
+            alert('Error saving changes. Please try again.');
+            cancelBudgetRowEdit(row);
+        });
+}
+
+function cancelBudgetRowEdit(row) {
+    // Re-render budget to restore original state
+    renderBudget();
+}
+
+// Initialize accordion state on page load
+document.addEventListener('DOMContentLoaded', () => {
+    // Restore budget category accordion state
+    const accordionState = localStorage.getItem('budgetCategoryAccordionOpen');
+    if (accordionState === 'true') {
+        const content = document.getElementById('budget-category-accordion');
+        const arrow = document.getElementById('budget-category-arrow');
+        if (content && arrow) {
+            content.style.display = 'block';
+            arrow.textContent = '▼';
+        }
+    }
+});
+
+// Stage Inputs Loading
+function loadMainStageInputs() {
+    collections.mainStageInputs.onSnapshot((snapshot) => {
+        state.mainStageInputs = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        }));
+        if (state.currentPage === 'input-lists') {
+            renderStageInputs();
+        }
+    }, (error) => {
+        console.error('Error loading main stage inputs:', error);
+    });
+}
+
+function loadCocktailStageInputs() {
+    collections.cocktailStageInputs.onSnapshot((snapshot) => {
+        state.cocktailStageInputs = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        }));
+        if (state.currentPage === 'input-lists') {
+            renderStageInputs();
+        }
+    }, (error) => {
+        console.error('Error loading cocktail stage inputs:', error);
+    });
+}
+
+// Render Stage Inputs
+function renderStageInputs() {
+    const tbody = document.getElementById('stage-tbody');
+    const title = document.getElementById('stage-title');
+
+    // Determine which stage to show
+    const isMainStage = state.currentStage === 'main';
+    const stageData = isMainStage ? state.mainStageInputs : state.cocktailStageInputs;
+    const collectionName = isMainStage ? 'mainStageInputs' : 'cocktailStageInputs';
+    const stageName = isMainStage ? 'Main Stage' : 'Cocktail Stage';
+
+    // Update title
+    title.textContent = `${stageName} - Audio & Technical Inputs`;
+
+    if (stageData.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No inputs</td></tr>';
+        return;
+    }
+
+    // Sort by channel number
+    const sorted = [...stageData].sort((a, b) => {
+        const aNum = parseInt(a.channel) || 0;
+        const bNum = parseInt(b.channel) || 0;
+        return aNum - bNum;
+    });
+
+    tbody.innerHTML = sorted.map(item => {
+        return `
+            <tr data-id="${item.id}" ondblclick="makeStageRowEditable(this, '${collectionName}')">
+                <td data-field="channel" data-original="${escapeHtml(item.channel || '')}">${escapeHtml(item.channel || '')}</td>
+                <td data-field="subsnake" data-original="${escapeHtml(item.subsnake || '')}">${escapeHtml(item.subsnake || '')}</td>
+                <td data-field="instrument" data-original="${escapeHtml(item.instrument || '')}">${escapeHtml(item.instrument || '')}</td>
+                <td data-field="mics" data-original="${escapeHtml(item.mics || '')}">${escapeHtml(item.mics || '')}</td>
+                <td data-field="stands" data-original="${escapeHtml(item.stands || '')}">${escapeHtml(item.stands || '')}</td>
+                <td data-field="notes" data-original="${escapeHtml(item.notes || '')}">${escapeHtml(item.notes || '')}</td>
+                <td data-field="symbol" data-original="${escapeHtml(item.symbol || '')}">${escapeHtml(item.symbol || '')}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+// Inline Editing for Stage Inputs
+function makeStageRowEditable(row, collectionName) {
+    if (row.classList.contains('editing')) return;
+
+    row.classList.add('editing');
+
+    const cells = row.querySelectorAll('td[data-field]');
+
+    cells.forEach(cell => {
+        const field = cell.dataset.field;
+        const original = cell.dataset.original;
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = original;
+        input.className = 'inline-edit-input';
+        input.dataset.field = field;
+
+        cell.textContent = '';
+        cell.appendChild(input);
+
+        if (field === 'channel') {
+            input.focus();
+            input.select();
+        }
+
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                saveStageRowChanges(row, collectionName);
+            } else if (e.key === 'Escape') {
+                cancelStageRowEdit(collectionName);
+            }
+        });
+    });
+}
+
+function saveStageRowChanges(row, collectionName) {
+    const id = row.dataset.id;
+    const inputs = row.querySelectorAll('.inline-edit-input');
+
+    const updates = {};
+    inputs.forEach(input => {
+        const field = input.dataset.field;
+        updates[field] = input.value;
+    });
+
+    collections[collectionName].doc(id).update(updates)
+        .then(() => {
+            console.log('Stage input updated successfully');
+        })
+        .catch((error) => {
+            console.error('Error updating stage input:', error);
+            alert('Error saving changes. Please try again.');
+            cancelStageRowEdit(collectionName);
+        });
+}
+
+function cancelStageRowEdit(collectionName) {
+    if (collectionName === 'mainStageInputs') {
+        renderMainStage();
+    } else {
+        renderCocktailStage();
+    }
+}
+
+// Export Stage Inputs to Excel
+function exportStageInputsToExcel() {
+    const wb = XLSX.utils.book_new();
+
+    // Export Main Stage
+    const mainSorted = [...state.mainStageInputs].sort((a, b) => {
+        const aNum = parseInt(a.channel) || 0;
+        const bNum = parseInt(b.channel) || 0;
+        return aNum - bNum;
+    });
+
+    const mainData = mainSorted.map(item => ({
+        '#': item.channel || '',
+        'Subsnake': item.subsnake || '',
+        'Instrument': item.instrument || '',
+        'Mics (Preferred)': item.mics || '',
+        'Stands': item.stands || '',
+        'Notes': item.notes || '',
+        'Symbol': item.symbol || ''
+    }));
+
+    const wsMain = XLSX.utils.json_to_sheet(mainData);
+    wsMain['!cols'] = [
+        { wch: 5 },
+        { wch: 12 },
+        { wch: 25 },
+        { wch: 20 },
+        { wch: 15 },
+        { wch: 30 },
+        { wch: 8 }
+    ];
+    XLSX.utils.book_append_sheet(wb, wsMain, 'Main Stage');
+
+    // Export Cocktail Stage
+    const cocktailSorted = [...state.cocktailStageInputs].sort((a, b) => {
+        const aNum = parseInt(a.channel) || 0;
+        const bNum = parseInt(b.channel) || 0;
+        return aNum - bNum;
+    });
+
+    const cocktailData = cocktailSorted.map(item => ({
+        '#': item.channel || '',
+        'Subsnake': item.subsnake || '',
+        'Instrument': item.instrument || '',
+        'Mics (Preferred)': item.mics || '',
+        'Stands': item.stands || '',
+        'Notes': item.notes || '',
+        'Symbol': item.symbol || ''
+    }));
+
+    const wsCocktail = XLSX.utils.json_to_sheet(cocktailData);
+    wsCocktail['!cols'] = [
+        { wch: 5 },
+        { wch: 12 },
+        { wch: 25 },
+        { wch: 20 },
+        { wch: 15 },
+        { wch: 30 },
+        { wch: 8 }
+    ];
+    XLSX.utils.book_append_sheet(wb, wsCocktail, 'Cocktail Stage');
+
+    const today = new Date().toISOString().split('T')[0];
+    XLSX.writeFile(wb, `Stage_Input_Lists_${today}.xlsx`);
 }

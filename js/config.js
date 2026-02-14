@@ -28,5 +28,7 @@ const collections = {
     vendors: db.collection('vendors'),
     budget: db.collection('budget'),
     timeline: db.collection('timeline'),
+    mainStageInputs: db.collection('mainStageInputs'),
+    cocktailStageInputs: db.collection('cocktailStageInputs'),
     eventInfo: db.collection('event-info')
 };

@@ -16,6 +16,7 @@
                 <a href="#" class="nav-link" data-page="vendors">Vendors</a>
                 <a href="#" class="nav-link" data-page="budget">Budget</a>
                 <a href="#" class="nav-link" data-page="timeline">Timeline</a>
+                <a href="#" class="nav-link" data-page="input-lists">Input Lists</a>
             </div>
         </div>
     </nav>
@@ -169,8 +170,8 @@
                                 <th>Vendor Name</th>
                                 <th>Category</th>
                                 <th>Contact</th>
-                                <th>Amount</th>
-                                <th>Status</th>
+                                <th>Budgeted</th>
+                                <th>Actual</th>
                                 <th>Payment Status</th>
                                 <th>Actions</th>
                             </tr>
@@ -217,55 +218,24 @@
                 </div>
             </div>
 
-            <!-- Budget by Category -->
+            <!-- Budget by Category (Collapsible) -->
             <div class="card">
-                <div class="card-header">
-                    <h2>Budget by Category</h2>
+                <div class="card-header accordion-header" onclick="toggleBudgetCategoryAccordion()">
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <span id="budget-category-arrow" class="accordion-arrow">▶</span>
+                        <h2>Budget by Category</h2>
+                    </div>
                 </div>
-                <div class="card-body">
+                <div class="card-body accordion-content" id="budget-category-accordion" style="display: none;">
                     <div id="budget-categories" class="budget-categories">
                         <p class="empty-state">No budget items</p>
                     </div>
                 </div>
             </div>
 
-            <!-- Budget Items Table -->
-            <div class="card">
-                <div class="card-header">
-                    <h2>All Budget Items</h2>
-                    <div class="toolbar">
-                        <select id="budget-category-sort" class="filter-select">
-                            <option value="">Sort by Category</option>
-                            <option value="6811a - Talent/Performers & Hosts">Talent/Performers & Hosts</option>
-                            <option value="6811b - A/V Production">A/V Production</option>
-                            <option value="6811c - Venue & Permits">Venue & Permits</option>
-                            <option value="6811d - Food & Beverage	">Food & Beverage</option>
-                            <option value="6811e - Staff & Labor">Staff & Labor</option>
-                            <option value="6811f - Marketing, Promotion & Branding">Marketing, Promotion & Branding</option>
-                            <option value="6811g - Decor & Miscellaneous Supplies">Decor & Miscellaneous Supplies</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="table-container">
-                    <table class="data-table" id="budget-table">
-                        <thead>
-                            <tr>
-                                <th>Vendor/Item</th>
-                                <th>Category</th>
-                                <th>Budgeted</th>
-                                <th>Actual</th>
-                                <th>Difference</th>
-                                <th>Payment Status</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody id="budget-tbody">
-                            <tr>
-                                <td colspan="7" class="empty-state">No budget items</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
+            <!-- Budget Items by Category (Grouped & Collapsible) -->
+            <div id="budget-grouped-container">
+                <!-- Category sections will be dynamically generated here -->
             </div>
         </div>
 
@@ -336,6 +306,49 @@
                         <tbody id="timeline-tbody">
                             <tr>
                                 <td colspan="6" class="empty-state">No tasks for this day</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Input Lists Page -->
+        <div id="input-lists" class="page">
+            <div class="page-header">
+                <h1>Input Lists</h1>
+                <div class="header-actions">
+                    <button class="btn btn-secondary" id="export-stage-btn">📊 Export to Excel</button>
+                </div>
+            </div>
+
+            <!-- Stage Tabs -->
+            <div class="day-tabs">
+                <button class="day-tab active" data-stage="main">Main Stage</button>
+                <button class="day-tab" data-stage="cocktail">Cocktail Stage</button>
+            </div>
+
+            <!-- Stage Table -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 id="stage-title">Main Stage - Audio & Technical Inputs</h2>
+                </div>
+                <div class="table-container">
+                    <table class="data-table stage-table" id="stage-table">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Subsnake</th>
+                                <th>Instrument</th>
+                                <th>Mics (Preferred)</th>
+                                <th>Stands</th>
+                                <th>Notes</th>
+                                <th>Symbol</th>
+                            </tr>
+                        </thead>
+                        <tbody id="stage-tbody">
+                            <tr>
+                                <td colspan="7" class="empty-state">No inputs</td>
                             </tr>
                         </tbody>
                     </table>
@@ -441,6 +454,20 @@
                             <option value="6811f - Marketing, Promotion & Branding">Marketing, Promotion & Branding</option>
                             <option value="6811g - Decor & Miscellaneous Supplies">Decor & Miscellaneous Supplies</option>
                         </select>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="budget-contact">Contact Person</label>
+                            <input type="text" id="budget-contact">
+                        </div>
+                        <div class="form-group">
+                            <label for="budget-phone">Phone</label>
+                            <input type="tel" id="budget-phone">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="budget-email">Email</label>
+                        <input type="email" id="budget-email">
                     </div>
                     <div class="form-row">
                         <div class="form-group">
