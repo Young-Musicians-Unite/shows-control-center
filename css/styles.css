@@ -1993,10 +1993,10 @@ tr.editing td {
 
 /* =============================================
    COMPREHENSIVE DARK MODE SUPPORT
-   Works on all devices, optimized for mobile
+   MOBILE ONLY - Desktop always uses light mode
    ============================================= */
 
-@media (prefers-color-scheme: dark) {
+@media (max-width: 768px) and (prefers-color-scheme: dark) {
     /* Base Colors */
     body {
         background-color: #0a0a0a;
@@ -2431,59 +2431,58 @@ tr.editing td {
         border-top-color: #333;
     }
 
-    /* Mobile-specific dark mode adjustments */
-    @media (max-width: 768px) {
-        /* Ensure text is readable on small screens */
-        body {
-            color: #e8e8e8;
-        }
+    /* Enhanced contrast for mobile dark mode */
 
-        /* Navigation borders */
-        .nav-link {
-            border-bottom-color: rgba(201, 169, 97, 0.15);
-        }
+    /* Ensure text is readable on small screens */
+    body {
+        color: #e8e8e8;
+    }
 
-        .nav-link.active {
-            border-left-color: #c9a961;
-        }
+    /* Navigation borders */
+    .nav-link {
+        border-bottom-color: rgba(201, 169, 97, 0.15);
+    }
 
-        /* Modals - ensure full contrast */
-        .modal-content {
-            background: #0f0f0f;
-        }
+    .nav-link.active {
+        border-left-color: #c9a961;
+    }
 
-        /* Tables - better contrast on mobile */
-        .data-table {
-            background: #141414;
-        }
+    /* Modals - ensure full contrast */
+    .modal-content {
+        background: #0f0f0f;
+    }
 
-        .data-table td {
-            color: #f0f0f0;
-        }
+    /* Tables - better contrast on mobile */
+    .data-table {
+        background: #141414;
+    }
 
-        /* Buttons - ensure tap targets are visible */
-        .btn {
-            background: #2a2a2a;
-            border-color: #555;
-        }
+    .data-table td {
+        color: #f0f0f0;
+    }
 
-        /* Form inputs - prevent white flash */
-        input,
-        select,
-        textarea {
-            background: #1a1a1a;
-            color: #f0f0f0;
-            border-color: #555;
-        }
+    /* Buttons - ensure tap targets are visible */
+    .btn {
+        background: #2a2a2a;
+        border-color: #555;
+    }
 
-        /* Cards - more contrast on mobile */
-        .card {
-            background: #141414;
-        }
+    /* Form inputs - prevent white flash */
+    input,
+    select,
+    textarea {
+        background: #1a1a1a;
+        color: #f0f0f0;
+        border-color: #555;
+    }
 
-        .card-header {
-            background: #1a1a1a;
-        }
+    /* Cards - more contrast on mobile */
+    .card {
+        background: #141414;
+    }
+
+    .card-header {
+        background: #1a1a1a;
     }
 }
 

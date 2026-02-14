@@ -1016,10 +1016,15 @@ function setupBudgetSorting() {
 
 // Export and Print Functionality
 function setupExportAndPrint() {
-    // Print Timeline
-    const printBtn = document.getElementById('print-timeline-btn');
-    if (printBtn) {
-        printBtn.addEventListener('click', printTimeline);
+    // Print Buttons
+    const printTimelineBtn = document.getElementById('print-timeline-btn');
+    const printStaffBtn = document.getElementById('print-staff-btn');
+
+    if (printTimelineBtn) {
+        printTimelineBtn.addEventListener('click', printTimeline);
+    }
+    if (printStaffBtn) {
+        printStaffBtn.addEventListener('click', printStaff);
     }
 
     // Export Buttons
@@ -1027,6 +1032,7 @@ function setupExportAndPrint() {
     const exportBudgetBtn = document.getElementById('export-budget-btn');
     const exportVendorsBtn = document.getElementById('export-vendors-btn');
     const exportStageBtn = document.getElementById('export-stage-btn');
+    const exportStaffBtn = document.getElementById('export-staff-btn');
 
     if (exportTimelineBtn) {
         exportTimelineBtn.addEventListener('click', exportTimelineToExcel);
@@ -1039,6 +1045,9 @@ function setupExportAndPrint() {
     }
     if (exportStageBtn) {
         exportStageBtn.addEventListener('click', exportStageInputsToExcel);
+    }
+    if (exportStaffBtn) {
+        exportStaffBtn.addEventListener('click', exportStaffToExcel);
     }
 }
 
@@ -1787,4 +1796,36 @@ window.deleteStaff = async (id) => {
         }
     }
 };
+
+
+// Print Staff
+function printStaff() {
+    window.print();
+}
+
+// Export Staff to Excel
+function exportStaffToExcel() {
+    const data = state.staff.map(member => ({
+        'Name': member.name || '',
+        'Role': member.role || '',
+        'Responsibilities': member.responsibilities || '',
+        'Phone': member.phone || '',
+        'Email': member.email || ''
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(data);
+    ws['!cols'] = [
+        { wch: 20 },  // Name
+        { wch: 25 },  // Role
+        { wch: 50 },  // Responsibilities
+        { wch: 15 },  // Phone
+        { wch: 30 }   // Email
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Staff');
+
+    const today = new Date().toISOString().split('T')[0];
+    XLSX.writeFile(wb, `Staff_Contact_List_${today}.xlsx`);
+}
 
