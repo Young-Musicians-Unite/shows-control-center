@@ -15,9 +15,14 @@ const state = {
     canvas: null,  // Fabric.js canvas instance
     autoSaveTimeout: null,  // For debounced auto-save
     isDrawingStage: false,  // Drawing mode flag
-    stagePolygon: null,  // The stage outline polygon
-    dimensionLabels: [],  // Dimension text labels for stage
-    angleMode: 'orthogonal'  // 'orthogonal' (90°) or 'angle45' (45°)
+    isEditingStage: false,  // Edit/drag mode flag
+    currentTool: null,  // 'draw' or 'move' - which tool is active
+    stageRectangles: [],  // Array of stage rectangle objects {id, rect, widthLabel, heightLabel}
+    currentDrawingRect: null,  // Rectangle being drawn
+    drawingStartPoint: null,  // Starting point for rectangle draw
+    stageLocked: false,  // Whether stage is locked
+    angleMode: 'orthogonal',  // 'orthogonal' (90°) or 'angle45' (45°)
+    snapDistance: 10  // Pixels for snap-to-align
 };
 
 // Event date
@@ -2097,6 +2102,22 @@ function setupStagePlotControls() {
             setAngleMode('angle45');
         });
     }
+
+    // Tool mode buttons
+    const drawToolBtn = document.getElementById('draw-rect-tool-btn');
+    const moveToolBtn = document.getElementById('move-tool-btn');
+
+    if (drawToolBtn) {
+        drawToolBtn.addEventListener('click', () => {
+            setTool('draw');
+        });
+    }
+
+    if (moveToolBtn) {
+        moveToolBtn.addEventListener('click', () => {
+            setTool('move');
+        });
+    }
 }
 
 // Update Plot Selector Dropdown
@@ -2482,7 +2503,11 @@ let tempCircles = [];
 let snapIndicator = null;  // Visual feedback for snap-to-close
 const SNAP_DISTANCE = 20;  // Pixels to snap to first point
 
-// Toggle Drawing Mode
+// =============================================
+// RECTANGLE-BASED STAGE DRAWING SYSTEM
+// =============================================
+
+// Toggle Drawing Mode (Rectangle-based)
 function toggleDrawingMode() {
     if (!state.canvas) return;
 
@@ -2492,37 +2517,234 @@ function toggleDrawingMode() {
     const finishBtn = document.getElementById('finish-drawing-btn');
 
     if (state.isDrawingStage) {
-        // Enter drawing mode
+        // Enter rectangle drawing mode
         drawBtn.style.display = 'none';
         finishBtn.style.display = 'inline-block';
 
-        // Show angle mode toggle
-        const angleModeContainer = document.getElementById('angle-mode-container');
-        if (angleModeContainer) {
-            angleModeContainer.style.display = 'flex';
+        // Show tool mode toggle
+        const toolModeContainer = document.getElementById('tool-mode-container');
+        if (toolModeContainer) {
+            toolModeContainer.style.display = 'flex';
         }
 
-        // Disable selection
+        // Disable selection of existing elements
         state.canvas.selection = false;
         state.canvas.forEachObject(obj => {
-            obj.selectable = false;
+            if (!obj.gridLine && !obj.isRectDimension) {
+                obj.selectable = false;
+            }
         });
 
-        // Reset drawing arrays
-        drawingPoints = [];
-        drawingLines = [];
-        tempCircles = [];
-
-        // Add click handler for drawing
-        state.canvas.on('mouse:down', handleDrawingClick);
-
-        // Add mouse move handler for snap indicator
-        state.canvas.on('mouse:move', handleDrawingMouseMove);
-
-        updateSaveStatus('Drawing mode active - ' + (state.angleMode === 'orthogonal' ? '90° mode' : '45° mode'));
+        // Set initial tool to draw
+        setTool('draw');
     } else {
         cancelDrawingMode();
     }
+}
+
+// Set Tool Mode (Draw or Move)
+function setTool(tool) {
+    state.currentTool = tool;
+
+    // Update button active states
+    const drawBtn = document.getElementById('draw-rect-tool-btn');
+    const moveBtn = document.getElementById('move-tool-btn');
+
+    if (drawBtn && moveBtn) {
+        drawBtn.classList.remove('active');
+        moveBtn.classList.remove('active');
+
+        if (tool === 'draw') {
+            drawBtn.classList.add('active');
+        } else {
+            moveBtn.classList.add('active');
+        }
+    }
+
+    // Remove all existing tool handlers
+    state.canvas.off('mouse:down', startDrawingRectangle);
+    state.canvas.off('mouse:move', continueDrawingRectangle);
+    state.canvas.off('mouse:up', finishDrawingRectangle);
+
+    // Make all stage rectangles non-selectable first
+    state.stageRectangles.forEach(rectData => {
+        rectData.rect.set({
+            selectable: false,
+            evented: false
+        });
+    });
+
+    if (tool === 'draw') {
+        // Drawing mode: click and drag creates rectangles
+        state.canvas.on('mouse:down', startDrawingRectangle);
+        state.canvas.on('mouse:move', continueDrawingRectangle);
+        state.canvas.on('mouse:up', finishDrawingRectangle);
+
+        updateSaveStatus('📐 Draw mode - Click and drag to create rectangles');
+    } else if (tool === 'move') {
+        // Move mode: drag existing rectangles
+        state.stageRectangles.forEach(rectData => {
+            rectData.rect.set({
+                selectable: true,
+                evented: true,
+                hasControls: false,
+                hasBorders: true,
+                borderColor: '#c9a961',
+                lockRotation: true
+            });
+
+            // Add moving event handler for snap-to-align
+            rectData.rect.on('moving', function(e) {
+                snapRectangleToAlign(rectData);
+                updateRectangleDimensions(rectData);
+            });
+        });
+
+        state.canvas.selection = true;
+        updateSaveStatus('🤚 Move mode - Drag rectangles to position (they snap together!)');
+    }
+
+    state.canvas.renderAll();
+}
+
+// Start Drawing a Rectangle
+function startDrawingRectangle(e) {
+    if (!state.isDrawingStage || state.currentTool !== 'draw' || state.currentDrawingRect) return;
+
+    const pointer = state.canvas.getPointer(e.e);
+    state.drawingStartPoint = { x: pointer.x, y: pointer.y };
+
+    // Get pixels per foot for live dimension display
+    const width = parseInt(document.getElementById('stage-width').value) || 40;
+    const height = parseInt(document.getElementById('stage-height').value) || 30;
+    const canvasWidth = state.canvas.width;
+    const canvasHeight = state.canvas.height;
+    const pixelsPerFoot = Math.min(canvasWidth / width, canvasHeight / height);
+
+    // Create temporary rectangle
+    state.currentDrawingRect = new fabric.Rect({
+        left: pointer.x,
+        top: pointer.y,
+        width: 0,
+        height: 0,
+        fill: 'rgba(201, 169, 97, 0.2)',
+        stroke: '#c9a961',
+        strokeWidth: 3,
+        selectable: false,
+        evented: false,
+        pixelsPerFoot: pixelsPerFoot
+    });
+
+    state.canvas.add(state.currentDrawingRect);
+}
+
+// Continue Drawing Rectangle (mouse move)
+function continueDrawingRectangle(e) {
+    if (!state.isDrawingStage || !state.currentDrawingRect || !state.drawingStartPoint) return;
+
+    const pointer = state.canvas.getPointer(e.e);
+    const startX = state.drawingStartPoint.x;
+    const startY = state.drawingStartPoint.y;
+
+    // Calculate rectangle dimensions
+    const width = pointer.x - startX;
+    const height = pointer.y - startY;
+
+    // Update rectangle (handle negative dimensions for reverse dragging)
+    if (width > 0) {
+        state.currentDrawingRect.set({ left: startX, width: width });
+    } else {
+        state.currentDrawingRect.set({ left: pointer.x, width: Math.abs(width) });
+    }
+
+    if (height > 0) {
+        state.currentDrawingRect.set({ top: startY, height: height });
+    } else {
+        state.currentDrawingRect.set({ top: pointer.y, height: Math.abs(height) });
+    }
+
+    state.canvas.renderAll();
+}
+
+// Finish Drawing Rectangle (mouse up)
+function finishDrawingRectangle(e) {
+    if (!state.isDrawingStage || !state.currentDrawingRect) return;
+
+    const rect = state.currentDrawingRect;
+
+    // Only create if rectangle has meaningful size (> 10 pixels)
+    if (rect.width < 10 || rect.height < 10) {
+        state.canvas.remove(rect);
+        state.currentDrawingRect = null;
+        state.drawingStartPoint = null;
+        return;
+    }
+
+    // Get pixels per foot
+    const pixelsPerFoot = rect.pixelsPerFoot;
+
+    // Calculate dimensions in feet
+    const widthFeet = rect.width / pixelsPerFoot;
+    const heightFeet = rect.height / pixelsPerFoot;
+
+    // Create dimension labels
+    const widthLabel = new fabric.Text(feetToFeetInches(widthFeet), {
+        left: rect.left + rect.width / 2,
+        top: rect.top - 15,
+        fontSize: 12,
+        fontFamily: 'Arial, sans-serif',
+        fontWeight: 'bold',
+        fill: '#c9a961',
+        backgroundColor: 'rgba(255, 255, 255, 0.8)',
+        padding: 3,
+        originX: 'center',
+        originY: 'center',
+        selectable: false,
+        evented: false,
+        isRectDimension: true,
+        dimensionType: 'width'
+    });
+
+    const heightLabel = new fabric.Text(feetToFeetInches(heightFeet), {
+        left: rect.left - 15,
+        top: rect.top + rect.height / 2,
+        fontSize: 12,
+        fontFamily: 'Arial, sans-serif',
+        fontWeight: 'bold',
+        fill: '#c9a961',
+        backgroundColor: 'rgba(255, 255, 255, 0.8)',
+        padding: 3,
+        originX: 'center',
+        originY: 'center',
+        angle: -90,
+        selectable: false,
+        evented: false,
+        isRectDimension: true,
+        dimensionType: 'height'
+    });
+
+    state.canvas.add(widthLabel);
+    state.canvas.add(heightLabel);
+
+    // Store rectangle with its labels
+    const rectId = 'rect_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    rect.set({ rectId: rectId });
+    widthLabel.set({ rectId: rectId });
+    heightLabel.set({ rectId: rectId });
+
+    state.stageRectangles.push({
+        id: rectId,
+        rect: rect,
+        widthLabel: widthLabel,
+        heightLabel: heightLabel
+    });
+
+    // Reset for next rectangle
+    state.currentDrawingRect = null;
+    state.drawingStartPoint = null;
+
+    updateSaveStatus(`Drew ${feetToFeetInches(widthFeet)} × ${feetToFeetInches(heightFeet)} rectangle - Draw another or click Finish`);
+    state.canvas.renderAll();
 }
 
 // Handle Mouse Move While Drawing (for snap indicator)
@@ -2729,97 +2951,52 @@ function handleDrawingClick(e) {
 }
 
 // Finish Drawing Stage
+// Finish Drawing/Editing and Lock All Rectangles
 function finishDrawingStage() {
-    if (!state.isDrawingStage || drawingPoints.length < 3) {
-        alert('Please place at least 3 points to create a stage outline.');
+    // Handle both drawing mode and editing mode
+    if (!state.isDrawingStage && !state.isEditingStage) return;
+
+    if (state.stageRectangles.length === 0) {
+        alert('Please draw at least one rectangle for the stage.');
         return;
     }
 
-    // Remove temporary circles and lines
-    tempCircles.forEach(circle => state.canvas.remove(circle));
-    drawingLines.forEach(line => state.canvas.remove(line));
-
-    // Create polygon from points
-    const polygon = new fabric.Polygon(drawingPoints, {
-        fill: 'rgba(201, 169, 97, 0.2)',
-        stroke: '#c9a961',
-        strokeWidth: 3,
-        selectable: false,  // Locked by default
-        evented: false,     // Not interactive when locked
-        objectCaching: false,
-        isStageOutline: true  // Custom property to identify the stage
-    });
-
-    state.canvas.add(polygon);
-    state.canvas.sendToBack(polygon);
-    state.stagePolygon = polygon;
-
-    // Calculate pixels per foot for dimension scaling
-    const width = parseInt(document.getElementById('stage-width').value) || 40;
-    const height = parseInt(document.getElementById('stage-height').value) || 30;
-    const canvasWidth = state.canvas.width;
-    const canvasHeight = state.canvas.height;
-    const pixelsPerFoot = Math.min(canvasWidth / width, canvasHeight / height);
-
-    // Add dimension labels for each line segment
-    state.dimensionLabels = [];
-    for (let i = 0; i < drawingPoints.length; i++) {
-        const p1 = drawingPoints[i];
-        const p2 = drawingPoints[(i + 1) % drawingPoints.length];
-
-        // Calculate distance in pixels
-        const dx = p2.x - p1.x;
-        const dy = p2.y - p1.y;
-        const distancePixels = Math.sqrt(dx * dx + dy * dy);
-
-        // Convert to feet
-        const distanceFeet = distancePixels / pixelsPerFoot;
-
-        // Calculate midpoint
-        const midX = (p1.x + p2.x) / 2;
-        const midY = (p1.y + p2.y) / 2;
-
-        // Create dimension label
-        const label = new fabric.Text(feetToFeetInches(distanceFeet), {
-            left: midX,
-            top: midY,
-            fontSize: 12,
-            fontFamily: 'Arial, sans-serif',
-            fontWeight: 'bold',
-            fill: '#c9a961',
-            backgroundColor: 'rgba(255, 255, 255, 0.8)',
-            padding: 3,
-            originX: 'center',
-            originY: 'center',
-            selectable: true,  // Make clickable
-            evented: true,     // Enable events
-            lockMovementX: true,  // Lock position
-            lockMovementY: true,
-            lockRotation: true,
-            lockScalingX: true,
-            lockScalingY: true,
-            hasControls: false,  // Hide resize handles
-            hasBorders: true,
-            borderColor: '#c9a961',
-            isDimensionLabel: true,
-            segmentIndex: i  // Store which segment this labels
+    // Lock all rectangles and their labels
+    state.stageRectangles.forEach(rectData => {
+        rectData.rect.set({
+            selectable: false,
+            evented: false,
+            locked: true
         });
 
-        state.canvas.add(label);
-        state.dimensionLabels.push(label);
-    }
+        // Remove moving event handlers
+        rectData.rect.off('moving');
 
-    // Show Edit Stage button, hide Draw Stage button
+        rectData.widthLabel.set({
+            selectable: false,
+            evented: false
+        });
+        rectData.heightLabel.set({
+            selectable: false,
+            evented: false
+        });
+    });
+
+    state.stageLocked = true;
+
+    // Show Edit Stage button, hide Draw/Finish buttons
     const drawBtn = document.getElementById('draw-stage-btn');
     const editBtn = document.getElementById('edit-stage-btn');
-    if (drawBtn && editBtn) {
-        drawBtn.style.display = 'none';
-        editBtn.style.display = 'inline-block';
-    }
+    const finishBtn = document.getElementById('finish-drawing-btn');
 
-    // Exit drawing mode
+    if (drawBtn) drawBtn.style.display = 'none';
+    if (editBtn) editBtn.style.display = 'inline-block';
+    if (finishBtn) finishBtn.style.display = 'none';
+
+    // Exit drawing/editing mode
     cancelDrawingMode();
 
+    updateSaveStatus(`Stage locked with ${state.stageRectangles.length} rectangle(s)`);
     state.canvas.renderAll();
     triggerAutoSave();
 }
@@ -3122,54 +3299,162 @@ function editElementLabel(elementGroup) {
 }
 
 // Unlock Stage for Editing
+// Unlock Stage - Enter Drag/Edit Mode
 function unlockStage() {
-    if (!state.stagePolygon) return;
+    if (state.stageRectangles.length === 0) return;
 
-    // Remove the existing stage and dimension labels
-    if (state.stagePolygon) {
-        state.canvas.remove(state.stagePolygon);
-        state.stagePolygon = null;
+    state.stageLocked = false;
+    state.isDrawingStage = true;  // Reuse drawing mode flag for tool system
+
+    // Show tool mode toggle
+    const toolModeContainer = document.getElementById('tool-mode-container');
+    if (toolModeContainer) {
+        toolModeContainer.style.display = 'flex';
     }
 
-    state.dimensionLabels.forEach(label => state.canvas.remove(label));
-    state.dimensionLabels = [];
-
-    // Show Draw Stage button, hide Edit Stage button
-    const drawBtn = document.getElementById('draw-stage-btn');
+    // Hide Edit button, show Finish button
     const editBtn = document.getElementById('edit-stage-btn');
-    if (drawBtn && editBtn) {
-        drawBtn.style.display = 'inline-block';
-        editBtn.style.display = 'none';
-    }
+    const finishBtn = document.getElementById('finish-drawing-btn');
 
-    state.canvas.renderAll();
-    triggerAutoSave();
+    if (editBtn) editBtn.style.display = 'none';
+    if (finishBtn) finishBtn.style.display = 'inline-block';
 
-    alert('Stage unlocked. Click "Draw Stage" to redraw the stage outline.');
+    // Set initial tool to move mode
+    setTool('move');
 }
 
-// Delete Stage (called when clearing canvas or loading new plot)
-function deleteStage() {
-    if (state.stagePolygon) {
-        state.canvas.remove(state.stagePolygon);
-        state.stagePolygon = null;
-    }
+// Snap Rectangle to Align with Other Rectangles
+function snapRectangleToAlign(movingRectData) {
+    const movingRect = movingRectData.rect;
+    const snapDist = state.snapDistance;
 
-    state.dimensionLabels.forEach(label => state.canvas.remove(label));
-    state.dimensionLabels = [];
+    // Get edges of moving rectangle
+    const movingLeft = movingRect.left;
+    const movingRight = movingRect.left + movingRect.width;
+    const movingTop = movingRect.top;
+    const movingBottom = movingRect.top + movingRect.height;
+
+    // Check against all other rectangles
+    state.stageRectangles.forEach(otherRectData => {
+        if (otherRectData.id === movingRectData.id) return;
+
+        const otherRect = otherRectData.rect;
+        const otherLeft = otherRect.left;
+        const otherRight = otherRect.left + otherRect.width;
+        const otherTop = otherRect.top;
+        const otherBottom = otherRect.top + otherRect.height;
+
+        // Snap left edge to other's right edge
+        if (Math.abs(movingLeft - otherRight) < snapDist) {
+            movingRect.set({ left: otherRight });
+        }
+        // Snap right edge to other's left edge
+        if (Math.abs(movingRight - otherLeft) < snapDist) {
+            movingRect.set({ left: otherLeft - movingRect.width });
+        }
+        // Snap left edges together
+        if (Math.abs(movingLeft - otherLeft) < snapDist) {
+            movingRect.set({ left: otherLeft });
+        }
+        // Snap right edges together
+        if (Math.abs(movingRight - otherRight) < snapDist) {
+            movingRect.set({ left: otherRight - movingRect.width });
+        }
+
+        // Snap top edge to other's bottom edge
+        if (Math.abs(movingTop - otherBottom) < snapDist) {
+            movingRect.set({ top: otherBottom });
+        }
+        // Snap bottom edge to other's top edge
+        if (Math.abs(movingBottom - otherTop) < snapDist) {
+            movingRect.set({ top: otherTop - movingRect.height });
+        }
+        // Snap top edges together
+        if (Math.abs(movingTop - otherTop) < snapDist) {
+            movingRect.set({ top: otherTop });
+        }
+        // Snap bottom edges together
+        if (Math.abs(movingBottom - otherBottom) < snapDist) {
+            movingRect.set({ top: otherBottom - movingRect.height });
+        }
+    });
+}
+
+// Update Rectangle Dimension Labels After Move
+function updateRectangleDimensions(rectData) {
+    const rect = rectData.rect;
+
+    // Update width label position
+    rectData.widthLabel.set({
+        left: rect.left + rect.width / 2,
+        top: rect.top - 15
+    });
+
+    // Update height label position
+    rectData.heightLabel.set({
+        left: rect.left - 15,
+        top: rect.top + rect.height / 2
+    });
+}
+
+// Delete All Stage Rectangles (called when clearing canvas or loading new plot)
+function deleteStage() {
+    state.stageRectangles.forEach(rectData => {
+        state.canvas.remove(rectData.rect);
+        state.canvas.remove(rectData.widthLabel);
+        state.canvas.remove(rectData.heightLabel);
+    });
+
+    state.stageRectangles = [];
+    state.stageLocked = false;
+    state.isEditingStage = false;
 
     // Reset buttons
     const drawBtn = document.getElementById('draw-stage-btn');
     const editBtn = document.getElementById('edit-stage-btn');
-    if (drawBtn && editBtn) {
-        drawBtn.style.display = 'inline-block';
-        editBtn.style.display = 'none';
-    }
+    const finishBtn = document.getElementById('finish-drawing-btn');
+
+    if (drawBtn) drawBtn.style.display = 'inline-block';
+    if (editBtn) editBtn.style.display = 'none';
+    if (finishBtn) finishBtn.style.display = 'none';
 }
 
-// Cancel Drawing Mode
+// Cancel Drawing/Editing Mode
 function cancelDrawingMode() {
     state.isDrawingStage = false;
+    state.isEditingStage = false;
+    state.currentTool = null;
+
+    // Remove any in-progress rectangle
+    if (state.currentDrawingRect) {
+        state.canvas.remove(state.currentDrawingRect);
+        state.currentDrawingRect = null;
+    }
+    state.drawingStartPoint = null;
+
+    // Remove mouse handlers
+    state.canvas.off('mouse:down', startDrawingRectangle);
+    state.canvas.off('mouse:move', continueDrawingRectangle);
+    state.canvas.off('mouse:up', finishDrawingRectangle);
+
+    // Hide tool mode toggle
+    const toolModeContainer = document.getElementById('tool-mode-container');
+    if (toolModeContainer) {
+        toolModeContainer.style.display = 'none';
+    }
+
+    // Re-enable selection for elements (but NOT grid lines!)
+    state.canvas.selection = true;
+    state.canvas.forEachObject(obj => {
+        if (!obj.isRectDimension && !obj.locked && !obj.gridLine) {
+            obj.selectable = true;
+        }
+        // Make absolutely sure grid lines stay locked
+        if (obj.gridLine) {
+            obj.selectable = false;
+            obj.evented = false;
+        }
+    });
 
     const drawBtn = document.getElementById('draw-stage-btn');
     const finishBtn = document.getElementById('finish-drawing-btn');
@@ -3177,26 +3462,6 @@ function cancelDrawingMode() {
     if (drawBtn && finishBtn) {
         drawBtn.style.display = 'inline-block';
         finishBtn.style.display = 'none';
-    }
-
-    // Hide angle mode toggle
-    const angleModeContainer = document.getElementById('angle-mode-container');
-    if (angleModeContainer) {
-        angleModeContainer.style.display = 'none';
-    }
-
-    // Remove temporary circles and lines
-    if (tempCircles && tempCircles.length > 0) {
-        tempCircles.forEach(circle => state.canvas.remove(circle));
-    }
-    if (drawingLines && drawingLines.length > 0) {
-        drawingLines.forEach(line => state.canvas.remove(line));
-    }
-
-    // Remove snap indicator
-    if (snapIndicator) {
-        state.canvas.remove(snapIndicator);
-        snapIndicator = null;
     }
 
     // Reset arrays
