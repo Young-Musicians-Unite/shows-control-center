@@ -1227,12 +1227,6 @@ body {
     align-items: center;
 }
 
-.page-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
 /* Timeline Table Specific Styles */
 .timeline-table {
     width: 100%;
@@ -2869,45 +2863,6 @@ body.menu-open {
 
 .drawing-controls .btn {
     min-width: 120px;
-}
-
-.angle-mode-toggle {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin-left: 1rem;
-    padding: 0.5rem;
-    background: rgba(201, 169, 97, 0.1);
-    border-radius: 4px;
-}
-
-.angle-mode-label {
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: #2c3e50;
-    margin: 0;
-}
-
-.angle-mode-btn {
-    min-width: 50px !important;
-    padding: 0.4rem 0.8rem;
-    font-size: 0.85rem;
-    font-weight: bold;
-    background: white;
-    border: 2px solid #ddd;
-    color: #666;
-    transition: all 0.2s ease;
-}
-
-.angle-mode-btn:hover {
-    border-color: #c9a961;
-    color: #c9a961;
-}
-
-.angle-mode-btn.active {
-    background: #c9a961;
-    border-color: #c9a961;
-    color: white;
 }
 
 .tool-mode-toggle {

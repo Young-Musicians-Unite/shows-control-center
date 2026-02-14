@@ -21,7 +21,6 @@ const state = {
     currentDrawingRect: null,  // Rectangle being drawn
     drawingStartPoint: null,  // Starting point for rectangle draw
     stageLocked: false,  // Whether stage is locked
-    angleMode: 'orthogonal',  // 'orthogonal' (90°) or 'angle45' (45°)
     snapDistance: 10  // Pixels for snap-to-align
 };
 
@@ -43,7 +42,6 @@ function initializeApp() {
     setupSearchAndFilter();
     setupDayTabs();
     setupStageTabs();
-    setupBudgetSorting();
     setupExportAndPrint();
     setupStagePlotTabs();
     setupStagePlotControls();
@@ -162,54 +160,30 @@ function updateCountdown() {
     }
 }
 
+// Generic utility functions for data loading
+function setupCollectionListener(collectionKey, stateKey, renderCallbacks = []) {
+    collections[collectionKey].onSnapshot((snapshot) => {
+        state[stateKey] = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        }));
+
+        // Call all render callbacks
+        renderCallbacks.forEach(callback => callback());
+    }, (error) => {
+        console.error(`Error loading ${collectionKey}:`, error);
+    });
+}
+
 // Load all data from Firestore
 function loadAllData() {
-    loadVendors();
-    loadBudget();
-    loadTimeline();
-    loadMainStageInputs();
-    loadCocktailStageInputs();
-    loadStaff();
-    loadStagePlots();
-}
-
-function loadVendors() {
-    collections.vendors.onSnapshot((snapshot) => {
-        state.vendors = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-        }));
-        renderVendors();
-        updateDashboard();
-    }, (error) => {
-        console.error('Error loading vendors:', error);
-    });
-}
-
-function loadBudget() {
-    collections.budget.onSnapshot((snapshot) => {
-        state.budget = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-        }));
-        renderBudget();
-        updateDashboard();
-    }, (error) => {
-        console.error('Error loading budget:', error);
-    });
-}
-
-function loadTimeline() {
-    collections.timeline.onSnapshot((snapshot) => {
-        state.timeline = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-        }));
-        renderTimeline();
-        updateDashboard();
-    }, (error) => {
-        console.error('Error loading timeline:', error);
-    });
+    setupCollectionListener('vendors', 'vendors', [renderVendors, updateDashboard]);
+    setupCollectionListener('budget', 'budget', [renderBudget, updateDashboard]);
+    setupCollectionListener('timeline', 'timeline', [renderTimeline, updateDashboard]);
+    setupCollectionListener('mainStageInputs', 'mainStageInputs', [renderStageInputs]);
+    setupCollectionListener('cocktailStageInputs', 'cocktailStageInputs', [renderStageInputs]);
+    setupCollectionListener('staff', 'staff', [renderStaff]);
+    setupCollectionListener('stagePlots', 'stagePlots', [updatePlotSelector]);
 }
 
 // Dashboard
@@ -416,44 +390,6 @@ function renderBudgetCategories() {
     }).join('');
 }
 
-function renderBudgetTable(filterCategory = null) {
-    const tbody = document.getElementById('budget-tbody');
-
-    let budgetToRender = state.budget;
-
-    // Filter by category if specified
-    if (filterCategory) {
-        budgetToRender = state.budget.filter(item => item.category === filterCategory);
-    }
-
-    if (budgetToRender.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No budget items found</td></tr>';
-        return;
-    }
-
-    tbody.innerHTML = budgetToRender.map(item => {
-        const budgeted = parseFloat(item.budgeted) || 0;
-        const actual = parseFloat(item.actual) || 0;
-        const difference = budgeted - actual;
-        const diffClass = difference < 0 ? 'over-budget' : difference > 0 ? 'under-budget' : '';
-
-        return `
-            <tr>
-                <td>${escapeHtml(item.vendor)}</td>
-                <td>${escapeHtml(item.category)}</td>
-                <td>${formatCurrency(budgeted)}</td>
-                <td>${formatCurrency(actual)}</td>
-                <td class="${diffClass}">${formatCurrency(Math.abs(difference))} ${difference < 0 ? 'over' : difference > 0 ? 'under' : ''}</td>
-                <td><span class="status-badge ${item.paymentStatus}">${formatPaymentStatus(item.paymentStatus)}</span></td>
-                <td class="actions">
-                    <button class="btn btn-edit" onclick="editBudgetItem('${item.id}')">Edit</button>
-                    <button class="btn btn-danger" onclick="deleteBudgetItem('${item.id}')">Delete</button>
-                </td>
-            </tr>
-        `;
-    }).join('');
-}
-
 // Render Budget Grouped by Category (Collapsible Sections)
 function renderBudgetGrouped() {
     const container = document.getElementById('budget-grouped-container');
@@ -639,91 +575,128 @@ function closeAllModals() {
     });
 }
 
-function openVendorModal(vendorId = null) {
-    const modal = document.getElementById('vendor-modal');
-    const form = document.getElementById('vendor-form');
-    const title = document.getElementById('vendor-modal-title');
+// Generic modal opening function
+function openModal(config) {
+    const modal = document.getElementById(config.modalId);
+    const form = document.getElementById(config.formId);
+    const title = modal.querySelector('h2');
 
     form.reset();
 
-    if (vendorId) {
-        const vendor = state.vendors.find(v => v.id === vendorId);
-        if (vendor) {
-            title.textContent = 'Edit Vendor';
-            document.getElementById('vendor-id').value = vendor.id;
-            document.getElementById('vendor-name').value = vendor.name || '';
-            document.getElementById('vendor-category').value = vendor.category || '';
-            document.getElementById('vendor-contact').value = vendor.contactPerson || '';
-            document.getElementById('vendor-email').value = vendor.email || '';
-            document.getElementById('vendor-phone').value = vendor.phone || '';
-            document.getElementById('vendor-amount').value = vendor.amount || '';
-            document.getElementById('vendor-status').value = vendor.status || 'pending';
-            document.getElementById('vendor-payment-status').value = vendor.paymentStatus || 'not-paid';
-            document.getElementById('vendor-notes').value = vendor.notes || '';
+    // Find data object if editing
+    let data = null;
+    if (config.itemId && config.stateKey) {
+        data = state[config.stateKey].find(item => item.id === config.itemId);
+    }
+
+    // Set title
+    title.textContent = data ? `Edit ${config.title}` : `Add ${config.title}`;
+
+    // Populate form fields
+    if (data) {
+        Object.entries(config.fieldMap).forEach(([fieldId, dataKey]) => {
+            const element = document.getElementById(fieldId);
+            if (element) {
+                element.value = data[dataKey] || '';
+            }
+        });
+
+        // Set ID field for editing
+        const idField = document.getElementById(config.idFieldId);
+        if (idField) {
+            idField.value = data.id;
         }
     } else {
-        title.textContent = 'Add Vendor';
-        document.getElementById('vendor-id').value = '';
+        // Clear ID field for new items
+        const idField = document.getElementById(config.idFieldId);
+        if (idField) {
+            idField.value = '';
+        }
+
+        // Set default values for new items
+        if (config.defaultValues) {
+            Object.entries(config.defaultValues).forEach(([fieldId, value]) => {
+                const element = document.getElementById(fieldId);
+                if (element) {
+                    element.value = value;
+                }
+            });
+        }
     }
 
     modal.classList.add('active');
+}
+
+function openVendorModal(vendorId = null) {
+    openModal({
+        modalId: 'vendor-modal',
+        formId: 'vendor-form',
+        idFieldId: 'vendor-id',
+        itemId: vendorId,
+        stateKey: 'vendors',
+        title: 'Vendor',
+        fieldMap: {
+            'vendor-name': 'name',
+            'vendor-category': 'category',
+            'vendor-contact': 'contactPerson',
+            'vendor-email': 'email',
+            'vendor-phone': 'phone',
+            'vendor-amount': 'amount',
+            'vendor-status': 'status',
+            'vendor-payment-status': 'paymentStatus',
+            'vendor-notes': 'notes'
+        },
+        defaultValues: {
+            'vendor-status': 'pending',
+            'vendor-payment-status': 'not-paid'
+        }
+    });
 }
 
 function openBudgetModal(itemId = null) {
-    const modal = document.getElementById('budget-modal');
-    const form = document.getElementById('budget-form');
-    const title = document.getElementById('budget-modal-title');
-
-    form.reset();
-
-    if (itemId) {
-        const item = state.budget.find(b => b.id === itemId);
-        if (item) {
-            title.textContent = 'Edit Budget Item';
-            document.getElementById('budget-id').value = item.id;
-            document.getElementById('budget-vendor').value = item.vendor || '';
-            document.getElementById('budget-category').value = item.category || '';
-            document.getElementById('budget-contact').value = item.contact || '';
-            document.getElementById('budget-phone').value = item.phone || '';
-            document.getElementById('budget-email').value = item.email || '';
-            document.getElementById('budget-budgeted').value = item.budgeted || '';
-            document.getElementById('budget-actual').value = item.actual || '';
-            document.getElementById('budget-payment-status').value = item.paymentStatus || 'not-paid';
-            document.getElementById('budget-notes').value = item.notes || '';
+    openModal({
+        modalId: 'budget-modal',
+        formId: 'budget-form',
+        idFieldId: 'budget-id',
+        itemId: itemId,
+        stateKey: 'budget',
+        title: 'Budget Item',
+        fieldMap: {
+            'budget-vendor': 'vendor',
+            'budget-category': 'category',
+            'budget-contact': 'contact',
+            'budget-phone': 'phone',
+            'budget-email': 'email',
+            'budget-budgeted': 'budgeted',
+            'budget-actual': 'actual',
+            'budget-payment-status': 'paymentStatus',
+            'budget-notes': 'notes'
+        },
+        defaultValues: {
+            'budget-payment-status': 'not-paid'
         }
-    } else {
-        title.textContent = 'Add Budget Item';
-        document.getElementById('budget-id').value = '';
-    }
-
-    modal.classList.add('active');
+    });
 }
 
 function openTimelineModal(itemId = null) {
-    const modal = document.getElementById('timeline-modal');
-    const form = document.getElementById('timeline-form');
-    const title = document.getElementById('timeline-modal-title');
-
-    form.reset();
-
-    if (itemId) {
-        const item = state.timeline.find(t => t.id === itemId);
-        if (item) {
-            title.textContent = 'Edit Task';
-            document.getElementById('timeline-id').value = item.id;
-            document.getElementById('timeline-task').value = item.task || '';
-            document.getElementById('timeline-due-date').value = item.dueDate || '';
-            document.getElementById('timeline-status').value = item.status || 'not-started';
-            document.getElementById('timeline-responsible').value = item.responsible || '';
-            document.getElementById('timeline-notes').value = item.notes || '';
+    openModal({
+        modalId: 'timeline-modal',
+        formId: 'timeline-form',
+        idFieldId: 'timeline-id',
+        itemId: itemId,
+        stateKey: 'timeline',
+        title: 'Task',
+        fieldMap: {
+            'timeline-task': 'task',
+            'timeline-due-date': 'dueDate',
+            'timeline-status': 'status',
+            'timeline-responsible': 'responsible',
+            'timeline-notes': 'notes'
+        },
+        defaultValues: {
+            'timeline-status': 'not-started'
         }
-    } else {
-        title.textContent = 'Add Task';
-        document.getElementById('timeline-id').value = '';
-        document.getElementById('timeline-status').value = 'not-started';
-    }
-
-    modal.classList.add('active');
+    });
 }
 
 // Form Handlers
@@ -734,96 +707,95 @@ function setupFormHandlers() {
     document.getElementById('staff-form').addEventListener('submit', handleStaffSubmit);
 }
 
-async function handleVendorSubmit(e) {
+// Generic form submission handler
+async function handleFormSubmit(e, config) {
     e.preventDefault();
 
-    const vendorData = {
-        name: document.getElementById('vendor-name').value,
-        category: document.getElementById('vendor-category').value,
-        contactPerson: document.getElementById('vendor-contact').value,
-        email: document.getElementById('vendor-email').value,
-        phone: document.getElementById('vendor-phone').value,
-        amount: parseFloat(document.getElementById('vendor-amount').value) || 0,
-        status: document.getElementById('vendor-status').value,
-        paymentStatus: document.getElementById('vendor-payment-status').value,
-        notes: document.getElementById('vendor-notes').value,
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    };
+    const data = {};
+    Object.entries(config.fieldMap).forEach(([fieldId, dataKey]) => {
+        const element = document.getElementById(fieldId);
+        let value = element.value;
 
-    const vendorId = document.getElementById('vendor-id').value;
+        // Handle number fields
+        if (config.numericFields && config.numericFields.includes(dataKey)) {
+            value = parseFloat(value) || 0;
+        }
+
+        data[dataKey] = value;
+    });
+
+    data.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+
+    const id = document.getElementById(config.idFieldId).value;
 
     try {
-        if (vendorId) {
-            await collections.vendors.doc(vendorId).update(vendorData);
+        if (id) {
+            await collections[config.collection].doc(id).update(data);
         } else {
-            vendorData.createdAt = firebase.firestore.FieldValue.serverTimestamp();
-            await collections.vendors.add(vendorData);
+            data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+            await collections[config.collection].add(data);
         }
         closeAllModals();
     } catch (error) {
-        console.error('Error saving vendor:', error);
-        alert('Error saving vendor. Please try again.');
+        console.error(`Error saving ${config.collection}:`, error);
+        alert(`Error saving ${config.itemName}. Please try again.`);
     }
+}
+
+async function handleVendorSubmit(e) {
+    await handleFormSubmit(e, {
+        collection: 'vendors',
+        idFieldId: 'vendor-id',
+        itemName: 'vendor',
+        fieldMap: {
+            'vendor-name': 'name',
+            'vendor-category': 'category',
+            'vendor-contact': 'contactPerson',
+            'vendor-email': 'email',
+            'vendor-phone': 'phone',
+            'vendor-amount': 'amount',
+            'vendor-status': 'status',
+            'vendor-payment-status': 'paymentStatus',
+            'vendor-notes': 'notes'
+        },
+        numericFields: ['amount']
+    });
 }
 
 async function handleBudgetSubmit(e) {
-    e.preventDefault();
-
-    const budgetData = {
-        vendor: document.getElementById('budget-vendor').value,
-        category: document.getElementById('budget-category').value,
-        contact: document.getElementById('budget-contact').value,
-        phone: document.getElementById('budget-phone').value,
-        email: document.getElementById('budget-email').value,
-        budgeted: parseFloat(document.getElementById('budget-budgeted').value) || 0,
-        actual: parseFloat(document.getElementById('budget-actual').value) || 0,
-        paymentStatus: document.getElementById('budget-payment-status').value,
-        notes: document.getElementById('budget-notes').value,
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    };
-
-    const budgetId = document.getElementById('budget-id').value;
-
-    try {
-        if (budgetId) {
-            await collections.budget.doc(budgetId).update(budgetData);
-        } else {
-            budgetData.createdAt = firebase.firestore.FieldValue.serverTimestamp();
-            await collections.budget.add(budgetData);
-        }
-        closeAllModals();
-    } catch (error) {
-        console.error('Error saving budget item:', error);
-        alert('Error saving budget item. Please try again.');
-    }
+    await handleFormSubmit(e, {
+        collection: 'budget',
+        idFieldId: 'budget-id',
+        itemName: 'budget item',
+        fieldMap: {
+            'budget-vendor': 'vendor',
+            'budget-category': 'category',
+            'budget-contact': 'contact',
+            'budget-phone': 'phone',
+            'budget-email': 'email',
+            'budget-budgeted': 'budgeted',
+            'budget-actual': 'actual',
+            'budget-payment-status': 'paymentStatus',
+            'budget-notes': 'notes'
+        },
+        numericFields: ['budgeted', 'actual']
+    });
 }
 
 async function handleTimelineSubmit(e) {
-    e.preventDefault();
-
-    const timelineData = {
-        task: document.getElementById('timeline-task').value,
-        dueDate: document.getElementById('timeline-due-date').value,
-        status: document.getElementById('timeline-status').value,
-        responsible: document.getElementById('timeline-responsible').value,
-        notes: document.getElementById('timeline-notes').value,
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    };
-
-    const timelineId = document.getElementById('timeline-id').value;
-
-    try {
-        if (timelineId) {
-            await collections.timeline.doc(timelineId).update(timelineData);
-        } else {
-            timelineData.createdAt = firebase.firestore.FieldValue.serverTimestamp();
-            await collections.timeline.add(timelineData);
-        }
-        closeAllModals();
-    } catch (error) {
-        console.error('Error saving timeline item:', error);
-        alert('Error saving task. Please try again.');
-    }
+    await handleFormSubmit(e, {
+        collection: 'timeline',
+        idFieldId: 'timeline-id',
+        itemName: 'task',
+        fieldMap: {
+            'timeline-task': 'task',
+            'timeline-due-date': 'dueDate',
+            'timeline-status': 'status',
+            'timeline-responsible': 'responsible',
+            'timeline-notes': 'notes'
+        },
+        numericFields: []
+    });
 }
 
 // Search and Filter
@@ -865,38 +837,23 @@ window.editVendor = (id) => openVendorModal(id);
 window.editBudgetItem = (id) => openBudgetModal(id);
 window.editTimelineItem = (id) => openTimelineModal(id);
 
-window.deleteVendor = async (id) => {
-    if (confirm('Are you sure you want to delete this vendor?')) {
-        try {
-            await collections.vendors.doc(id).delete();
-        } catch (error) {
-            console.error('Error deleting vendor:', error);
-            alert('Error deleting vendor. Please try again.');
+// Generic delete handler factory
+function createDeleteHandler(collectionKey, itemName) {
+    return async (id) => {
+        if (confirm(`Are you sure you want to delete this ${itemName}?`)) {
+            try {
+                await collections[collectionKey].doc(id).delete();
+            } catch (error) {
+                console.error(`Error deleting ${itemName}:`, error);
+                alert(`Error deleting ${itemName}. Please try again.`);
+            }
         }
-    }
-};
+    };
+}
 
-window.deleteBudgetItem = async (id) => {
-    if (confirm('Are you sure you want to delete this budget item?')) {
-        try {
-            await collections.budget.doc(id).delete();
-        } catch (error) {
-            console.error('Error deleting budget item:', error);
-            alert('Error deleting budget item. Please try again.');
-        }
-    }
-};
-
-window.deleteTimelineItem = async (id) => {
-    if (confirm('Are you sure you want to delete this task?')) {
-        try {
-            await collections.timeline.doc(id).delete();
-        } catch (error) {
-            console.error('Error deleting task:', error);
-            alert('Error deleting task. Please try again.');
-        }
-    }
-};
+window.deleteVendor = createDeleteHandler('vendors', 'vendor');
+window.deleteBudgetItem = createDeleteHandler('budget', 'budget item');
+window.deleteTimelineItem = createDeleteHandler('timeline', 'task');
 
 window.toggleTaskComplete = async (id, completed) => {
     try {
@@ -1014,26 +971,6 @@ function setupStageTabs() {
     });
 }
 
-// Budget Category Sorting
-function setupBudgetSorting() {
-    const sortSelect = document.getElementById('budget-category-sort');
-
-    if (sortSelect) {
-        sortSelect.addEventListener('change', (e) => {
-            const selectedCategory = e.target.value;
-
-            if (!selectedCategory) {
-                // Show all items if no category selected
-                renderBudgetTable();
-                return;
-            }
-
-            // Filter and render only items from selected category
-            renderBudgetTable(selectedCategory);
-        });
-    }
-}
-
 // Export and Print Functionality
 function setupExportAndPrint() {
     // Print Buttons
@@ -1069,11 +1006,6 @@ function setupExportAndPrint() {
     if (exportStaffBtn) {
         exportStaffBtn.addEventListener('click', exportStaffToExcel);
     }
-}
-
-// Print Timeline Function
-function printTimeline() {
-    window.print();
 }
 
 // Export Timeline to Excel
@@ -1307,7 +1239,6 @@ function saveRowChanges(row) {
     // Update Firebase
     collections.timeline.doc(id).update(updates)
         .then(() => {
-            console.log('Timeline item updated successfully');
             // The real-time listener will update the UI automatically
         })
         .catch((error) => {
@@ -1464,7 +1395,6 @@ function saveBudgetRowChanges(row) {
     // Update Firebase
     collections.budget.doc(id).update(updates)
         .then(() => {
-            console.log('Budget item updated successfully');
             // Real-time listener will update the UI
         })
         .catch((error) => {
@@ -1494,33 +1424,6 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // Stage Inputs Loading
-function loadMainStageInputs() {
-    collections.mainStageInputs.onSnapshot((snapshot) => {
-        state.mainStageInputs = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-        }));
-        if (state.currentPage === 'input-lists') {
-            renderStageInputs();
-        }
-    }, (error) => {
-        console.error('Error loading main stage inputs:', error);
-    });
-}
-
-function loadCocktailStageInputs() {
-    collections.cocktailStageInputs.onSnapshot((snapshot) => {
-        state.cocktailStageInputs = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-        }));
-        if (state.currentPage === 'input-lists') {
-            renderStageInputs();
-        }
-    }, (error) => {
-        console.error('Error loading cocktail stage inputs:', error);
-    });
-}
 
 // Render Stage Inputs
 function renderStageInputs() {
@@ -1612,7 +1515,7 @@ function saveStageRowChanges(row, collectionName) {
 
     collections[collectionName].doc(id).update(updates)
         .then(() => {
-            console.log('Stage input updated successfully');
+            // Stage input updated successfully
         })
         .catch((error) => {
             console.error('Error updating stage input:', error);
@@ -1699,19 +1602,6 @@ function exportStageInputsToExcel() {
 // STAFF FUNCTIONS
 // =============================================
 
-function loadStaff() {
-    collections.staff.onSnapshot((snapshot) => {
-        state.staff = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-        }));
-        if (state.currentPage === 'staff') {
-            renderStaff();
-        }
-    }, (error) => {
-        console.error('Error loading staff:', error);
-    });
-}
 
 function renderStaff() {
     const grid = document.getElementById('staff-grid');
@@ -1806,22 +1696,7 @@ async function handleStaffSubmit(e) {
     }
 }
 
-window.deleteStaff = async (id) => {
-    if (confirm('Are you sure you want to remove this staff member?')) {
-        try {
-            await collections.staff.doc(id).delete();
-        } catch (error) {
-            console.error('Error deleting staff member:', error);
-            alert('Error deleting staff member. Please try again.');
-        }
-    }
-};
-
-
-// Print Staff
-function printStaff() {
-    window.print();
-}
+window.deleteStaff = createDeleteHandler('staff', 'staff member');
 
 // Export Staff to Excel
 function exportStaffToExcel() {
@@ -1854,19 +1729,6 @@ function exportStaffToExcel() {
 // =============================================
 
 // Load Stage Plots from Firestore
-function loadStagePlots() {
-    collections.stagePlots.onSnapshot((snapshot) => {
-        state.stagePlots = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-        }));
-        if (state.currentPage === 'stage-plots') {
-            updatePlotSelector();
-        }
-    }, (error) => {
-        console.error('Error loading stage plots:', error);
-    });
-}
 
 // Initialize Stage Plots page
 function initializeStagePlots() {
@@ -1906,11 +1768,9 @@ function setupCanvas() {
         triggerAutoSave();
     });
 
-    // Add double-click handler for editing dimension labels and element labels
+    // Add double-click handler for editing element labels
     state.canvas.on('mouse:dblclick', (e) => {
-        if (e.target && e.target.isDimensionLabel) {
-            editDimensionLabel(e.target);
-        } else if (e.target && e.target.isStageElement) {
+        if (e.target && e.target.isStageElement) {
             editElementLabel(e.target);
         }
     });
@@ -2087,22 +1947,6 @@ function setupStagePlotControls() {
         });
     });
 
-    // Angle mode buttons
-    const orthogonalModeBtn = document.getElementById('orthogonal-mode-btn');
-    const angle45ModeBtn = document.getElementById('angle45-mode-btn');
-
-    if (orthogonalModeBtn) {
-        orthogonalModeBtn.addEventListener('click', () => {
-            setAngleMode('orthogonal');
-        });
-    }
-
-    if (angle45ModeBtn) {
-        angle45ModeBtn.addEventListener('click', () => {
-            setAngleMode('angle45');
-        });
-    }
-
     // Tool mode buttons
     const drawToolBtn = document.getElementById('draw-rect-tool-btn');
     const moveToolBtn = document.getElementById('move-tool-btn');
@@ -2254,22 +2098,44 @@ function loadPlot(plotId) {
                 // Redraw grid to ensure it's in the background
                 drawGrid();
 
-                // Find and restore stage polygon and dimension labels references
+                // Rebuild rectangle data structure from loaded canvas objects
+                const rectMap = new Map(); // Map rectId to {rect, widthLabel, heightLabel}
+
                 state.canvas.getObjects().forEach(obj => {
-                    if (obj.isStageOutline) {
-                        state.stagePolygon = obj;
-                        // Show Edit Stage button since stage exists
-                        const drawBtn = document.getElementById('draw-stage-btn');
-                        const editBtn = document.getElementById('edit-stage-btn');
-                        if (drawBtn && editBtn) {
-                            drawBtn.style.display = 'none';
-                            editBtn.style.display = 'inline-block';
+                    if (obj.rectId) {
+                        if (!rectMap.has(obj.rectId)) {
+                            rectMap.set(obj.rectId, {id: obj.rectId});
+                        }
+                        const rectData = rectMap.get(obj.rectId);
+
+                        // Identify what type of object this is
+                        if (obj.type === 'rect' && !obj.isRectDimension) {
+                            rectData.rect = obj;
+                        } else if (obj.isRectDimension) {
+                            if (obj.dimensionType === 'width') {
+                                rectData.widthLabel = obj;
+                            } else if (obj.dimensionType === 'height') {
+                                rectData.heightLabel = obj;
+                            }
                         }
                     }
-                    if (obj.isDimensionLabel) {
-                        state.dimensionLabels.push(obj);
-                    }
                 });
+
+                // Rebuild stageRectangles array
+                state.stageRectangles = Array.from(rectMap.values()).filter(
+                    rectData => rectData.rect && rectData.widthLabel && rectData.heightLabel
+                );
+
+                // Show Edit Stage button if we have rectangles
+                if (state.stageRectangles.length > 0) {
+                    state.stageLocked = true;
+                    const drawBtn = document.getElementById('draw-stage-btn');
+                    const editBtn = document.getElementById('edit-stage-btn');
+                    if (drawBtn && editBtn) {
+                        drawBtn.style.display = 'none';
+                        editBtn.style.display = 'inline-block';
+                    }
+                }
             });
         }
     }
@@ -2495,13 +2361,6 @@ function setupKeyboardShortcuts() {
         }
     });
 }
-
-// Drawing Mode Variables
-let drawingPoints = [];
-let drawingLines = [];
-let tempCircles = [];
-let snapIndicator = null;  // Visual feedback for snap-to-close
-const SNAP_DISTANCE = 20;  // Pixels to snap to first point
 
 // =============================================
 // RECTANGLE-BASED STAGE DRAWING SYSTEM
@@ -2747,45 +2606,6 @@ function finishDrawingRectangle(e) {
     state.canvas.renderAll();
 }
 
-// Handle Mouse Move While Drawing (for snap indicator)
-function handleDrawingMouseMove(e) {
-    if (!state.isDrawingStage || drawingPoints.length < 3) return;
-
-    const pointer = state.canvas.getPointer(e.e);
-    const firstPoint = drawingPoints[0];
-    const dx = pointer.x - firstPoint.x;
-    const dy = pointer.y - firstPoint.y;
-    const distance = Math.sqrt(dx * dx + dy * dy);
-
-    // Show snap indicator when near first point
-    if (distance < SNAP_DISTANCE) {
-        if (!snapIndicator) {
-            snapIndicator = new fabric.Circle({
-                left: firstPoint.x,
-                top: firstPoint.y,
-                radius: SNAP_DISTANCE,
-                fill: 'transparent',
-                stroke: '#c9a961',
-                strokeWidth: 2,
-                strokeDashArray: [5, 5],
-                selectable: false,
-                evented: false,
-                originX: 'center',
-                originY: 'center'
-            });
-            state.canvas.add(snapIndicator);
-        }
-    } else {
-        // Remove snap indicator when far from first point
-        if (snapIndicator) {
-            state.canvas.remove(snapIndicator);
-            snapIndicator = null;
-        }
-    }
-
-    state.canvas.renderAll();
-}
-
 // Convert decimal feet to feet and inches format
 function feetToFeetInches(decimalFeet) {
     const feet = Math.floor(decimalFeet);
@@ -2825,130 +2645,6 @@ function parseFeetInches(input) {
     return null;
 }
 
-// Snap point to 90-degree angle (orthogonal) from previous point
-function snapToOrthogonal(prevPoint, currentPoint) {
-    const dx = currentPoint.x - prevPoint.x;
-    const dy = currentPoint.y - prevPoint.y;
-
-    // Determine if more horizontal or vertical
-    if (Math.abs(dx) > Math.abs(dy)) {
-        // More horizontal - snap to 0° or 180°
-        return { x: currentPoint.x, y: prevPoint.y };
-    } else {
-        // More vertical - snap to 90° or 270°
-        return { x: prevPoint.x, y: currentPoint.y };
-    }
-}
-
-// Snap point to 45-degree angle from previous point
-function snapTo45Degrees(prevPoint, currentPoint) {
-    const dx = currentPoint.x - prevPoint.x;
-    const dy = currentPoint.y - prevPoint.y;
-
-    // Calculate angle in degrees
-    let angle = Math.atan2(dy, dx) * (180 / Math.PI);
-
-    // Round to nearest 45 degrees
-    const snappedAngle = Math.round(angle / 45) * 45;
-
-    // Calculate distance
-    const distance = Math.sqrt(dx * dx + dy * dy);
-
-    // Calculate new point at snapped angle
-    const radians = snappedAngle * (Math.PI / 180);
-    return {
-        x: prevPoint.x + distance * Math.cos(radians),
-        y: prevPoint.y + distance * Math.sin(radians)
-    };
-}
-
-// Set angle mode for drawing
-function setAngleMode(mode) {
-    state.angleMode = mode;
-
-    // Update button active states
-    const orthogonalBtn = document.getElementById('orthogonal-mode-btn');
-    const angle45Btn = document.getElementById('angle45-mode-btn');
-
-    if (orthogonalBtn && angle45Btn) {
-        orthogonalBtn.classList.remove('active');
-        angle45Btn.classList.remove('active');
-
-        if (mode === 'orthogonal') {
-            orthogonalBtn.classList.add('active');
-        } else {
-            angle45Btn.classList.add('active');
-        }
-    }
-
-    // Update status if in drawing mode
-    if (state.isDrawingStage) {
-        updateSaveStatus('Drawing mode active - ' + (mode === 'orthogonal' ? '90° mode' : '45° mode'));
-    }
-}
-
-// Handle Click While Drawing
-function handleDrawingClick(e) {
-    if (!state.isDrawingStage) return;
-
-    let pointer = state.canvas.getPointer(e.e);
-
-    // Check if we should snap to first point to close the shape
-    if (drawingPoints.length >= 3) {
-        const firstPoint = drawingPoints[0];
-        const dx = pointer.x - firstPoint.x;
-        const dy = pointer.y - firstPoint.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-
-        // If close to first point, snap to it and finish drawing
-        if (distance < SNAP_DISTANCE) {
-            finishDrawingStage();
-            return;
-        }
-    }
-
-    // Snap to angle based on current mode
-    if (drawingPoints.length > 0) {
-        const prevPoint = drawingPoints[drawingPoints.length - 1];
-        if (state.angleMode === 'orthogonal') {
-            pointer = snapToOrthogonal(prevPoint, pointer);
-        } else {
-            pointer = snapTo45Degrees(prevPoint, pointer);
-        }
-    }
-
-    // Add point
-    drawingPoints.push({ x: pointer.x, y: pointer.y });
-
-    // Draw circle at point
-    const circle = new fabric.Circle({
-        left: pointer.x,
-        top: pointer.y,
-        radius: 5,
-        fill: '#c9a961',
-        selectable: false,
-        evented: false,
-        originX: 'center',
-        originY: 'center'
-    });
-    state.canvas.add(circle);
-    tempCircles.push(circle);
-
-    // Draw line from previous point
-    if (drawingPoints.length > 1) {
-        const prevPoint = drawingPoints[drawingPoints.length - 2];
-        const line = new fabric.Line([prevPoint.x, prevPoint.y, pointer.x, pointer.y], {
-            stroke: '#c9a961',
-            strokeWidth: 3,
-            selectable: false,
-            evented: false
-        });
-        state.canvas.add(line);
-        drawingLines.push(line);
-    }
-
-    state.canvas.renderAll();
-}
 
 // Finish Drawing Stage
 // Finish Drawing/Editing and Lock All Rectangles
@@ -3001,275 +2697,6 @@ function finishDrawingStage() {
     triggerAutoSave();
 }
 
-// Fix rectangle geometry - force perpendicular corners for orthogonal shapes
-function fixRectangleGeometry(points, updatedSegments, pixelsPerFoot) {
-    // Only attempt rectangle fix if exactly 4 sides
-    if (points.length !== 4) return;
-
-    // Check if we're in orthogonal mode and updated parallel walls
-    if (state.angleMode !== 'orthogonal' || updatedSegments.length < 2) return;
-
-    // Determine if updated segments are horizontal or vertical
-    const firstSegIdx = updatedSegments[0];
-    const p1 = points[firstSegIdx];
-    const p2 = points[(firstSegIdx + 1) % points.length];
-    const dx = Math.abs(p2.x - p1.x);
-    const dy = Math.abs(p2.y - p1.y);
-
-    const isHorizontal = dx > dy;
-
-    if (isHorizontal) {
-        // Updated horizontal walls - fix vertical walls
-        // Get Y positions of the two horizontal walls
-        const y1 = (points[0].y + points[1].y) / 2;  // Top wall Y
-        const y2 = (points[2].y + points[3].y) / 2;  // Bottom wall Y
-
-        // Get X positions of vertical walls (keep them as is)
-        const x1 = points[0].x;  // Left X
-        const x2 = points[1].x;  // Right X
-
-        // Reconstruct rectangle with perfect 90° corners
-        points[0] = { x: x1, y: y1 };  // Top-left
-        points[1] = { x: x2, y: y1 };  // Top-right
-        points[2] = { x: x2, y: y2 };  // Bottom-right
-        points[3] = { x: x1, y: y2 };  // Bottom-left
-    } else {
-        // Updated vertical walls - fix horizontal walls
-        // Get X positions of the two vertical walls
-        const x1 = (points[0].x + points[3].x) / 2;  // Left wall X
-        const x2 = (points[1].x + points[2].x) / 2;  // Right wall X
-
-        // Get Y positions of horizontal walls (keep them as is)
-        const y1 = points[0].y;  // Top Y
-        const y2 = points[2].y;  // Bottom Y
-
-        // Reconstruct rectangle with perfect 90° corners
-        points[0] = { x: x1, y: y1 };  // Top-left
-        points[1] = { x: x2, y: y1 };  // Top-right
-        points[2] = { x: x2, y: y2 };  // Bottom-right
-        points[3] = { x: x1, y: y2 };  // Bottom-left
-    }
-}
-
-// Find parallel segments in the polygon
-function findParallelSegments(points, segmentIndex, angleTolerance = 5) {
-    const parallelSegments = [];
-
-    const p1 = points[segmentIndex];
-    const p2 = points[(segmentIndex + 1) % points.length];
-
-    // Calculate angle of the target segment (in degrees)
-    const dx = p2.x - p1.x;
-    const dy = p2.y - p1.y;
-    const targetAngle = Math.atan2(dy, dx) * (180 / Math.PI);
-
-    // Check all other segments
-    for (let i = 0; i < points.length; i++) {
-        if (i === segmentIndex) continue;  // Skip the segment itself
-
-        const q1 = points[i];
-        const q2 = points[(i + 1) % points.length];
-
-        const dx2 = q2.x - q1.x;
-        const dy2 = q2.y - q1.y;
-        let segmentAngle = Math.atan2(dy2, dx2) * (180 / Math.PI);
-
-        // Normalize angles to [0, 180) for comparison (parallel lines can point opposite directions)
-        let normalizedTarget = ((targetAngle % 180) + 180) % 180;
-        let normalizedSegment = ((segmentAngle % 180) + 180) % 180;
-
-        // Check if angles are within tolerance
-        const angleDiff = Math.abs(normalizedTarget - normalizedSegment);
-
-        if (angleDiff < angleTolerance || angleDiff > (180 - angleTolerance)) {
-            parallelSegments.push(i);
-        }
-    }
-
-    return parallelSegments;
-}
-
-// Edit Dimension Label (Double-click handler)
-function editDimensionLabel(label) {
-    if (!state.stagePolygon || !label.isDimensionLabel) return;
-
-    const segmentIndex = label.segmentIndex;
-    const currentText = label.text;
-
-    // Parse current dimension from feet-inches format
-    const currentDimension = parseFeetInches(currentText);
-
-    // Prompt for new dimension
-    const newDimensionStr = prompt(
-        `Enter new dimension:\n(Current: ${currentText})\n\nFormats accepted: 20'6" or 20.5`,
-        currentText
-    );
-    if (!newDimensionStr) return;  // User cancelled
-
-    const newDimension = parseFeetInches(newDimensionStr);
-    if (!newDimension || newDimension <= 0) {
-        alert('Please enter a valid dimension (e.g., 20\'6" or 20.5)');
-        return;
-    }
-
-    // Get stage dimensions for scaling
-    const width = parseInt(document.getElementById('stage-width').value) || 40;
-    const height = parseInt(document.getElementById('stage-height').value) || 30;
-    const canvasWidth = state.canvas.width;
-    const canvasHeight = state.canvas.height;
-    const pixelsPerFoot = Math.min(canvasWidth / width, canvasHeight / height);
-
-    // Get polygon points
-    const points = state.stagePolygon.points;
-
-    // Smart dimension linking: find parallel walls
-    const parallelSegments = findParallelSegments(points, segmentIndex);
-    let segmentsToUpdate = [segmentIndex];  // Always update the current segment
-
-    if (parallelSegments.length > 0) {
-        // Ask user if they want to update parallel walls
-        const parallelCount = parallelSegments.length;
-        const message = parallelCount === 1
-            ? 'Found 1 parallel wall. Update it to match this dimension?'
-            : `Found ${parallelCount} parallel walls. Update them all to match this dimension?`;
-
-        const updateParallel = confirm(message);
-        if (updateParallel) {
-            segmentsToUpdate = segmentsToUpdate.concat(parallelSegments);
-        }
-    }
-    // Update all selected segments with smart geometry preservation
-    const newDistancePixels = newDimension * pixelsPerFoot;
-
-    // Calculate midpoints and angles for all segments to update
-    const segmentData = segmentsToUpdate.map(segIdx => {
-        const p1 = points[segIdx];
-        const p2 = points[(segIdx + 1) % points.length];
-        const dx = p2.x - p1.x;
-        const dy = p2.y - p1.y;
-        const angle = Math.atan2(dy, dx);
-        const midX = (p1.x + p2.x) / 2;
-        const midY = (p1.y + p2.y) / 2;
-        return { segIdx, midX, midY, angle, p1Index: segIdx, p2Index: (segIdx + 1) % points.length };
-    });
-
-    // Update each segment from its center point
-    for (const data of segmentData) {
-        const halfDist = newDistancePixels / 2;
-
-        // Calculate new p1 and p2 centered on the midpoint
-        const newP1 = {
-            x: data.midX - halfDist * Math.cos(data.angle),
-            y: data.midY - halfDist * Math.sin(data.angle)
-        };
-        const newP2 = {
-            x: data.midX + halfDist * Math.cos(data.angle),
-            y: data.midY + halfDist * Math.sin(data.angle)
-        };
-
-        // Update the points
-        points[data.p1Index] = newP1;
-        points[data.p2Index] = newP2;
-    }
-
-    // Fix connecting segments to close the polygon properly
-    // For each point, if it was updated by multiple segments, average the positions
-    const pointUpdates = {};
-    for (const data of segmentData) {
-        // Track which points were modified
-        if (!pointUpdates[data.p1Index]) pointUpdates[data.p1Index] = [];
-        if (!pointUpdates[data.p2Index]) pointUpdates[data.p2Index] = [];
-
-        pointUpdates[data.p1Index].push(points[data.p1Index]);
-        pointUpdates[data.p2Index].push(points[data.p2Index]);
-    }
-
-    // Average positions for points that were updated multiple times
-    for (const [pointIndex, positions] of Object.entries(pointUpdates)) {
-        if (positions.length > 1) {
-            const avgX = positions.reduce((sum, p) => sum + p.x, 0) / positions.length;
-            const avgY = positions.reduce((sum, p) => sum + p.y, 0) / positions.length;
-            points[parseInt(pointIndex)] = { x: avgX, y: avgY };
-        }
-    }
-
-    // Fix rectangle geometry if in orthogonal mode
-    fixRectangleGeometry(points, segmentsToUpdate, pixelsPerFoot);
-
-    // Remove old polygon and dimension labels
-    state.canvas.remove(state.stagePolygon);
-    state.dimensionLabels.forEach(lbl => state.canvas.remove(lbl));
-    state.dimensionLabels = [];
-
-    // Recreate polygon with updated points
-    const polygon = new fabric.Polygon(points, {
-        fill: 'rgba(201, 169, 97, 0.2)',
-        stroke: '#c9a961',
-        strokeWidth: 3,
-        selectable: false,
-        evented: false,
-        objectCaching: false,
-        isStageOutline: true
-    });
-
-    state.canvas.add(polygon);
-    state.canvas.sendToBack(polygon);
-    state.stagePolygon = polygon;
-
-    // Recreate all dimension labels with updated values
-    for (let i = 0; i < points.length; i++) {
-        const pt1 = points[i];
-        const pt2 = points[(i + 1) % points.length];
-
-        // Calculate distance
-        const deltaX = pt2.x - pt1.x;
-        const deltaY = pt2.y - pt1.y;
-        const distPx = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-        const distFt = distPx / pixelsPerFoot;
-
-        // Calculate midpoint
-        const midX = (pt1.x + pt2.x) / 2;
-        const midY = (pt1.y + pt2.y) / 2;
-
-        // Create new label
-        const newLabel = new fabric.Text(feetToFeetInches(distFt), {
-            left: midX,
-            top: midY,
-            fontSize: 12,
-            fontFamily: 'Arial, sans-serif',
-            fontWeight: 'bold',
-            fill: '#c9a961',
-            backgroundColor: 'rgba(255, 255, 255, 0.8)',
-            padding: 3,
-            originX: 'center',
-            originY: 'center',
-            selectable: true,
-            evented: true,
-            lockMovementX: true,
-            lockMovementY: true,
-            lockRotation: true,
-            lockScalingX: true,
-            lockScalingY: true,
-            hasControls: false,
-            hasBorders: true,
-            borderColor: '#c9a961',
-            isDimensionLabel: true,
-            segmentIndex: i
-        });
-
-        state.canvas.add(newLabel);
-        state.dimensionLabels.push(newLabel);
-    }
-
-    state.canvas.renderAll();
-    triggerAutoSave();
-
-    // Update status message
-    const statusMessage = segmentsToUpdate.length > 1
-        ? `Dimension updated (${segmentsToUpdate.length} parallel walls)`
-        : 'Dimension updated';
-    updateSaveStatus(statusMessage);
-}
 
 // Edit Element Label (Double-click handler)
 function editElementLabel(elementGroup) {
@@ -3462,23 +2889,6 @@ function cancelDrawingMode() {
     if (drawBtn && finishBtn) {
         drawBtn.style.display = 'inline-block';
         finishBtn.style.display = 'none';
-    }
-
-    // Reset arrays
-    drawingPoints = [];
-    drawingLines = [];
-    tempCircles = [];
-
-    // Re-enable selection
-    if (state.canvas) {
-        state.canvas.selection = true;
-        state.canvas.forEachObject(obj => {
-            obj.selectable = true;
-        });
-
-        // Remove drawing handlers
-        state.canvas.off('mouse:down', handleDrawingClick);
-        state.canvas.off('mouse:move', handleDrawingMouseMove);
     }
 
     updateSaveStatus('');
