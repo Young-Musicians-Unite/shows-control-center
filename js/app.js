@@ -1778,10 +1778,12 @@ function setupCanvas() {
         triggerAutoSave();
     });
 
-    // Add double-click handler for editing element labels
+    // Add double-click handler for editing element labels and dimension labels
     state.canvas.on('mouse:dblclick', (e) => {
         if (e.target && e.target.isStageElement) {
             editElementLabel(e.target);
+        } else if (e.target && e.target.isRectDimension) {
+            editRectangleDimension(e.target);
         }
     });
 }
@@ -2508,6 +2510,10 @@ function setTool(tool) {
                 snapRectangleToAlign(rectData);
                 updateRectangleDimensions(rectData);
             });
+
+            // Make dimension labels selectable for editing
+            rectData.widthLabel.set({ selectable: true, evented: true });
+            rectData.heightLabel.set({ selectable: true, evented: true });
         });
 
         state.canvas.selection = true;
@@ -2689,6 +2695,18 @@ function feetToFeetInches(decimalFeet) {
     }
 }
 
+// Convert feet-inches format to decimal feet
+function feetInchesToFeet(feetInchesStr) {
+    // Parse formats like "20'6\"" or "20' 6\"" or just "20"
+    const match = feetInchesStr.match(/(\d+)(?:'|ft)?\s*(\d+)?(?:"|in)?/);
+    if (!match) return null;
+
+    const feet = parseInt(match[1]) || 0;
+    const inches = parseInt(match[2]) || 0;
+
+    return feet + (inches / 12);
+}
+
 // Parse feet-inches format or decimal feet to decimal
 function parseFeetInches(input) {
     // Remove extra spaces
@@ -2765,6 +2783,85 @@ function editElementLabel(elementGroup) {
     state.canvas.renderAll();
     triggerAutoSave();
     updateSaveStatus('Label updated');
+}
+
+// Edit Rectangle Dimension (Double-click on dimension label)
+function editRectangleDimension(dimensionLabel) {
+    if (!dimensionLabel || !dimensionLabel.isRectDimension) return;
+
+    const rectId = dimensionLabel.rectId;
+    const dimensionType = dimensionLabel.dimensionType; // 'width' or 'height'
+
+    // Find the rectangle data
+    const rectData = state.stageRectangles.find(r => r.id === rectId);
+    if (!rectData) return;
+
+    const rect = rectData.rect;
+    const pixelsPerFoot = rect.pixelsPerFoot || 20; // fallback
+
+    // Get current dimension in feet
+    const currentFeet = dimensionType === 'width'
+        ? rect.width / pixelsPerFoot
+        : rect.height / pixelsPerFoot;
+    const currentDimensionStr = feetToFeetInches(currentFeet);
+
+    // Prompt for new dimension
+    const newDimensionStr = prompt(
+        `Enter new ${dimensionType} (e.g., "20'6\"" or "20' 6\"" or "20"):`,
+        currentDimensionStr
+    );
+
+    if (!newDimensionStr || newDimensionStr === currentDimensionStr) return;
+
+    // Parse new dimension
+    const newFeet = feetInchesToFeet(newDimensionStr);
+    if (newFeet === null || newFeet <= 0) {
+        alert('Invalid dimension format. Please use format like "20\'6\"" or "20"');
+        return;
+    }
+
+    const newPixels = newFeet * pixelsPerFoot;
+
+    // Resize the rectangle
+    if (dimensionType === 'width') {
+        rect.set({ width: newPixels });
+    } else {
+        rect.set({ height: newPixels });
+    }
+
+    // Update coordinates
+    rect.setCoords();
+
+    // Update dimension labels
+    updateRectangleDimensionLabels(rectData);
+
+    state.canvas.renderAll();
+    triggerAutoSave();
+    updateSaveStatus(`Rectangle ${dimensionType} updated to ${feetToFeetInches(newFeet)}`);
+}
+
+// Update Rectangle Dimension Label Positions and Text
+function updateRectangleDimensionLabels(rectData) {
+    const rect = rectData.rect;
+    const pixelsPerFoot = rect.pixelsPerFoot || 20;
+
+    // Calculate dimensions in feet
+    const widthFeet = rect.width / pixelsPerFoot;
+    const heightFeet = rect.height / pixelsPerFoot;
+
+    // Update width label
+    rectData.widthLabel.set({
+        text: feetToFeetInches(widthFeet),
+        left: rect.left + rect.width / 2,
+        top: rect.top - 15
+    });
+
+    // Update height label
+    rectData.heightLabel.set({
+        text: feetToFeetInches(heightFeet),
+        left: rect.left - 15,
+        top: rect.top + rect.height / 2
+    });
 }
 
 // Unlock Stage for Editing
