@@ -1994,20 +1994,506 @@ tr.editing td {
     }
 }
 
-/* Dark Mode Support (if user has dark mode enabled) */
+
+/* =============================================
+   COMPREHENSIVE DARK MODE SUPPORT
+   Works on all devices, optimized for mobile
+   ============================================= */
+
 @media (prefers-color-scheme: dark) {
+    /* Base Colors */
+    body {
+        background-color: #0a0a0a;
+        color: #e0e0e0;
+    }
+
+    /* Navigation - Keep Havana theme but darker */
+    .navbar {
+        background: linear-gradient(90deg, #0a1614 0%, #0f1f1c 100%);
+        border-bottom-color: rgba(201, 169, 97, 0.4);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+    }
+
+    .nav-brand {
+        color: #d4b896;
+    }
+
+    .nav-link {
+        color: #b8a47a;
+    }
+
+    .nav-link:hover {
+        background-color: rgba(201, 169, 97, 0.15);
+        color: #d4b896;
+    }
+
+    .nav-link.active {
+        background-color: rgba(201, 169, 97, 0.2);
+        border-bottom-color: #c9a961;
+        color: #d4b896;
+    }
+
+    /* Dashboard - Already dark, just adjust slightly */
+    #dashboard {
+        background: linear-gradient(135deg, #0f1f1c 0%, #0a1614 100%);
+    }
+
+    .hero-section {
+        background: rgba(15, 38, 33, 0.9);
+        border-color: rgba(201, 169, 97, 0.3);
+    }
+
+    .gala-title {
+        color: #d4b896;
+    }
+
+    .gala-tagline {
+        color: #b8a47a;
+    }
+
+    /* Cards */
+    .card {
+        background: #1a1a1a;
+        border-color: #333;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+    }
+
+    .card-header {
+        background: #222;
+        border-bottom-color: #333;
+        color: #e0e0e0;
+    }
+
+    .card-header h2 {
+        color: #e0e0e0;
+    }
+
+    /* Tables */
+    .data-table {
+        background: #1a1a1a;
+        color: #e0e0e0;
+    }
+
+    .data-table thead {
+        background: #222;
+    }
+
+    .data-table th {
+        color: #d4b896;
+        border-bottom-color: #444;
+    }
+
+    .data-table td {
+        border-bottom-color: #2a2a2a;
+        color: #e0e0e0;
+    }
+
+    .data-table tbody tr:hover {
+        background-color: #252525;
+    }
+
+    .data-table tr.editing {
+        background-color: #3a2f1a !important;
+        border-color: #c9a961;
+    }
+
+    /* Empty States */
+    .empty-state {
+        color: #888;
+    }
+
+    /* Buttons */
+    .btn {
+        background: #2a2a2a;
+        color: #e0e0e0;
+        border-color: #444;
+    }
+
+    .btn:hover {
+        background: #333;
+        border-color: #555;
+    }
+
+    .btn-primary {
+        background: #c9a961;
+        color: #000;
+        border-color: #d4b896;
+    }
+
+    .btn-primary:hover {
+        background: #d4b896;
+        border-color: #c9a961;
+    }
+
+    .btn-secondary {
+        background: #333;
+        color: #e0e0e0;
+        border-color: #555;
+    }
+
+    .btn-secondary:hover {
+        background: #444;
+    }
+
+    .btn-danger {
+        background: #8b2e2e;
+        color: #fff;
+        border-color: #a33;
+    }
+
+    .btn-danger:hover {
+        background: #a33;
+    }
+
+    .btn-edit {
+        background: #2c5282;
+        color: #fff;
+    }
+
+    .btn-edit:hover {
+        background: #3b6ba8;
+    }
+
+    /* Forms */
+    .form-group label {
+        color: #d0d0d0;
+    }
+
+    input,
+    select,
+    textarea {
+        background: #222;
+        color: #e0e0e0;
+        border-color: #444;
+    }
+
+    input:focus,
+    select:focus,
+    textarea:focus {
+        background: #2a2a2a;
+        border-color: #c9a961;
+        outline: none;
+    }
+
+    input::placeholder,
+    textarea::placeholder {
+        color: #666;
+    }
+
+    /* Modals */
+    .modal {
+        background-color: rgba(0, 0, 0, 0.85);
+    }
+
+    .modal-content {
+        background: #1a1a1a;
+        border-color: #333;
+    }
+
+    .modal-header {
+        background: #222;
+        border-bottom-color: #333;
+    }
+
+    .modal-header h2 {
+        color: #e0e0e0;
+    }
+
+    .close-btn {
+        color: #999;
+    }
+
+    .close-btn:hover {
+        color: #e0e0e0;
+        background: #333;
+    }
+
+    /* Status Badges */
+    .status-badge {
+        border-color: transparent;
+    }
+
+    .status-badge.completed,
+    .status-badge.paid {
+        background: #1a4d2e;
+        color: #90ee90;
+    }
+
+    .status-badge.in-progress,
+    .status-badge.partial {
+        background: #4d3a1a;
+        color: #ffd666;
+    }
+
+    .status-badge.not-started,
+    .status-badge.not-paid {
+        background: #4d1a1a;
+        color: #ff9999;
+    }
+
+    /* Stats Cards */
+    .stat-card {
+        background: #1a1a1a;
+        border-color: #333;
+    }
+
+    .stat-card h3 {
+        color: #b8a47a;
+    }
+
+    .stat-card .stat-value {
+        color: #d4b896;
+    }
+
+    /* Countdown Timer */
+    .countdown-timer {
+        background: rgba(15, 38, 33, 0.6);
+        border-color: rgba(201, 169, 97, 0.3);
+    }
+
+    .time-unit {
+        background: rgba(26, 58, 53, 0.8);
+        border-color: rgba(201, 169, 97, 0.2);
+    }
+
+    .time-value {
+        color: #d4b896;
+    }
+
+    .time-label {
+        color: #b8a47a;
+    }
+
+    /* Tabs */
+    .day-tabs {
+        border-bottom-color: #333;
+    }
+
+    .day-tab {
+        background: #222;
+        color: #999;
+        border-color: #333;
+    }
+
+    .day-tab:hover {
+        background: #2a2a2a;
+        color: #d0d0d0;
+    }
+
+    .day-tab.active {
+        background: #1a1a1a;
+        color: #d4b896;
+        border-bottom-color: #c9a961;
+    }
+
+    /* Budget Categories */
+    .category-section {
+        background: #1a1a1a;
+        border-color: #333;
+    }
+
+    .category-header {
+        background: #222;
+        color: #e0e0e0;
+    }
+
+    .category-header:hover {
+        background: #2a2a2a;
+    }
+
+    .category-arrow {
+        color: #c9a961;
+    }
+
+    .category-info h3 {
+        color: #e0e0e0;
+    }
+
+    .category-summary {
+        color: #b0b0b0;
+    }
+
+    .summary-item {
+        color: #999;
+    }
+
+    .summary-item strong {
+        color: #d4b896;
+    }
+
+    /* Budget Summary */
+    .budget-summary {
+        background: #1a1a1a;
+        border-color: #333;
+    }
+
+    .budget-summary h3 {
+        color: #d4b896;
+    }
+
+    .summary-grid {
+        color: #e0e0e0;
+    }
+
+    /* Filter Bar */
+    .filter-bar {
+        background: #1a1a1a;
+        border-color: #333;
+    }
+
+    .search-box {
+        background: #222;
+        color: #e0e0e0;
+        border-color: #444;
+    }
+
+    .search-box:focus {
+        background: #2a2a2a;
+        border-color: #c9a961;
+    }
+
+    /* Page Headers */
+    .page-header h1 {
+        color: #e0e0e0;
+    }
+
+    /* Inline Edit Inputs */
+    .inline-edit-input {
+        background: #2a2a2a;
+        color: #e0e0e0;
+        border-color: #c9a961;
+    }
+
+    .inline-edit-input:focus {
+        background: #333;
+    }
+
+    /* Scrollbars (Webkit browsers) */
+    ::-webkit-scrollbar {
+        width: 12px;
+        height: 12px;
+    }
+
+    ::-webkit-scrollbar-track {
+        background: #1a1a1a;
+    }
+
+    ::-webkit-scrollbar-thumb {
+        background: #444;
+        border-radius: 6px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+        background: #555;
+    }
+
+    /* Selection */
+    ::selection {
+        background: #c9a961;
+        color: #000;
+    }
+
+    /* Links */
+    a {
+        color: #d4b896;
+    }
+
+    a:hover {
+        color: #c9a961;
+    }
+
+    /* Toast/Alert Messages (if you add them later) */
+    .alert {
+        background: #2a2a2a;
+        color: #e0e0e0;
+        border-color: #444;
+    }
+
+    /* Print Button - More visible in dark mode */
+    #print-timeline-btn {
+        background: #2c5282;
+        color: #fff;
+    }
+
+    /* Export Buttons */
+    .btn-secondary {
+        background: #2a5a2a;
+        color: #90ee90;
+    }
+
+    .btn-secondary:hover {
+        background: #357a35;
+    }
+
+    /* Table Container */
+    .table-container {
+        background: #1a1a1a;
+    }
+
+    /* Form Actions */
+    .form-actions {
+        border-top-color: #333;
+    }
+
+    /* Mobile-specific dark mode adjustments */
     @media (max-width: 768px) {
-        /* Adjust colors for better mobile dark mode readability */
+        /* Ensure text is readable on small screens */
         body {
-            background-color: #1a1a1a;
+            color: #e8e8e8;
         }
 
-        .card {
-            background: #2a2a2a;
+        /* Navigation borders */
+        .nav-link {
+            border-bottom-color: rgba(201, 169, 97, 0.15);
         }
 
+        .nav-link.active {
+            border-left-color: #c9a961;
+        }
+
+        /* Modals - ensure full contrast */
+        .modal-content {
+            background: #0f0f0f;
+        }
+
+        /* Tables - better contrast on mobile */
         .data-table {
+            background: #141414;
+        }
+
+        .data-table td {
+            color: #f0f0f0;
+        }
+
+        /* Buttons - ensure tap targets are visible */
+        .btn {
             background: #2a2a2a;
+            border-color: #555;
+        }
+
+        /* Form inputs - prevent white flash */
+        input,
+        select,
+        textarea {
+            background: #1a1a1a;
+            color: #f0f0f0;
+            border-color: #555;
+        }
+
+        /* Cards - more contrast on mobile */
+        .card {
+            background: #141414;
+        }
+
+        .card-header {
+            background: #1a1a1a;
         }
     }
 }
+
+/* Force dark mode (optional - uncomment if you want to override system preference) */
+/*
+body.force-dark-mode {
+    ... same styles as above but without @media query ...
+}
+*/
