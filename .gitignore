@@ -38,3 +38,5 @@ documents/invoices/*
 # Temporary files
 *.tmp
 *.bak
+service-account-key.json
+config/firebase-credentials.json

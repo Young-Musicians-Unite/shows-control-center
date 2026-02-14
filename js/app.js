@@ -24,6 +24,7 @@ function initializeApp() {
     setupSearchAndFilter();
     setupDayTabs();
     setupBudgetSorting();
+    setupExportAndPrint();
 }
 
 // Navigation
@@ -373,19 +374,29 @@ function renderBudgetTable(filterCategory = null) {
 
 // Timeline
 function renderTimeline() {
-    const container = document.getElementById('timeline-items');
+    const tbody = document.getElementById('timeline-tbody');
 
     // Filter by current day
     const filteredTimeline = state.timeline.filter(item => item.day === state.currentDay);
 
-    // Update day title
+    // Update day title and subtitle
     const dayTitle = document.getElementById('timeline-day-title');
+    const dateSubtitle = document.getElementById('timeline-date-subtitle');
+    const dateMap = {
+        'Thursday': 'April 23, 2026',
+        'Friday': 'April 24, 2026',
+        'Saturday': 'April 25, 2026'
+    };
+
     if (dayTitle) {
         dayTitle.textContent = `${state.currentDay} Timeline`;
     }
+    if (dateSubtitle) {
+        dateSubtitle.textContent = dateMap[state.currentDay] || '';
+    }
 
     if (filteredTimeline.length === 0) {
-        container.innerHTML = '<p class="empty-state">No tasks for this day</p>';
+        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No tasks for this day</td></tr>';
         return;
     }
 
@@ -396,33 +407,25 @@ function renderTimeline() {
         return a.time.localeCompare(b.time);
     });
 
-    container.innerHTML = sorted.map(item => {
+    tbody.innerHTML = sorted.map(item => {
         const isComplete = item.completed === true;
 
         return `
-            <div class="timeline-item ${isComplete ? 'complete' : ''}">
-                <div class="timeline-checkbox">
+            <tr class="${isComplete ? 'task-completed' : ''}">
+                <td class="checkbox-col">
                     <input type="checkbox"
                            ${isComplete ? 'checked' : ''}
                            onchange="toggleTaskComplete('${item.id}', this.checked)">
-                </div>
-                <div class="timeline-content">
-                    <div class="timeline-meta">
-                        ${item.time ? `<div class="timeline-meta-item"><strong>🕐 ${item.time}</strong></div>` : ''}
-                    </div>
-                    <div class="timeline-task ${isComplete ? 'complete' : ''}">
-                        ${escapeHtml(item.event || '')}
-                    </div>
-                    <div class="timeline-meta">
-                        ${item.responsible ? `<div class="timeline-meta-item">👤 ${escapeHtml(item.responsible)}</div>` : ''}
-                        ${item.staff ? `<div class="timeline-meta-item">👥 ${escapeHtml(item.staff)}</div>` : ''}
-                    </div>
-                </div>
-                <div class="timeline-actions">
+                </td>
+                <td class="time-col">${item.time || ''}</td>
+                <td class="event-col ${isComplete ? 'task-completed' : ''}">${escapeHtml(item.event || '')}</td>
+                <td class="responsible-col">${escapeHtml(item.responsible || '')}</td>
+                <td class="staff-col">${escapeHtml(item.staff || '')}</td>
+                <td class="actions-col no-print">
                     <button class="btn btn-edit" onclick="editTimelineItem('${item.id}')">Edit</button>
                     <button class="btn btn-danger" onclick="deleteTimelineItem('${item.id}')">Delete</button>
-                </div>
-            </div>
+                </td>
+            </tr>
         `;
     }).join('');
 }
@@ -800,4 +803,193 @@ function setupBudgetSorting() {
             renderBudgetTable(selectedCategory);
         });
     }
+}
+
+// Export and Print Functionality
+function setupExportAndPrint() {
+    // Print Timeline
+    const printBtn = document.getElementById('print-timeline-btn');
+    if (printBtn) {
+        printBtn.addEventListener('click', printTimeline);
+    }
+
+    // Export Buttons
+    const exportTimelineBtn = document.getElementById('export-timeline-btn');
+    const exportBudgetBtn = document.getElementById('export-budget-btn');
+    const exportVendorsBtn = document.getElementById('export-vendors-btn');
+
+    if (exportTimelineBtn) {
+        exportTimelineBtn.addEventListener('click', exportTimelineToExcel);
+    }
+    if (exportBudgetBtn) {
+        exportBudgetBtn.addEventListener('click', exportBudgetToExcel);
+    }
+    if (exportVendorsBtn) {
+        exportVendorsBtn.addEventListener('click', exportVendorsToExcel);
+    }
+}
+
+// Print Timeline Function
+function printTimeline() {
+    window.print();
+}
+
+// Export Timeline to Excel
+function exportTimelineToExcel() {
+    // Filter by current day
+    const filteredTimeline = state.timeline.filter(item => item.day === state.currentDay);
+
+    // Sort by time
+    const sorted = [...filteredTimeline].sort((a, b) => {
+        if (!a.time) return 1;
+        if (!b.time) return -1;
+        return a.time.localeCompare(b.time);
+    });
+
+    // Prepare data for Excel
+    const data = sorted.map(item => ({
+        'Time': item.time || '',
+        'Event': item.event || '',
+        'Responsible': item.responsible || '',
+        'Staff': item.staff || '',
+        'Completed': item.completed ? 'Yes' : 'No'
+    }));
+
+    // Create worksheet
+    const ws = XLSX.utils.json_to_sheet(data);
+
+    // Set column widths
+    ws['!cols'] = [
+        { wch: 10 },  // Time
+        { wch: 50 },  // Event
+        { wch: 20 },  // Responsible
+        { wch: 20 },  // Staff
+        { wch: 10 }   // Completed
+    ];
+
+    // Create workbook
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, `${state.currentDay} Timeline`);
+
+    // Generate filename with date
+    const dateMap = {
+        'Thursday': '2026-04-23',
+        'Friday': '2026-04-24',
+        'Saturday': '2026-04-25'
+    };
+    const filename = `YMU_Gala_${state.currentDay}_${dateMap[state.currentDay]}.xlsx`;
+
+    // Download
+    XLSX.writeFile(wb, filename);
+}
+
+// Export Budget to Excel
+function exportBudgetToExcel() {
+    // Prepare data for Excel
+    const data = state.budget.map(item => ({
+        'Vendor/Item': item.vendor || '',
+        'Category': item.category || '',
+        'Budgeted': parseFloat(item.budgeted) || 0,
+        'Actual': parseFloat(item.actual) || 0,
+        'Difference': (parseFloat(item.budgeted) || 0) - (parseFloat(item.actual) || 0),
+        'Payment Status': formatPaymentStatus(item.paymentStatus),
+        'Notes': item.notes || ''
+    }));
+
+    // Create worksheet
+    const ws = XLSX.utils.json_to_sheet(data);
+
+    // Set column widths
+    ws['!cols'] = [
+        { wch: 30 },  // Vendor/Item
+        { wch: 35 },  // Category
+        { wch: 12 },  // Budgeted
+        { wch: 12 },  // Actual
+        { wch: 12 },  // Difference
+        { wch: 15 },  // Payment Status
+        { wch: 40 }   // Notes
+    ];
+
+    // Add number formatting for currency columns
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    for (let R = range.s.r + 1; R <= range.e.r; ++R) {
+        ['C', 'D', 'E'].forEach(col => {
+            const cellRef = col + (R + 1);
+            if (ws[cellRef]) {
+                ws[cellRef].z = '$#,##0.00';
+            }
+        });
+    }
+
+    // Create workbook
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Budget');
+
+    // Add summary sheet
+    const totalBudget = state.budget.reduce((sum, item) => sum + (parseFloat(item.budgeted) || 0), 0);
+    const totalSpent = state.budget.reduce((sum, item) => sum + (parseFloat(item.actual) || 0), 0);
+    const remaining = totalBudget - totalSpent;
+
+    const summaryData = [
+        { 'Metric': 'Total Budgeted', 'Amount': totalBudget },
+        { 'Metric': 'Total Spent', 'Amount': totalSpent },
+        { 'Metric': 'Remaining', 'Amount': remaining }
+    ];
+
+    const wsSummary = XLSX.utils.json_to_sheet(summaryData);
+    wsSummary['!cols'] = [{ wch: 20 }, { wch: 15 }];
+    XLSX.utils.book_append_sheet(wb, wsSummary, 'Summary');
+
+    // Download
+    const today = new Date().toISOString().split('T')[0];
+    XLSX.writeFile(wb, `YMU_Gala_Budget_${today}.xlsx`);
+}
+
+// Export Vendors to Excel
+function exportVendorsToExcel() {
+    // Prepare data for Excel
+    const data = state.vendors.map(item => ({
+        'Vendor Name': item.name || '',
+        'Category': item.category || '',
+        'Contact Person': item.contact || '',
+        'Phone': item.phone || '',
+        'Email': item.email || '',
+        'Amount': parseFloat(item.amount) || 0,
+        'Status': formatStatus(item.status),
+        'Payment Status': formatPaymentStatus(item.paymentStatus),
+        'Notes': item.notes || ''
+    }));
+
+    // Create worksheet
+    const ws = XLSX.utils.json_to_sheet(data);
+
+    // Set column widths
+    ws['!cols'] = [
+        { wch: 25 },  // Vendor Name
+        { wch: 30 },  // Category
+        { wch: 20 },  // Contact Person
+        { wch: 15 },  // Phone
+        { wch: 25 },  // Email
+        { wch: 12 },  // Amount
+        { wch: 12 },  // Status
+        { wch: 15 },  // Payment Status
+        { wch: 40 }   // Notes
+    ];
+
+    // Add number formatting for amount column
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    for (let R = range.s.r + 1; R <= range.e.r; ++R) {
+        const cellRef = 'F' + (R + 1);
+        if (ws[cellRef]) {
+            ws[cellRef].z = '$#,##0.00';
+        }
+    }
+
+    // Create workbook
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Vendors');
+
+    // Download
+    const today = new Date().toISOString().split('T')[0];
+    XLSX.writeFile(wb, `YMU_Gala_Vendors_${today}.xlsx`);
 }

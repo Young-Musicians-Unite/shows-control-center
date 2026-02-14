@@ -140,7 +140,10 @@
         <div id="vendors" class="page">
             <div class="page-header">
                 <h1>Vendors</h1>
-                <button class="btn btn-primary" id="add-vendor-btn">+ Add Vendor</button>
+                <div class="header-actions">
+                    <button class="btn btn-secondary" id="export-vendors-btn">📊 Export to Excel</button>
+                    <button class="btn btn-primary" id="add-vendor-btn">+ Add Vendor</button>
+                </div>
             </div>
 
             <!-- Search and Filter -->
@@ -186,7 +189,10 @@
         <div id="budget" class="page">
             <div class="page-header">
                 <h1>Budget</h1>
-                <button class="btn btn-primary" id="add-budget-item-btn">+ Add Item</button>
+                <div class="header-actions">
+                    <button class="btn btn-secondary" id="export-budget-btn">📊 Export to Excel</button>
+                    <button class="btn btn-primary" id="add-budget-item-btn">+ Add Item</button>
+                </div>
             </div>
 
             <!-- Budget Summary -->
@@ -267,7 +273,11 @@
         <div id="timeline" class="page">
             <div class="page-header">
                 <h1>Timeline</h1>
-                <button class="btn btn-primary" id="add-timeline-item-btn">+ Add Task</button>
+                <div class="header-actions">
+                    <button class="btn btn-secondary" id="print-timeline-btn">🖨️ Print</button>
+                    <button class="btn btn-secondary" id="export-timeline-btn">📊 Export to Excel</button>
+                    <button class="btn btn-primary" id="add-timeline-item-btn">+ Add Task</button>
+                </div>
             </div>
 
             <!-- Timeline Stats -->
@@ -309,11 +319,26 @@
             <div class="card">
                 <div class="card-header">
                     <h2 id="timeline-day-title">Thursday Timeline</h2>
+                    <div class="timeline-date" id="timeline-date-subtitle">April 23, 2026</div>
                 </div>
-                <div class="card-body">
-                    <div id="timeline-items" class="timeline-container">
-                        <p class="empty-state">No tasks for this day</p>
-                    </div>
+                <div class="table-container">
+                    <table class="data-table timeline-table" id="timeline-table">
+                        <thead>
+                            <tr>
+                                <th class="checkbox-col">✓</th>
+                                <th class="time-col">Time</th>
+                                <th class="event-col">Event</th>
+                                <th class="responsible-col">Responsible</th>
+                                <th class="staff-col">Staff</th>
+                                <th class="actions-col no-print">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="timeline-tbody">
+                            <tr>
+                                <td colspan="6" class="empty-state">No tasks for this day</td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -497,6 +522,9 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js"></script>
+
+    <!-- SheetJS for Excel Export -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
 
     <!-- App Scripts -->
     <script src="js/config.js"></script>

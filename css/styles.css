@@ -1219,3 +1219,178 @@ body {
     justify-content: space-between;
     align-items: center;
 }
+
+/* Header Actions for Export/Print Buttons */
+.header-actions {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+}
+
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* Timeline Table Specific Styles */
+.timeline-table {
+    width: 100%;
+}
+
+.timeline-table th.checkbox-col,
+.timeline-table td.checkbox-col {
+    width: 50px;
+    text-align: center;
+}
+
+.timeline-table th.time-col,
+.timeline-table td.time-col {
+    width: 100px;
+    font-weight: 600;
+    color: #2c3e50;
+}
+
+.timeline-table th.event-col,
+.timeline-table td.event-col {
+    min-width: 300px;
+}
+
+.timeline-table th.responsible-col,
+.timeline-table td.responsible-col {
+    width: 150px;
+}
+
+.timeline-table th.staff-col,
+.timeline-table td.staff-col {
+    width: 150px;
+}
+
+.timeline-table th.actions-col,
+.timeline-table td.actions-col {
+    width: 180px;
+}
+
+.timeline-table .task-completed {
+    text-decoration: line-through;
+    opacity: 0.6;
+}
+
+.timeline-date {
+    font-size: 0.9rem;
+    color: #7f8c8d;
+    font-weight: 400;
+    margin-left: 1rem;
+}
+
+/* Print Styles */
+@media print {
+    /* Hide elements not needed in print */
+    .navbar,
+    .no-print,
+    .actions-col,
+    .btn,
+    .page-header button,
+    .header-actions,
+    .day-tabs,
+    .stats-grid {
+        display: none !important;
+    }
+
+    /* Ensure proper page layout */
+    body {
+        background: white;
+        color: black;
+        font-size: 11pt;
+    }
+
+    .container {
+        max-width: 100%;
+        padding: 0;
+        margin: 0;
+    }
+
+    .page {
+        display: block !important;
+    }
+
+    .card {
+        box-shadow: none;
+        border: 1px solid #ddd;
+        page-break-inside: avoid;
+        margin-bottom: 1rem;
+    }
+
+    .card-header {
+        background: #f8f9fa !important;
+        border-bottom: 2px solid #333;
+        padding: 10px;
+    }
+
+    .card-header h2 {
+        font-size: 16pt;
+        margin: 0;
+    }
+
+    .timeline-date {
+        font-size: 12pt;
+        color: #333;
+    }
+
+    /* Table print styling */
+    .data-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    .data-table th,
+    .data-table td {
+        border: 1px solid #333;
+        padding: 6px 8px;
+        font-size: 10pt;
+    }
+
+    .data-table th {
+        background: #e9ecef !important;
+        font-weight: bold;
+    }
+
+    .data-table tbody tr:nth-child(even) {
+        background: #f8f9fa !important;
+    }
+
+    /* Timeline table specific */
+    .timeline-table th.checkbox-col,
+    .timeline-table td.checkbox-col {
+        width: 30px;
+    }
+
+    .timeline-table th.time-col,
+    .timeline-table td.time-col {
+        width: 80px;
+        font-weight: bold;
+    }
+
+    /* Page breaks */
+    .page-header {
+        page-break-after: avoid;
+    }
+
+    table {
+        page-break-inside: auto;
+    }
+
+    tr {
+        page-break-inside: avoid;
+        page-break-after: auto;
+    }
+
+    thead {
+        display: table-header-group;
+    }
+
+    /* Print title */
+    @page {
+        margin: 0.5in;
+    }
+}
