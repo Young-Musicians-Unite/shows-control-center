@@ -978,10 +978,10 @@ function setupExportAndPrint() {
     const printStaffBtn = document.getElementById('print-staff-btn');
 
     if (printTimelineBtn) {
-        printTimelineBtn.addEventListener('click', printTimeline);
+        printTimelineBtn.addEventListener('click', () => window.print());
     }
     if (printStaffBtn) {
-        printStaffBtn.addEventListener('click', printStaff);
+        printStaffBtn.addEventListener('click', () => window.print());
     }
 
     // Export Buttons
@@ -1732,6 +1732,7 @@ function exportStaffToExcel() {
 
 // Initialize Stage Plots page
 function initializeStagePlots() {
+    console.log('initializeStagePlots called. Canvas exists:', !!state.canvas);
     if (!state.canvas) {
         setupCanvas();
     }
@@ -1741,8 +1742,15 @@ function initializeStagePlots() {
 
 // Setup Fabric.js Canvas
 function setupCanvas() {
+    console.log('setupCanvas called');
     const canvasElement = document.getElementById('stage-canvas');
-    if (!canvasElement) return;
+    if (!canvasElement) {
+        console.log('ERROR: Canvas element not found!');
+        return;
+    }
+
+    console.log('Canvas element found, initializing Fabric.js canvas');
+    console.log('fabric object exists:', typeof fabric !== 'undefined');
 
     // Initialize Fabric.js canvas
     state.canvas = new fabric.Canvas('stage-canvas', {
@@ -1751,6 +1759,8 @@ function setupCanvas() {
         backgroundColor: '#ffffff',
         selection: true
     });
+
+    console.log('Fabric.js canvas created:', !!state.canvas);
 
     // Draw grid background
     drawGrid();
@@ -1952,15 +1962,23 @@ function setupStagePlotControls() {
     const moveToolBtn = document.getElementById('move-tool-btn');
 
     if (drawToolBtn) {
+        console.log('Draw tool button found, adding listener');
         drawToolBtn.addEventListener('click', () => {
+            console.log('Draw tool button clicked');
             setTool('draw');
         });
+    } else {
+        console.log('WARNING: Draw tool button NOT found!');
     }
 
     if (moveToolBtn) {
+        console.log('Move tool button found, adding listener');
         moveToolBtn.addEventListener('click', () => {
+            console.log('Move tool button clicked');
             setTool('move');
         });
+    } else {
+        console.log('WARNING: Move tool button NOT found!');
     }
 }
 
@@ -2126,15 +2144,22 @@ function loadPlot(plotId) {
                     rectData => rectData.rect && rectData.widthLabel && rectData.heightLabel
                 );
 
-                // Show Edit Stage button if we have rectangles
+                // If we have rectangles, enter edit mode with tool toggle
                 if (state.stageRectangles.length > 0) {
-                    state.stageLocked = true;
-                    const drawBtn = document.getElementById('draw-stage-btn');
-                    const editBtn = document.getElementById('edit-stage-btn');
-                    if (drawBtn && editBtn) {
-                        drawBtn.style.display = 'none';
-                        editBtn.style.display = 'inline-block';
+                    state.isDrawingStage = true;
+
+                    // Show tool mode toggle
+                    const toolModeContainer = document.getElementById('tool-mode-container');
+                    if (toolModeContainer) {
+                        toolModeContainer.style.display = 'flex';
                     }
+
+                    // Hide draw button
+                    const drawBtn = document.getElementById('draw-stage-btn');
+                    if (drawBtn) drawBtn.style.display = 'none';
+
+                    // Set to move mode so user can immediately move rectangles
+                    setTool('move');
                 }
             });
         }
@@ -2368,9 +2393,11 @@ function setupKeyboardShortcuts() {
 
 // Toggle Drawing Mode (Rectangle-based)
 function toggleDrawingMode() {
+    console.log('toggleDrawingMode called, canvas exists:', !!state.canvas);
     if (!state.canvas) return;
 
     state.isDrawingStage = !state.isDrawingStage;
+    console.log('isDrawingStage set to:', state.isDrawingStage);
 
     const drawBtn = document.getElementById('draw-stage-btn');
     const finishBtn = document.getElementById('finish-drawing-btn');
@@ -2395,6 +2422,7 @@ function toggleDrawingMode() {
         });
 
         // Set initial tool to draw
+        console.log('About to call setTool(draw)');
         setTool('draw');
     } else {
         cancelDrawingMode();
@@ -2403,6 +2431,7 @@ function toggleDrawingMode() {
 
 // Set Tool Mode (Draw or Move)
 function setTool(tool) {
+    console.log('setTool called with:', tool);
     state.currentTool = tool;
 
     // Update button active states
@@ -2435,6 +2464,7 @@ function setTool(tool) {
 
     if (tool === 'draw') {
         // Drawing mode: click and drag creates rectangles
+        console.log('Attaching canvas mouse event listeners for drawing');
         state.canvas.on('mouse:down', startDrawingRectangle);
         state.canvas.on('mouse:move', continueDrawingRectangle);
         state.canvas.on('mouse:up', finishDrawingRectangle);
@@ -2442,7 +2472,18 @@ function setTool(tool) {
         updateSaveStatus('📐 Draw mode - Click and drag to create rectangles');
     } else if (tool === 'move') {
         // Move mode: drag existing rectangles
-        state.stageRectangles.forEach(rectData => {
+        console.log('Setting up move mode. Number of rectangles:', state.stageRectangles.length);
+        console.log('stageRectangles array:', state.stageRectangles);
+
+        state.stageRectangles.forEach((rectData, index) => {
+            console.log('Processing rectangle', index);
+            console.log('  - rectData:', rectData);
+            console.log('  - rect object exists:', !!rectData.rect);
+            console.log('  - rect before set:', {
+                selectable: rectData.rect.selectable,
+                evented: rectData.rect.evented
+            });
+
             rectData.rect.set({
                 selectable: true,
                 evented: true,
@@ -2452,15 +2493,37 @@ function setTool(tool) {
                 lockRotation: true
             });
 
+            // CRITICAL: Update the object's bounding box for hit detection
+            rectData.rect.setCoords();
+
+            console.log('  - rect after set:', {
+                selectable: rectData.rect.selectable,
+                evented: rectData.rect.evented
+            });
+            console.log('  - Coordinates updated with setCoords()');
+
             // Add moving event handler for snap-to-align
             rectData.rect.on('moving', function(e) {
+                console.log('Rectangle moving event fired!');
                 snapRectangleToAlign(rectData);
                 updateRectangleDimensions(rectData);
             });
         });
 
         state.canvas.selection = true;
-        updateSaveStatus('🤚 Move mode - Drag rectangles to position (they snap together!)');
+        console.log('Canvas selection enabled:', state.canvas.selection);
+        console.log('Move mode setup complete - rectangles should be selectable now');
+
+        // Test: add a temporary click handler to see if canvas receives clicks
+        state.canvas.on('mouse:down', function(e) {
+            console.log('Canvas mouse:down event! Target:', e.target);
+            console.log('  - Target type:', e.target?.type);
+            console.log('  - Target selectable:', e.target?.selectable);
+            console.log('  - Target evented:', e.target?.evented);
+        });
+
+        state.canvas.renderAll();
+        updateSaveStatus('🤚 Move mode - Click and drag rectangles to reposition');
     }
 
     state.canvas.renderAll();
@@ -2468,9 +2531,14 @@ function setTool(tool) {
 
 // Start Drawing a Rectangle
 function startDrawingRectangle(e) {
-    if (!state.isDrawingStage || state.currentTool !== 'draw' || state.currentDrawingRect) return;
+    console.log('startDrawingRectangle called! isDrawingStage:', state.isDrawingStage, 'currentTool:', state.currentTool, 'currentDrawingRect:', state.currentDrawingRect);
+    if (!state.isDrawingStage || state.currentTool !== 'draw' || state.currentDrawingRect) {
+        console.log('startDrawingRectangle early return');
+        return;
+    }
 
     const pointer = state.canvas.getPointer(e.e);
+    console.log('Starting rectangle at pointer:', pointer);
     state.drawingStartPoint = { x: pointer.x, y: pointer.y };
 
     // Get pixels per foot for live dimension display
@@ -2647,7 +2715,7 @@ function parseFeetInches(input) {
 
 
 // Finish Drawing Stage
-// Finish Drawing/Editing and Lock All Rectangles
+// Finish Drawing/Editing and Switch to Move Mode
 function finishDrawingStage() {
     // Handle both drawing mode and editing mode
     if (!state.isDrawingStage && !state.isEditingStage) return;
@@ -2657,42 +2725,16 @@ function finishDrawingStage() {
         return;
     }
 
-    // Lock all rectangles and their labels
-    state.stageRectangles.forEach(rectData => {
-        rectData.rect.set({
-            selectable: false,
-            evented: false,
-            locked: true
-        });
+    console.log('Finishing drawing stage, switching to move mode');
 
-        // Remove moving event handlers
-        rectData.rect.off('moving');
-
-        rectData.widthLabel.set({
-            selectable: false,
-            evented: false
-        });
-        rectData.heightLabel.set({
-            selectable: false,
-            evented: false
-        });
-    });
-
-    state.stageLocked = true;
-
-    // Show Edit Stage button, hide Draw/Finish buttons
-    const drawBtn = document.getElementById('draw-stage-btn');
-    const editBtn = document.getElementById('edit-stage-btn');
+    // Hide the Finish button (keep tool toggle visible)
     const finishBtn = document.getElementById('finish-drawing-btn');
-
-    if (drawBtn) drawBtn.style.display = 'none';
-    if (editBtn) editBtn.style.display = 'inline-block';
     if (finishBtn) finishBtn.style.display = 'none';
 
-    // Exit drawing/editing mode
-    cancelDrawingMode();
+    // Switch to move mode so user can immediately move rectangles
+    setTool('move');
 
-    updateSaveStatus(`Stage locked with ${state.stageRectangles.length} rectangle(s)`);
+    updateSaveStatus(`${state.stageRectangles.length} rectangle(s) - Switch to Move tool to reposition`);
     state.canvas.renderAll();
     triggerAutoSave();
 }
