@@ -1809,6 +1809,17 @@ function setupCanvas() {
         }
     });
 
+    // Setup undo/redo canvas event listeners
+    state.canvas.on('object:added', () => {
+        if (!state.isUndoRedoing) saveCanvasState();
+    });
+    state.canvas.on('object:modified', () => {
+        if (!state.isUndoRedoing) saveCanvasState();
+    });
+    state.canvas.on('object:removed', () => {
+        if (!state.isUndoRedoing) saveCanvasState();
+    });
+
     // Add window resize handler for responsive canvas
     let resizeTimeout;
     window.addEventListener('resize', () => {
@@ -1817,6 +1828,9 @@ function setupCanvas() {
             resizeCanvas();
         }, 250); // Debounce resize events
     });
+
+    // Initialize with draw tool active
+    setTool('draw');
 }
 
 // Resize Canvas to Fit Viewport
@@ -2010,24 +2024,6 @@ function setupStagePlotControls() {
         printPlotBtn.addEventListener('click', printPlot);
     }
 
-    // Draw Stage button
-    const drawStageBtn = document.getElementById('draw-stage-btn');
-    if (drawStageBtn) {
-        drawStageBtn.addEventListener('click', toggleDrawingMode);
-    }
-
-    // Finish Drawing button
-    const finishDrawingBtn = document.getElementById('finish-drawing-btn');
-    if (finishDrawingBtn) {
-        finishDrawingBtn.addEventListener('click', finishDrawingStage);
-    }
-
-    // Edit Stage button
-    const editStageBtn = document.getElementById('edit-stage-btn');
-    if (editStageBtn) {
-        editStageBtn.addEventListener('click', unlockStage);
-    }
-
     // Element library buttons
     const elementButtons = document.querySelectorAll('.element-btn');
     elementButtons.forEach(btn => {
@@ -2142,6 +2138,11 @@ async function createNewPlot() {
         state.undoStack = [];
         state.redoStack = [];
         updateUndoRedoButtons();
+
+        // Save initial state
+        setTimeout(() => {
+            saveCanvasState();
+        }, 100);
 
         updateSaveStatus('New plot created');
     } catch (error) {
@@ -2294,24 +2295,22 @@ function loadPlot(plotId) {
                     rectData => rectData.rect && rectData.widthLabel && rectData.heightLabel
                 );
 
-                // If we have rectangles, enter edit mode with tool toggle
-                if (state.stageRectangles.length > 0) {
-                    state.isDrawingStage = true;
+                // Set to draw tool (tools are always available now)
+                setTool('draw');
 
-                    // Show tool mode toggle
-                    const toolModeContainer = document.getElementById('tool-mode-container');
-                    if (toolModeContainer) {
-                        toolModeContainer.style.display = 'flex';
-                    }
-
-                    // Hide draw button
-                    const drawBtn = document.getElementById('draw-stage-btn');
-                    if (drawBtn) drawBtn.style.display = 'none';
-
-                    // Set to move mode so user can immediately move rectangles
-                    setTool('move');
-                }
+                // Save initial state for undo/redo
+                setTimeout(() => {
+                    saveCanvasState();
+                }, 100);
             });
+        } else {
+            // No canvas data, just set draw tool
+            setTool('draw');
+
+            // Save initial state
+            setTimeout(() => {
+                saveCanvasState();
+            }, 100);
         }
     }
 
@@ -2713,18 +2712,8 @@ function setupUndoRedo() {
         redoBtn.addEventListener('click', redo);
     }
 
-    // Hook into canvas events to save state
-    if (state.canvas) {
-        state.canvas.on('object:added', () => {
-            if (!state.isUndoRedoing) saveCanvasState();
-        });
-        state.canvas.on('object:modified', () => {
-            if (!state.isUndoRedoing) saveCanvasState();
-        });
-        state.canvas.on('object:removed', () => {
-            if (!state.isUndoRedoing) saveCanvasState();
-        });
-    }
+    // Canvas event listeners are set up in canvas initialization
+    // so they're attached when canvas is actually created
 }
 
 // Setup Keyboard Shortcuts (Delete key)
