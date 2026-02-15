@@ -27,7 +27,8 @@ const state = {
     panStart: null,  // Starting point for panning
     undoStack: [],  // History of canvas states for undo
     redoStack: [],  // History of undone states for redo
-    isUndoRedoing: false  // Flag to prevent history recording during undo/redo
+    isUndoRedoing: false,  // Flag to prevent history recording during undo/redo
+    isInteracting: false  // Flag to prevent canvas resize during user interaction
 };
 
 // Event date
@@ -1745,7 +1746,14 @@ function initializeStagePlots() {
         setupCanvas();
     }
     updatePlotSelector();
-    updateCanvasInfo();
+
+    // Auto-create a plot if none is selected (same behavior as clicking "+ New Plot")
+    setTimeout(() => {
+        if (!state.currentPlotId) {
+            console.log('No plot selected - auto-creating new plot');
+            createNewPlot();
+        }
+    }, 200);
 }
 
 // Setup Fabric.js Canvas
@@ -1820,6 +1828,14 @@ function setupCanvas() {
         if (!state.isUndoRedoing) saveCanvasState();
     });
 
+    // Track user interaction to prevent canvas resize during mouse operations
+    state.canvas.on('mouse:down', () => {
+        state.isInteracting = true;
+    });
+    state.canvas.on('mouse:up', () => {
+        state.isInteracting = false;
+    });
+
     // Add window resize handler for responsive canvas
     let resizeTimeout;
     window.addEventListener('resize', () => {
@@ -1836,6 +1852,12 @@ function setupCanvas() {
 // Resize Canvas to Fit Viewport
 function resizeCanvas() {
     if (!state.canvas) return;
+
+    // Don't resize while user is actively interacting with canvas
+    if (state.isInteracting) {
+        console.log('Skipping canvas resize - user is interacting');
+        return;
+    }
 
     const canvasWrapper = document.querySelector('.canvas-wrapper');
     if (!canvasWrapper) return;
@@ -2314,7 +2336,6 @@ function loadPlot(plotId) {
         }
     }
 
-    updateCanvasInfo();
     updateSaveStatus('Loaded');
 }
 
@@ -2365,26 +2386,19 @@ function updateSaveStatus(status) {
     if (saveStatus) {
         saveStatus.textContent = status;
 
-        // Reset to empty after 2 seconds if saved successfully
-        if (status === 'Saved') {
+        // Auto-clear most messages after 2 seconds (except Saving... which gets replaced)
+        if (status && status !== 'Saving...') {
             setTimeout(() => {
-                saveStatus.textContent = '';
+                // Only clear if the status hasn't changed to something else
+                if (saveStatus.textContent === status) {
+                    saveStatus.textContent = '';
+                }
             }, 2000);
         }
     }
 }
 
-// Update Canvas Info
-function updateCanvasInfo() {
-    // Use fixed dimensions
-    const width = 40;
-    const height = 30;
-
-    const dimensionsSpan = document.getElementById('canvas-dimensions');
-    if (dimensionsSpan) {
-        dimensionsSpan.textContent = `${width}ft × ${height}ft`;
-    }
-}
+// Update Canvas Info - removed (dimension display no longer shown)
 
 // Add Element to Canvas
 function addElementToCanvas(elementType) {
@@ -2845,26 +2859,12 @@ function setTool(tool) {
 
     if (tool === 'draw') {
         // Drawing mode: click and drag creates rectangles
-        console.log('Attaching canvas mouse event listeners for drawing');
         state.canvas.on('mouse:down', startDrawingRectangle);
         state.canvas.on('mouse:move', continueDrawingRectangle);
         state.canvas.on('mouse:up', finishDrawingRectangle);
-
-        updateSaveStatus('📐 Draw mode - Click and drag to create rectangles');
     } else if (tool === 'move') {
         // Move mode: drag existing rectangles
-        console.log('Setting up move mode. Number of rectangles:', state.stageRectangles.length);
-        console.log('stageRectangles array:', state.stageRectangles);
-
         state.stageRectangles.forEach((rectData, index) => {
-            console.log('Processing rectangle', index);
-            console.log('  - rectData:', rectData);
-            console.log('  - rect object exists:', !!rectData.rect);
-            console.log('  - rect before set:', {
-                selectable: rectData.rect.selectable,
-                evented: rectData.rect.evented
-            });
-
             rectData.rect.set({
                 selectable: true,
                 evented: true,
@@ -2877,15 +2877,8 @@ function setTool(tool) {
             // CRITICAL: Update the object's bounding box for hit detection
             rectData.rect.setCoords();
 
-            console.log('  - rect after set:', {
-                selectable: rectData.rect.selectable,
-                evented: rectData.rect.evented
-            });
-            console.log('  - Coordinates updated with setCoords()');
-
             // Add moving event handler for snap-to-align
             rectData.rect.on('moving', function(e) {
-                console.log('Rectangle moving event fired!');
                 snapRectangleToAlign(rectData);
                 updateRectangleDimensions(rectData);
             });
@@ -2896,19 +2889,8 @@ function setTool(tool) {
         });
 
         state.canvas.selection = true;
-        console.log('Canvas selection enabled:', state.canvas.selection);
-        console.log('Move mode setup complete - rectangles should be selectable now');
-
-        // Test: add a temporary click handler to see if canvas receives clicks
-        state.canvas.on('mouse:down', function(e) {
-            console.log('Canvas mouse:down event! Target:', e.target);
-            console.log('  - Target type:', e.target?.type);
-            console.log('  - Target selectable:', e.target?.selectable);
-            console.log('  - Target evented:', e.target?.evented);
-        });
 
         state.canvas.renderAll();
-        updateSaveStatus('🤚 Move mode - Click and drag rectangles to reposition');
     }
 
     state.canvas.renderAll();
@@ -2916,14 +2898,11 @@ function setTool(tool) {
 
 // Start Drawing a Rectangle
 function startDrawingRectangle(e) {
-    console.log('startDrawingRectangle called! isDrawingStage:', state.isDrawingStage, 'currentTool:', state.currentTool, 'currentDrawingRect:', state.currentDrawingRect);
-    if (!state.isDrawingStage || state.currentTool !== 'draw' || state.currentDrawingRect) {
-        console.log('startDrawingRectangle early return');
+    if (state.currentTool !== 'draw' || state.currentDrawingRect) {
         return;
     }
 
     const pointer = state.canvas.getPointer(e.e);
-    console.log('Starting rectangle at pointer:', pointer);
     state.drawingStartPoint = { x: pointer.x, y: pointer.y };
 
     // Get pixels per foot for live dimension display
@@ -2952,7 +2931,7 @@ function startDrawingRectangle(e) {
 
 // Continue Drawing Rectangle (mouse move)
 function continueDrawingRectangle(e) {
-    if (!state.isDrawingStage || !state.currentDrawingRect || !state.drawingStartPoint) return;
+    if (!state.currentDrawingRect || !state.drawingStartPoint) return;
 
     const pointer = state.canvas.getPointer(e.e);
     const startX = state.drawingStartPoint.x;
@@ -2980,7 +2959,7 @@ function continueDrawingRectangle(e) {
 
 // Finish Drawing Rectangle (mouse up)
 function finishDrawingRectangle(e) {
-    if (!state.isDrawingStage || !state.currentDrawingRect) return;
+    if (!state.currentDrawingRect) return;
 
     const rect = state.currentDrawingRect;
 
@@ -3055,7 +3034,6 @@ function finishDrawingRectangle(e) {
     state.currentDrawingRect = null;
     state.drawingStartPoint = null;
 
-    updateSaveStatus(`Drew ${feetToFeetInches(widthFeet)} × ${feetToFeetInches(heightFeet)} rectangle - Draw another or click Finish`);
     state.canvas.renderAll();
 }
 
@@ -3131,7 +3109,6 @@ function finishDrawingStage() {
     // Switch to move mode so user can immediately move rectangles
     setTool('move');
 
-    updateSaveStatus(`${state.stageRectangles.length} rectangle(s) - Switch to Move tool to reposition`);
     state.canvas.renderAll();
     triggerAutoSave();
 }
@@ -3216,7 +3193,7 @@ function editRectangleDimension(dimensionLabel) {
 
     state.canvas.renderAll();
     triggerAutoSave();
-    updateSaveStatus(`Rectangle ${dimensionType} updated to ${feetToFeetInches(newFeet)}`);
+    updateSaveStatus('Updated');
 }
 
 // Update Rectangle Dimension Label Positions and Text
@@ -3447,7 +3424,7 @@ function setupPlotNameInput() {
             // Update the dropdown to show the new name
             updatePlotSelector();
 
-            updateSaveStatus('Plot name updated');
+            updateSaveStatus('Renamed');
         } catch (error) {
             console.error('Error updating plot name:', error);
             alert('Error updating plot name. Please try again.');

@@ -2921,6 +2921,9 @@ body.menu-open {
 
 .zoom-level {
     font-size: 0.85rem;
+    min-width: 45px;  /* Prevent width changes between 50% and 250% */
+    text-align: center;
+    display: inline-block;
     font-weight: 600;
     color: #2c3e50;
     min-width: 50px;
@@ -2977,6 +2980,10 @@ body.menu-open {
     font-size: 0.9rem;
     color: #666;
     white-space: nowrap;
+    width: 120px;  /* Fixed width - never changes */
+    text-align: right;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .save-status.saving .status-text::before {
