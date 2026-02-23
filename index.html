@@ -18,7 +18,6 @@
             </button>
             <div class="nav-menu" id="nav-menu">
                 <a href="#" class="nav-link active" data-page="dashboard">Dashboard</a>
-                <a href="#" class="nav-link" data-page="vendors">Vendors</a>
                 <a href="#" class="nav-link" data-page="budget">Budget</a>
                 <a href="#" class="nav-link" data-page="timeline">Timeline</a>
                 <a href="#" class="nav-link" data-page="input-lists">Input Lists</a>
@@ -131,66 +130,6 @@
                 </div>
             </div>
 
-            <!-- Upcoming Deadlines -->
-            <div class="card">
-                <div class="card-header">
-                    <h2>Upcoming Deadlines</h2>
-                </div>
-                <div class="card-body">
-                    <div id="upcoming-deadlines" class="deadline-list">
-                        <p class="empty-state">No upcoming deadlines</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Vendors Page -->
-        <div id="vendors" class="page">
-            <div class="page-header">
-                <h1>Vendors</h1>
-                <div class="header-actions">
-                    <button class="btn btn-secondary" id="export-vendors-btn">📊 Export to Excel</button>
-                    <button class="btn btn-primary" id="add-vendor-btn">+ Add Vendor</button>
-                </div>
-            </div>
-
-            <!-- Search and Filter -->
-            <div class="toolbar">
-                <input type="text" id="vendor-search" class="search-input" placeholder="Search vendors...">
-                <select id="vendor-category-filter" class="filter-select">
-                    <option value="">All Categories</option>
-                </select>
-                <select id="vendor-status-filter" class="filter-select">
-                    <option value="">All Statuses</option>
-                    <option value="confirmed">Confirmed</option>
-                    <option value="pending">Pending</option>
-                    <option value="issue">Issue</option>
-                </select>
-            </div>
-
-            <!-- Vendors Table -->
-            <div class="card">
-                <div class="table-container">
-                    <table class="data-table" id="vendors-table">
-                        <thead>
-                            <tr>
-                                <th>Vendor Name</th>
-                                <th>Category</th>
-                                <th>Contact</th>
-                                <th>Budgeted</th>
-                                <th>Actual</th>
-                                <th>Payment Status</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody id="vendors-tbody">
-                            <tr>
-                                <td colspan="7" class="empty-state">No vendors found</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
         </div>
 
         <!-- Budget Page -->
@@ -221,21 +160,6 @@
                     <div class="stat-content">
                         <div class="stat-label">Remaining</div>
                         <div class="stat-value" id="budget-remaining">$0</div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Budget by Category (Collapsible) -->
-            <div class="card">
-                <div class="card-header accordion-header" onclick="toggleBudgetCategoryAccordion()">
-                    <div style="display: flex; align-items: center; gap: 0.5rem;">
-                        <span id="budget-category-arrow" class="accordion-arrow">▶</span>
-                        <h2>Budget by Category</h2>
-                    </div>
-                </div>
-                <div class="card-body accordion-content" id="budget-category-accordion" style="display: none;">
-                    <div id="budget-categories" class="budget-categories">
-                        <p class="empty-state">No budget items</p>
                     </div>
                 </div>
             </div>
@@ -515,77 +439,6 @@
         </div>
     </div>
 
-    <!-- Vendor Modal -->
-    <div id="vendor-modal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2 id="vendor-modal-title">Add Vendor</h2>
-                <button class="close-btn">&times;</button>
-            </div>
-            <div class="modal-body">
-                <form id="vendor-form">
-                    <input type="hidden" id="vendor-id">
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="vendor-name">Vendor Name *</label>
-                            <input type="text" id="vendor-name" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="vendor-category">Category *</label>
-                            <input type="text" id="vendor-category" required>
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="vendor-contact">Contact Person</label>
-                            <input type="text" id="vendor-contact">
-                        </div>
-                        <div class="form-group">
-                            <label for="vendor-email">Email</label>
-                            <input type="email" id="vendor-email">
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="vendor-phone">Phone</label>
-                            <input type="tel" id="vendor-phone">
-                        </div>
-                        <div class="form-group">
-                            <label for="vendor-amount">Amount</label>
-                            <input type="number" id="vendor-amount" step="0.01" min="0">
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="vendor-status">Contract Status *</label>
-                            <select id="vendor-status" required>
-                                <option value="pending">Pending</option>
-                                <option value="confirmed">Confirmed</option>
-                                <option value="issue">Issue</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="vendor-payment-status">Payment Status</label>
-                            <select id="vendor-payment-status">
-                                <option value="not-paid">Not Paid</option>
-                                <option value="partial">Partial</option>
-                                <option value="paid">Paid</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label for="vendor-notes">Notes</label>
-                        <textarea id="vendor-notes" rows="3"></textarea>
-                    </div>
-                    <div class="form-actions">
-                        <button type="button" class="btn btn-secondary cancel-btn">Cancel</button>
-                        <button type="submit" class="btn btn-primary">Save Vendor</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-
     <!-- Budget Item Modal -->
     <div id="budget-modal" class="modal">
         <div class="modal-content">
@@ -599,6 +452,10 @@
                     <div class="form-group">
                         <label for="budget-vendor">Vendor/Item Name *</label>
                         <input type="text" id="budget-vendor" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="budget-description">Description/Role</label>
+                        <input type="text" id="budget-description">
                     </div>
                     <div class="form-group">
                         <label for="budget-category">Category *</label>
@@ -648,6 +505,12 @@
                     <div class="form-group">
                         <label for="budget-notes">Notes</label>
                         <textarea id="budget-notes" rows="3"></textarea>
+                    </div>
+                    <div class="form-group checkbox-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="budget-confirmed">
+                            <span>Confirmed</span>
+                        </label>
                     </div>
                     <div class="form-actions">
                         <button type="button" class="btn btn-secondary cancel-btn">Cancel</button>

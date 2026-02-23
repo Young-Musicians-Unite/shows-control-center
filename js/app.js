@@ -1,12 +1,12 @@
 // Global state
 const state = {
-    vendors: [],
     budget: [],
     timeline: [],
     mainStageInputs: [],
     cocktailStageInputs: [],
     staff: [],
     stagePlots: [],
+    budgetSort: { field: null, direction: 'asc' },
     currentPage: 'dashboard',
     currentDay: 'Thursday',  // For timeline filtering
     currentStage: 'main',  // For stage input filtering
@@ -76,7 +76,6 @@ function initializeApp() {
     setupCountdown();
     loadAllData();
     setupFormHandlers();
-    setupSearchAndFilter();
     setupDayTabs();
     setupStageTabs();
     setupExportAndPrint();
@@ -165,10 +164,23 @@ function switchPage(pageName) {
 
         // Refresh data for the page
         if (pageName === 'dashboard') updateDashboard();
-        if (pageName === 'vendors') renderVendors();
         if (pageName === 'budget') renderBudget();
-        if (pageName === 'timeline') renderTimeline();
-        if (pageName === 'input-lists') renderStageInputs();
+        if (pageName === 'timeline') {
+            // Reset to first day tab (Thursday)
+            state.currentDay = 'Thursday';
+            const dayTabs = document.querySelectorAll('.day-tab[data-day]');
+            dayTabs.forEach(t => t.classList.remove('active'));
+            if (dayTabs.length > 0) dayTabs[0].classList.add('active');
+            renderTimeline();
+        }
+        if (pageName === 'input-lists') {
+            // Reset to first stage tab (Main Stage)
+            state.currentStage = 'main';
+            const stageTabs = document.querySelectorAll('.day-tab[data-stage]');
+            stageTabs.forEach(t => t.classList.remove('active'));
+            if (stageTabs.length > 0) stageTabs[0].classList.add('active');
+            renderStageInputs();
+        }
         if (pageName === 'staff') renderStaff();
         if (pageName === 'stage-plots') initializeStagePlots();
     }
@@ -216,7 +228,6 @@ function setupCollectionListener(collectionKey, stateKey, renderCallbacks = []) 
 
 // Load all data from Firestore
 function loadAllData() {
-    setupCollectionListener('vendors', 'vendors', [renderVendors, updateDashboard]);
     setupCollectionListener('budget', 'budget', [renderBudget, updateDashboard]);
     setupCollectionListener('timeline', 'timeline', [renderTimeline, updateDashboard]);
     setupCollectionListener('mainStageInputs', 'mainStageInputs', [renderStageInputs]);
@@ -230,7 +241,6 @@ function updateDashboard() {
     updateBudgetStats();
     updateVendorStats();
     updateTimelineStats();
-    updateUpcomingDeadlines();
 }
 
 function updateBudgetStats() {
@@ -252,14 +262,14 @@ function updateBudgetStats() {
 }
 
 function updateVendorStats() {
-    const confirmed = state.vendors.filter(v => v.status === 'confirmed').length;
-    const pending = state.vendors.filter(v => v.status === 'pending').length;
-    const issues = state.vendors.filter(v => v.status === 'issue').length;
+    const confirmed = state.budget.filter(b => b.confirmed).length;
+    const total = state.budget.length;
+    const pending = total - confirmed;
 
     document.getElementById('vendors-confirmed').textContent = confirmed;
     document.getElementById('vendor-confirmed-count').textContent = confirmed;
     document.getElementById('vendor-pending-count').textContent = pending;
-    document.getElementById('vendor-issue-count').textContent = issues;
+    document.getElementById('vendor-issue-count').textContent = 0;
 }
 
 function updateTimelineStats() {
@@ -278,161 +288,82 @@ function updateTimelineStats() {
     if (el('timeline-overdue')) el('timeline-overdue').textContent = overdue;
 }
 
-function updateUpcomingDeadlines() {
-    const now = new Date();
-    const upcoming = state.timeline
-        .filter(t => t.dueDate && t.status !== 'complete')
-        .map(t => ({
-            ...t,
-            dueDateObj: new Date(t.dueDate)
-        }))
-        .sort((a, b) => a.dueDateObj - b.dueDateObj)
-        .slice(0, 5);
-
-    const container = document.getElementById('upcoming-deadlines');
-
-    if (upcoming.length === 0) {
-        container.innerHTML = '<p class="empty-state">No upcoming deadlines</p>';
-        return;
+// Toggle confirmed status for budget items
+async function toggleBudgetConfirmed(id, confirmed) {
+    try {
+        await collections.budget.doc(id).update({
+            confirmed: confirmed,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        showToast(confirmed ? 'Item confirmed' : 'Item unconfirmed');
+    } catch (error) {
+        console.error('Error toggling confirmed:', error);
+        showToast('Error updating confirmed status', 'error');
     }
-
-    container.innerHTML = upcoming.map(item => {
-        const isOverdue = item.dueDateObj < now;
-        const daysUntil = Math.ceil((item.dueDateObj - now) / (1000 * 60 * 60 * 24));
-
-        return `
-            <div class="deadline-item ${isOverdue ? 'overdue' : ''}">
-                <div class="deadline-info">
-                    <div class="deadline-task">${escapeHtml(item.task)}</div>
-                    <div class="deadline-date">
-                        ${formatDate(item.dueDate)}
-                        ${item.responsible ? ` • ${escapeHtml(item.responsible)}` : ''}
-                    </div>
-                </div>
-                <span class="deadline-badge ${isOverdue ? 'overdue' : 'upcoming'}">
-                    ${isOverdue ? `${Math.abs(daysUntil)} days overdue` : `${daysUntil} days`}
-                </span>
-            </div>
-        `;
-    }).join('');
-}
-
-// Vendors
-function renderVendors() {
-    const tbody = document.getElementById('vendors-tbody');
-    const filtered = getFilteredVendors();
-
-    if (filtered.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No vendors found</td></tr>';
-        return;
-    }
-
-    tbody.innerHTML = filtered.map(vendor => `
-        <tr>
-            <td>${escapeHtml(vendor.vendor || '')}</td>
-            <td>${escapeHtml(vendor.category || '')}</td>
-            <td>
-                ${vendor.contact ? escapeHtml(vendor.contact) + '<br>' : ''}
-                ${vendor.phone ? `<small>${escapeHtml(vendor.phone)}</small><br>` : ''}
-                ${vendor.email ? `<small>${escapeHtml(vendor.email)}</small>` : ''}
-            </td>
-            <td>${vendor.budgeted ? formatCurrency(vendor.budgeted) : '-'}</td>
-            <td>${vendor.actual ? formatCurrency(vendor.actual) : '-'}</td>
-            <td><span class="status-badge ${vendor.paymentStatus}">${formatPaymentStatus(vendor.paymentStatus)}</span></td>
-            <td>
-                <button class="btn btn-edit" onclick="editBudgetItem('${vendor.id}')">Edit</button>
-                <button class="btn btn-danger" onclick="deleteBudgetItem('${vendor.id}')">Delete</button>
-            </td>
-        </tr>
-    `).join('');
-}
-
-function getFilteredVendors() {
-    // Read from budget collection instead of vendors
-    let filtered = [...state.budget];
-
-    const searchTerm = document.getElementById('vendor-search')?.value.toLowerCase() || '';
-    const categoryFilter = document.getElementById('vendor-category-filter')?.value || '';
-    const statusFilter = document.getElementById('vendor-status-filter')?.value || '';
-
-    if (searchTerm) {
-        filtered = filtered.filter(v =>
-            (v.vendor || '').toLowerCase().includes(searchTerm) ||
-            (v.contact || '').toLowerCase().includes(searchTerm) ||
-            (v.email || '').toLowerCase().includes(searchTerm)
-        );
-    }
-
-    if (categoryFilter) {
-        filtered = filtered.filter(v => v.category === categoryFilter);
-    }
-
-    if (statusFilter) {
-        filtered = filtered.filter(v => v.paymentStatus === statusFilter);
-    }
-
-    return filtered;
 }
 
 // Budget
 function renderBudget() {
-    renderBudgetCategories();
     renderBudgetGrouped();
 }
 
-function renderBudgetCategories() {
-    const container = document.getElementById('budget-categories');
-
-    if (state.budget.length === 0) {
-        container.innerHTML = '<p class="empty-state">No budget items</p>';
-        return;
+// Sort budget items by a column
+function sortBudgetBy(field) {
+    if (state.budgetSort.field === field) {
+        state.budgetSort.direction = state.budgetSort.direction === 'asc' ? 'desc' : 'asc';
+    } else {
+        state.budgetSort.field = field;
+        state.budgetSort.direction = 'asc';
     }
+    renderBudgetGrouped();
+}
+window.sortBudgetBy = sortBudgetBy;
 
-    // Group by category
-    const categories = {};
-    state.budget.forEach(item => {
-        const cat = item.category || 'Uncategorized';
-        if (!categories[cat]) {
-            categories[cat] = { budgeted: 0, actual: 0 };
+function getSortedBudgetItems(items) {
+    const { field, direction } = state.budgetSort;
+    if (!field) return items;
+
+    const sorted = [...items].sort((a, b) => {
+        let valA, valB;
+
+        if (field === 'confirmed') {
+            valA = a.confirmed ? 1 : 0;
+            valB = b.confirmed ? 1 : 0;
+        } else if (field === 'budgeted' || field === 'actual') {
+            valA = parseFloat(a[field]) || 0;
+            valB = parseFloat(b[field]) || 0;
+        } else if (field === 'difference') {
+            valA = (parseFloat(a.budgeted) || 0) - (parseFloat(a.actual) || 0);
+            valB = (parseFloat(b.budgeted) || 0) - (parseFloat(b.actual) || 0);
+        } else {
+            valA = (a[field] || '').toString().toLowerCase();
+            valB = (b[field] || '').toString().toLowerCase();
         }
-        categories[cat].budgeted += parseFloat(item.budgeted) || 0;
-        categories[cat].actual += parseFloat(item.actual) || 0;
+
+        if (valA < valB) return -1;
+        if (valA > valB) return 1;
+        return 0;
     });
 
-    container.innerHTML = Object.entries(categories).map(([name, data]) => {
-        const percentage = data.budgeted > 0 ? (data.actual / data.budgeted * 100) : 0;
-        const remaining = data.budgeted - data.actual;
+    return direction === 'desc' ? sorted.reverse() : sorted;
+}
 
-        return `
-            <div class="budget-category">
-                <div class="budget-category-header">
-                    <div class="budget-category-name">${escapeHtml(name)}</div>
-                    <div class="budget-category-amounts">
-                        <div class="budget-amount">
-                            <span class="budget-amount-label">Budgeted</span>
-                            <span class="budget-amount-value">${formatCurrency(data.budgeted)}</span>
-                        </div>
-                        <div class="budget-amount">
-                            <span class="budget-amount-label">Spent</span>
-                            <span class="budget-amount-value">${formatCurrency(data.actual)}</span>
-                        </div>
-                        <div class="budget-amount">
-                            <span class="budget-amount-label">Remaining</span>
-                            <span class="budget-amount-value">${formatCurrency(remaining)}</span>
-                        </div>
-                    </div>
-                </div>
-                <div class="budget-category-progress">
-                    <div class="budget-category-progress-fill" style="width: ${Math.min(percentage, 100)}%"></div>
-                </div>
-            </div>
-        `;
-    }).join('');
+function budgetSortIndicator(field) {
+    if (state.budgetSort.field !== field) return '';
+    return state.budgetSort.direction === 'asc' ? ' ▲' : ' ▼';
 }
 
 // Render Budget Grouped by Category (Collapsible Sections)
 function renderBudgetGrouped() {
     const container = document.getElementById('budget-grouped-container');
+
+    // Remember which sections are open
+    const openSections = {};
+    container.querySelectorAll('.category-section-content').forEach(el => {
+        if (el.style.display !== 'none') {
+            openSections[el.id] = true;
+        }
+    });
 
     if (state.budget.length === 0) {
         container.innerHTML = '<div class="card"><div class="card-body"><p class="empty-state">No budget items</p></div></div>';
@@ -467,6 +398,8 @@ function renderBudgetGrouped() {
         const totals = categoryTotals[category];
         const categoryId = category.replace(/[^a-zA-Z0-9]/g, '_');
 
+        const percentage = totals.budgeted > 0 ? (totals.actual / totals.budgeted * 100) : 0;
+
         return `
             <div class="card budget-category-section">
                 <div class="card-header category-section-header" onclick="toggleCategorySection('${categoryId}')">
@@ -480,23 +413,28 @@ function renderBudgetGrouped() {
                         <span><strong>Spent:</strong> ${formatCurrency(totals.actual)}</span>
                         <span><strong>Remaining:</strong> ${formatCurrency(totals.budgeted - totals.actual)}</span>
                     </div>
+                    <div class="budget-category-progress" style="margin-top: 8px;">
+                        <div class="budget-category-progress-fill" style="width: ${Math.min(percentage, 100)}%"></div>
+                    </div>
                 </div>
                 <div class="category-section-content" id="content-${categoryId}" style="display: none;">
                     <div class="table-container">
                         <table class="data-table budget-table">
                             <thead>
                                 <tr>
-                                    <th>Vendor/Item</th>
-                                    <th>Budgeted</th>
-                                    <th>Actual</th>
-                                    <th>Difference</th>
-                                    <th>Payment Status</th>
-                                    <th>Notes</th>
+                                    <th class="sortable-th" onclick="sortBudgetBy('confirmed')">Confirmed${budgetSortIndicator('confirmed')}</th>
+                                    <th class="sortable-th" onclick="sortBudgetBy('vendor')">Vendor/Item${budgetSortIndicator('vendor')}</th>
+                                    <th class="sortable-th" onclick="sortBudgetBy('description')">Description/Role${budgetSortIndicator('description')}</th>
+                                    <th class="sortable-th" onclick="sortBudgetBy('budgeted')">Budgeted${budgetSortIndicator('budgeted')}</th>
+                                    <th class="sortable-th" onclick="sortBudgetBy('actual')">Actual${budgetSortIndicator('actual')}</th>
+                                    <th class="sortable-th" onclick="sortBudgetBy('difference')">Difference${budgetSortIndicator('difference')}</th>
+                                    <th class="sortable-th" onclick="sortBudgetBy('paymentStatus')">Payment Status${budgetSortIndicator('paymentStatus')}</th>
+                                    <th class="sortable-th" onclick="sortBudgetBy('notes')">Notes${budgetSortIndicator('notes')}</th>
                                     <th class="no-print">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                ${items.map(item => {
+                                ${getSortedBudgetItems(items).map(item => {
                                     const budgeted = parseFloat(item.budgeted) || 0;
                                     const actual = parseFloat(item.actual) || 0;
                                     const difference = budgeted - actual;
@@ -504,7 +442,11 @@ function renderBudgetGrouped() {
 
                                     return `
                                         <tr data-id="${item.id}" ondblclick="makeBudgetRowEditable(this)">
+                                            <td class="confirmed-cell">
+                                                <input type="checkbox" class="confirmed-checkbox" ${item.confirmed ? 'checked' : ''} onchange="toggleBudgetConfirmed('${item.id}', this.checked)">
+                                            </td>
                                             <td data-field="vendor" data-original="${escapeHtml(item.vendor || '')}">${escapeHtml(item.vendor || '')}</td>
+                                            <td data-field="description" data-original="${escapeHtml(item.description || '')}">${escapeHtml(item.description || '')}</td>
                                             <td data-field="budgeted" data-original="${budgeted}">${formatCurrency(budgeted)}</td>
                                             <td data-field="actual" data-original="${actual}">${formatCurrency(actual)}</td>
                                             <td class="${diffClass}">${formatCurrency(Math.abs(difference))} ${difference < 0 ? 'over' : difference > 0 ? 'under' : ''}</td>
@@ -525,6 +467,15 @@ function renderBudgetGrouped() {
             </div>
         `;
     }).join('');
+
+    // Restore open sections
+    Object.keys(openSections).forEach(id => {
+        const content = document.getElementById(id);
+        const arrowId = id.replace('content-', 'arrow-');
+        const arrow = document.getElementById(arrowId);
+        if (content) content.style.display = 'block';
+        if (arrow) arrow.textContent = '▼';
+    });
 }
 
 // Timeline
@@ -563,7 +514,7 @@ function renderTimeline() {
     });
 
     tbody.innerHTML = sorted.map(item => {
-        const isComplete = item.completed === true;
+        const isComplete = item.completed === true || item.status === 'complete';
 
         return `
             <tr class="${isComplete ? 'task-completed' : ''}"
@@ -575,7 +526,7 @@ function renderTimeline() {
                            onchange="toggleTaskComplete('${item.id}', this.checked)">
                 </td>
                 <td class="time-col" data-field="time" data-original="${escapeHtml(item.time || '')}">${formatTime12Hour(item.time)}</td>
-                <td class="event-col ${isComplete ? 'task-completed' : ''}" data-field="event" data-original="${escapeHtml(item.event || '')}">${escapeHtml(item.event || '')}</td>
+                <td class="event-col" data-field="event" data-original="${escapeHtml(item.event || '')}">${escapeHtml(item.event || '')}</td>
                 <td class="responsible-col" data-field="responsible" data-original="${escapeHtml(item.responsible || '')}">${escapeHtml(item.responsible || '')}</td>
                 <td class="staff-col" data-field="staff" data-original="${escapeHtml(item.staff || '')}">${escapeHtml(item.staff || '')}</td>
                 <td class="actions-col no-print">
@@ -603,7 +554,6 @@ function setupModals() {
     });
 
     // Add button handlers
-    document.getElementById('add-vendor-btn').addEventListener('click', () => openVendorModal());
     document.getElementById('add-budget-item-btn').addEventListener('click', () => openBudgetModal());
     document.getElementById('add-timeline-item-btn').addEventListener('click', () => openTimelineModal());
     document.getElementById('add-staff-btn').addEventListener('click', () => openStaffModal());
@@ -637,7 +587,11 @@ function openModal(config) {
         Object.entries(config.fieldMap).forEach(([fieldId, dataKey]) => {
             const element = document.getElementById(fieldId);
             if (element) {
-                element.value = data[dataKey] || '';
+                if (element.type === 'checkbox') {
+                    element.checked = !!data[dataKey];
+                } else {
+                    element.value = data[dataKey] || '';
+                }
             }
         });
 
@@ -667,32 +621,6 @@ function openModal(config) {
     modal.classList.add('active');
 }
 
-function openVendorModal(vendorId = null) {
-    openModal({
-        modalId: 'vendor-modal',
-        formId: 'vendor-form',
-        idFieldId: 'vendor-id',
-        itemId: vendorId,
-        stateKey: 'vendors',
-        title: 'Vendor',
-        fieldMap: {
-            'vendor-name': 'name',
-            'vendor-category': 'category',
-            'vendor-contact': 'contactPerson',
-            'vendor-email': 'email',
-            'vendor-phone': 'phone',
-            'vendor-amount': 'amount',
-            'vendor-status': 'status',
-            'vendor-payment-status': 'paymentStatus',
-            'vendor-notes': 'notes'
-        },
-        defaultValues: {
-            'vendor-status': 'pending',
-            'vendor-payment-status': 'not-paid'
-        }
-    });
-}
-
 function openBudgetModal(itemId = null) {
     openModal({
         modalId: 'budget-modal',
@@ -703,6 +631,7 @@ function openBudgetModal(itemId = null) {
         title: 'Budget Item',
         fieldMap: {
             'budget-vendor': 'vendor',
+            'budget-description': 'description',
             'budget-category': 'category',
             'budget-contact': 'contact',
             'budget-phone': 'phone',
@@ -710,7 +639,8 @@ function openBudgetModal(itemId = null) {
             'budget-budgeted': 'budgeted',
             'budget-actual': 'actual',
             'budget-payment-status': 'paymentStatus',
-            'budget-notes': 'notes'
+            'budget-notes': 'notes',
+            'budget-confirmed': 'confirmed'
         },
         defaultValues: {
             'budget-payment-status': 'not-paid'
@@ -741,7 +671,6 @@ function openTimelineModal(itemId = null) {
 
 // Form Handlers
 function setupFormHandlers() {
-    document.getElementById('vendor-form').addEventListener('submit', handleVendorSubmit);
     document.getElementById('budget-form').addEventListener('submit', handleBudgetSubmit);
     document.getElementById('timeline-form').addEventListener('submit', handleTimelineSubmit);
     document.getElementById('staff-form').addEventListener('submit', handleStaffSubmit);
@@ -754,11 +683,16 @@ async function handleFormSubmit(e, config) {
     const data = {};
     Object.entries(config.fieldMap).forEach(([fieldId, dataKey]) => {
         const element = document.getElementById(fieldId);
-        let value = element.value;
+        let value;
 
-        // Handle number fields
-        if (config.numericFields && config.numericFields.includes(dataKey)) {
-            value = parseFloat(value) || 0;
+        if (element.type === 'checkbox') {
+            value = element.checked;
+        } else {
+            value = element.value;
+            // Handle number fields
+            if (config.numericFields && config.numericFields.includes(dataKey)) {
+                value = parseFloat(value) || 0;
+            }
         }
 
         data[dataKey] = value;
@@ -784,26 +718,6 @@ async function handleFormSubmit(e, config) {
     }
 }
 
-async function handleVendorSubmit(e) {
-    await handleFormSubmit(e, {
-        collection: 'vendors',
-        idFieldId: 'vendor-id',
-        itemName: 'vendor',
-        fieldMap: {
-            'vendor-name': 'name',
-            'vendor-category': 'category',
-            'vendor-contact': 'contactPerson',
-            'vendor-email': 'email',
-            'vendor-phone': 'phone',
-            'vendor-amount': 'amount',
-            'vendor-status': 'status',
-            'vendor-payment-status': 'paymentStatus',
-            'vendor-notes': 'notes'
-        },
-        numericFields: ['amount']
-    });
-}
-
 async function handleBudgetSubmit(e) {
     await handleFormSubmit(e, {
         collection: 'budget',
@@ -811,6 +725,7 @@ async function handleBudgetSubmit(e) {
         itemName: 'budget item',
         fieldMap: {
             'budget-vendor': 'vendor',
+            'budget-description': 'description',
             'budget-category': 'category',
             'budget-contact': 'contact',
             'budget-phone': 'phone',
@@ -818,7 +733,8 @@ async function handleBudgetSubmit(e) {
             'budget-budgeted': 'budgeted',
             'budget-actual': 'actual',
             'budget-payment-status': 'paymentStatus',
-            'budget-notes': 'notes'
+            'budget-notes': 'notes',
+            'budget-confirmed': 'confirmed'
         },
         numericFields: ['budgeted', 'actual']
     });
@@ -840,42 +756,7 @@ async function handleTimelineSubmit(e) {
     });
 }
 
-// Search and Filter
-function setupSearchAndFilter() {
-    const vendorSearch = document.getElementById('vendor-search');
-    const vendorCategoryFilter = document.getElementById('vendor-category-filter');
-    const vendorStatusFilter = document.getElementById('vendor-status-filter');
-
-    if (vendorSearch) {
-        vendorSearch.addEventListener('input', renderVendors);
-    }
-
-    if (vendorCategoryFilter) {
-        vendorCategoryFilter.addEventListener('change', renderVendors);
-    }
-
-    if (vendorStatusFilter) {
-        vendorStatusFilter.addEventListener('change', renderVendors);
-    }
-
-    // Populate category filter
-    updateCategoryFilter();
-}
-
-function updateCategoryFilter() {
-    const categories = [...new Set(state.vendors.map(v => v.category).filter(Boolean))];
-    const select = document.getElementById('vendor-category-filter');
-
-    if (select) {
-        const currentValue = select.value;
-        select.innerHTML = '<option value="">All Categories</option>' +
-            categories.map(cat => `<option value="${escapeHtml(cat)}">${escapeHtml(cat)}</option>`).join('');
-        select.value = currentValue;
-    }
-}
-
 // CRUD Operations
-window.editVendor = (id) => openVendorModal(id);
 window.editBudgetItem = (id) => openBudgetModal(id);
 window.editTimelineItem = (id) => openTimelineModal(id);
 
@@ -894,17 +775,18 @@ function createDeleteHandler(collectionKey, itemName) {
     };
 }
 
-window.deleteVendor = createDeleteHandler('vendors', 'vendor');
 window.deleteBudgetItem = createDeleteHandler('budget', 'budget item');
+window.toggleBudgetConfirmed = toggleBudgetConfirmed;
 window.deleteTimelineItem = createDeleteHandler('timeline', 'task');
 
 window.toggleTaskComplete = async (id, completed) => {
     try {
         await collections.timeline.doc(id).update({
+            completed: completed,
             status: completed ? 'complete' : 'in-progress',
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         });
-        showToast(completed ? 'Task marked complete' : 'Task marked incomplete');
+        showToast(completed ? 'Checked off' : 'Unchecked');
     } catch (error) {
         console.error('Error updating task:', error);
         showToast('Error updating task. Please try again.', 'error');
@@ -1031,7 +913,6 @@ function setupExportAndPrint() {
     // Export Buttons
     const exportTimelineBtn = document.getElementById('export-timeline-btn');
     const exportBudgetBtn = document.getElementById('export-budget-btn');
-    const exportVendorsBtn = document.getElementById('export-vendors-btn');
     const exportStageBtn = document.getElementById('export-stage-btn');
     const exportStaffBtn = document.getElementById('export-staff-btn');
 
@@ -1040,9 +921,6 @@ function setupExportAndPrint() {
     }
     if (exportBudgetBtn) {
         exportBudgetBtn.addEventListener('click', exportBudgetToExcel);
-    }
-    if (exportVendorsBtn) {
-        exportVendorsBtn.addEventListener('click', exportVendorsToExcel);
     }
     if (exportStageBtn) {
         exportStageBtn.addEventListener('click', exportStageInputsToExcel);
@@ -1166,55 +1044,6 @@ function exportBudgetToExcel() {
     XLSX.writeFile(wb, `YMU_Gala_Budget_${today}.xlsx`);
 }
 
-// Export Vendors to Excel
-function exportVendorsToExcel() {
-    // Prepare data for Excel
-    const data = state.vendors.map(item => ({
-        'Vendor Name': item.name || '',
-        'Category': item.category || '',
-        'Contact Person': item.contact || '',
-        'Phone': item.phone || '',
-        'Email': item.email || '',
-        'Amount': parseFloat(item.amount) || 0,
-        'Status': formatStatus(item.status),
-        'Payment Status': formatPaymentStatus(item.paymentStatus),
-        'Notes': item.notes || ''
-    }));
-
-    // Create worksheet
-    const ws = XLSX.utils.json_to_sheet(data);
-
-    // Set column widths
-    ws['!cols'] = [
-        { wch: 25 },  // Vendor Name
-        { wch: 30 },  // Category
-        { wch: 20 },  // Contact Person
-        { wch: 15 },  // Phone
-        { wch: 25 },  // Email
-        { wch: 12 },  // Amount
-        { wch: 12 },  // Status
-        { wch: 15 },  // Payment Status
-        { wch: 40 }   // Notes
-    ];
-
-    // Add number formatting for amount column
-    const range = XLSX.utils.decode_range(ws['!ref']);
-    for (let R = range.s.r + 1; R <= range.e.r; ++R) {
-        const cellRef = 'F' + (R + 1);
-        if (ws[cellRef]) {
-            ws[cellRef].z = '$#,##0.00';
-        }
-    }
-
-    // Create workbook
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Vendors');
-
-    // Download
-    const today = new Date().toISOString().split('T')[0];
-    XLSX.writeFile(wb, `YMU_Gala_Vendors_${today}.xlsx`);
-}
-
 // Inline Editing for Timeline
 function makeRowEditable(row) {
     // Skip if already in edit mode
@@ -1317,21 +1146,6 @@ function convertTo24Hour(time12) {
 }
 
 // Budget Category Accordion Toggle
-function toggleBudgetCategoryAccordion() {
-    const content = document.getElementById('budget-category-accordion');
-    const arrow = document.getElementById('budget-category-arrow');
-
-    if (content.style.display === 'none') {
-        content.style.display = 'block';
-        arrow.textContent = '▼';
-        localStorage.setItem('budgetCategoryAccordionOpen', 'true');
-    } else {
-        content.style.display = 'none';
-        arrow.textContent = '▶';
-        localStorage.setItem('budgetCategoryAccordionOpen', 'false');
-    }
-}
-
 // Toggle Category Section
 function toggleCategorySection(categoryId) {
     const content = document.getElementById(`content-${categoryId}`);

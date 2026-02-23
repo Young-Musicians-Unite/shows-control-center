@@ -1265,9 +1265,9 @@ body {
     width: 180px;
 }
 
-.timeline-table .task-completed {
+tr.task-completed td:not(.checkbox-col):not(.actions-col) {
     text-decoration: line-through;
-    opacity: 0.6;
+    opacity: 0.5;
 }
 
 .timeline-date {
@@ -1461,6 +1461,11 @@ tr.editing td {
     background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
     border-bottom: 2px solid #dee2e6;
     transition: all 0.2s ease;
+    flex-wrap: wrap;
+}
+
+.category-section-header .budget-category-progress {
+    flex-basis: 100%;
 }
 
 .category-section-header:hover {
@@ -3332,4 +3337,47 @@ body.menu-open {
     .toast {
         max-width: 100%;
     }
+}
+
+/* Sortable table headers */
+.sortable-th {
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+}
+
+.sortable-th:hover {
+    background-color: rgba(0, 0, 0, 0.08);
+}
+
+/* Confirmed checkbox */
+.confirmed-cell {
+    text-align: center;
+}
+
+.confirmed-checkbox {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    accent-color: #4CAF50;
+}
+
+.checkbox-group {
+    display: flex;
+    align-items: center;
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-weight: 500;
+}
+
+.checkbox-label input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    accent-color: #4CAF50;
 }

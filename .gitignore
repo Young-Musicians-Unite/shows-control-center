@@ -1,5 +1,6 @@
-# Firebase credentials (NEVER commit this!)
+# Firebase credentials and config
 config/firebase-credentials.json
+js/config.js
 
 # Node modules
 node_modules/
@@ -34,6 +35,12 @@ documents/invoices/*
 !documents/contracts/.gitkeep
 !documents/invoices/.gitkeep
 !documents/misc/.gitkeep
+
+# Screenshots
+screenshots/
+
+# Deploy script
+deploy.sh
 
 # Temporary files
 *.tmp
