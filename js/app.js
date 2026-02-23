@@ -31,6 +31,36 @@ const state = {
     isInteracting: false  // Flag to prevent canvas resize during user interaction
 };
 
+// Toast notification system
+function showToast(message, type = 'success', duration = 3000) {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+
+    const icons = {
+        success: '\u2713',
+        error: '\u2717',
+        info: '\u2139',
+        warning: '\u26A0'
+    };
+
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.innerHTML = `<span class="toast-icon">${icons[type] || ''}</span><span>${message}</span>`;
+    container.appendChild(toast);
+
+    // Trigger slide-in
+    requestAnimationFrame(() => {
+        toast.classList.add('show');
+    });
+
+    // Auto-dismiss
+    setTimeout(() => {
+        toast.classList.remove('show');
+        toast.classList.add('hiding');
+        toast.addEventListener('transitionend', () => toast.remove(), { once: true });
+    }, duration);
+}
+
 // Event date
 const eventDate = new Date('April 25, 2026 18:00:00');
 
@@ -241,10 +271,11 @@ function updateTimelineStats() {
         return new Date(t.dueDate) < new Date();
     }).length;
 
-    document.getElementById('timeline-total').textContent = total;
-    document.getElementById('timeline-completed').textContent = completed;
-    document.getElementById('timeline-in-progress').textContent = inProgress;
-    document.getElementById('timeline-overdue').textContent = overdue;
+    const el = (id) => document.getElementById(id);
+    if (el('timeline-total')) el('timeline-total').textContent = total;
+    if (el('timeline-completed')) el('timeline-completed').textContent = completed;
+    if (el('timeline-in-progress')) el('timeline-in-progress').textContent = inProgress;
+    if (el('timeline-overdue')) el('timeline-overdue').textContent = overdue;
 }
 
 function updateUpcomingDeadlines() {
@@ -740,14 +771,16 @@ async function handleFormSubmit(e, config) {
     try {
         if (id) {
             await collections[config.collection].doc(id).update(data);
+            showToast(`${config.itemName.charAt(0).toUpperCase() + config.itemName.slice(1)} updated`);
         } else {
             data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
             await collections[config.collection].add(data);
+            showToast(`${config.itemName.charAt(0).toUpperCase() + config.itemName.slice(1)} added`);
         }
         closeAllModals();
     } catch (error) {
         console.error(`Error saving ${config.collection}:`, error);
-        alert(`Error saving ${config.itemName}. Please try again.`);
+        showToast(`Error saving ${config.itemName}. Please try again.`, 'error');
     }
 }
 
@@ -852,9 +885,10 @@ function createDeleteHandler(collectionKey, itemName) {
         if (confirm(`Are you sure you want to delete this ${itemName}?`)) {
             try {
                 await collections[collectionKey].doc(id).delete();
+                showToast(`${itemName.charAt(0).toUpperCase() + itemName.slice(1)} deleted`);
             } catch (error) {
                 console.error(`Error deleting ${itemName}:`, error);
-                alert(`Error deleting ${itemName}. Please try again.`);
+                showToast(`Error deleting ${itemName}. Please try again.`, 'error');
             }
         }
     };
@@ -870,9 +904,10 @@ window.toggleTaskComplete = async (id, completed) => {
             status: completed ? 'complete' : 'in-progress',
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         });
+        showToast(completed ? 'Task marked complete' : 'Task marked incomplete');
     } catch (error) {
         console.error('Error updating task:', error);
-        alert('Error updating task. Please try again.');
+        showToast('Error updating task. Please try again.', 'error');
     }
 };
 
@@ -1248,11 +1283,11 @@ function saveRowChanges(row) {
     // Update Firebase
     collections.timeline.doc(id).update(updates)
         .then(() => {
-            // The real-time listener will update the UI automatically
+            showToast('Timeline item updated');
         })
         .catch((error) => {
             console.error('Error updating timeline item:', error);
-            alert('Error saving changes. Please try again.');
+            showToast('Error saving changes. Please try again.', 'error');
             cancelRowEdit(row);
         });
 }
@@ -1404,11 +1439,11 @@ function saveBudgetRowChanges(row) {
     // Update Firebase
     collections.budget.doc(id).update(updates)
         .then(() => {
-            // Real-time listener will update the UI
+            showToast('Budget item updated');
         })
         .catch((error) => {
             console.error('Error updating budget item:', error);
-            alert('Error saving changes. Please try again.');
+            showToast('Error saving changes. Please try again.', 'error');
             cancelBudgetRowEdit(row);
         });
 }
@@ -1524,11 +1559,11 @@ function saveStageRowChanges(row, collectionName) {
 
     collections[collectionName].doc(id).update(updates)
         .then(() => {
-            // Stage input updated successfully
+            showToast('Input list updated');
         })
         .catch((error) => {
             console.error('Error updating stage input:', error);
-            alert('Error saving changes. Please try again.');
+            showToast('Error saving changes. Please try again.', 'error');
             cancelStageRowEdit(collectionName);
         });
 }
@@ -1694,14 +1729,16 @@ async function handleStaffSubmit(e) {
     try {
         if (staffId) {
             await collections.staff.doc(staffId).update(staffData);
+            showToast('Staff member updated');
         } else {
             staffData.createdAt = firebase.firestore.FieldValue.serverTimestamp();
             await collections.staff.add(staffData);
+            showToast('Staff member added');
         }
         closeAllModals();
     } catch (error) {
         console.error('Error saving staff member:', error);
-        alert('Error saving staff member. Please try again.');
+        showToast('Error saving staff member. Please try again.', 'error');
     }
 }
 
@@ -2167,9 +2204,10 @@ async function createNewPlot() {
         }, 100);
 
         updateSaveStatus('New plot created');
+        showToast('New plot created');
     } catch (error) {
         console.error('Error creating plot:', error);
-        alert('Error creating plot. Please try again.');
+        showToast('Error creating plot. Please try again.', 'error');
     }
 }
 
@@ -2201,9 +2239,10 @@ async function deletePlot() {
         }
 
         updateSaveStatus('Deleted');
+        showToast('Plot deleted');
     } catch (error) {
         console.error('Error deleting plot:', error);
-        alert('Error deleting plot. Please try again.');
+        showToast('Error deleting plot. Please try again.', 'error');
     }
 }
 
@@ -2250,9 +2289,10 @@ async function duplicatePlot() {
         loadPlot(docRef.id);
 
         updateSaveStatus('Duplicated');
+        showToast('Plot duplicated');
     } catch (error) {
         console.error('Error duplicating plot:', error);
-        alert('Error duplicating plot. Please try again.');
+        showToast('Error duplicating plot. Please try again.', 'error');
     }
 }
 
@@ -2316,6 +2356,12 @@ function loadPlot(plotId) {
                 state.stageRectangles = Array.from(rectMap.values()).filter(
                     rectData => rectData.rect && rectData.widthLabel && rectData.heightLabel
                 );
+
+                // Ensure dimension labels are evented so double-click editing works
+                state.stageRectangles.forEach(rectData => {
+                    rectData.widthLabel.set({ evented: true, hoverCursor: 'pointer' });
+                    rectData.heightLabel.set({ evented: true, hoverCursor: 'pointer' });
+                });
 
                 // Set to draw tool (tools are always available now)
                 setTool('draw');
@@ -2761,6 +2807,17 @@ function setupKeyboardShortcuts() {
                 const activeObjects = state.canvas.getActiveObjects();
                 if (activeObjects.length > 0) {
                     activeObjects.forEach(obj => {
+                        // If this is a stage rectangle, also remove its dimension labels
+                        if (obj.rectId) {
+                            const rectDataIndex = state.stageRectangles.findIndex(r => r.id === obj.rectId);
+                            if (rectDataIndex !== -1) {
+                                const rectData = state.stageRectangles[rectDataIndex];
+                                state.canvas.remove(rectData.widthLabel);
+                                state.canvas.remove(rectData.heightLabel);
+                                state.canvas.remove(rectData.rect);
+                                state.stageRectangles.splice(rectDataIndex, 1);
+                            }
+                        }
                         state.canvas.remove(obj);
                     });
                     state.canvas.discardActiveObject();
@@ -2991,7 +3048,8 @@ function finishDrawingRectangle(e) {
         originX: 'center',
         originY: 'center',
         selectable: false,
-        evented: false,
+        evented: true,
+        hoverCursor: 'pointer',
         isRectDimension: true,
         dimensionType: 'width'
     });
@@ -3009,7 +3067,8 @@ function finishDrawingRectangle(e) {
         originY: 'center',
         angle: -90,
         selectable: false,
-        evented: false,
+        evented: true,
+        hoverCursor: 'pointer',
         isRectDimension: true,
         dimensionType: 'height'
     });
@@ -3425,9 +3484,10 @@ function setupPlotNameInput() {
             updatePlotSelector();
 
             updateSaveStatus('Renamed');
+            showToast('Plot renamed');
         } catch (error) {
             console.error('Error updating plot name:', error);
-            alert('Error updating plot name. Please try again.');
+            showToast('Error updating plot name. Please try again.', 'error');
         }
     });
 
