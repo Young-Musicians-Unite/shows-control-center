@@ -7,6 +7,7 @@ const state = {
     staff: [],
     stagePlots: [],
     budgetSort: { field: null, direction: 'asc' },
+    budgetSearch: '',
     currentPage: 'dashboard',
     currentDay: 'Thursday',  // For timeline filtering
     currentStage: 'main',  // For stage input filtering
@@ -353,6 +354,76 @@ function budgetSortIndicator(field) {
     return state.budgetSort.direction === 'asc' ? ' ▲' : ' ▼';
 }
 
+// Fuzzy search: returns true if all characters in pattern appear in str in order
+// with a max gap of 3 characters between consecutive matches
+function fuzzyMatch(pattern, str) {
+    if (!pattern) return true;
+    if (!str) return false;
+    const p = pattern.toLowerCase();
+    const s = str.toLowerCase();
+    // Fast path: substring match
+    if (s.includes(p)) return true;
+    // Subsequence match with max gap of 3 between consecutive matched characters
+    const maxGap = 3;
+    let pi = 0;
+    let lastMatchIndex = -1;
+    for (let si = 0; si < s.length && pi < p.length; si++) {
+        if (s[si] === p[pi]) {
+            if (lastMatchIndex !== -1 && (si - lastMatchIndex - 1) > maxGap) {
+                return false;
+            }
+            lastMatchIndex = si;
+            pi++;
+        }
+    }
+    return pi === p.length;
+}
+
+// Check if a budget item matches the search query (token-based, all tokens must match)
+function budgetItemMatchesSearch(item, query) {
+    if (!query) return true;
+    const tokens = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    if (tokens.length === 0) return true;
+
+    // Build searchable text fields
+    const fields = [
+        item.vendor || '',
+        item.description || '',
+        item.category || '',
+        item.contact || '',
+        item.notes || '',
+        formatPaymentStatus(item.paymentStatus),
+        item.email || '',
+        item.phone || '',
+        String(parseFloat(item.budgeted) || 0),
+        String(parseFloat(item.actual) || 0),
+        formatCurrency(parseFloat(item.budgeted) || 0),
+        formatCurrency(parseFloat(item.actual) || 0)
+    ];
+
+    // Every token must fuzzy-match at least one field
+    return tokens.every(token =>
+        fields.some(field => fuzzyMatch(token, field))
+    );
+}
+
+// Budget search handler
+let budgetSearchDebounce = null;
+function handleBudgetSearch(value) {
+    clearTimeout(budgetSearchDebounce);
+    budgetSearchDebounce = setTimeout(() => {
+        state.budgetSearch = value;
+        renderBudgetGrouped();
+    }, 150);
+}
+
+function clearBudgetSearch() {
+    const input = document.getElementById('budget-search-input');
+    if (input) input.value = '';
+    state.budgetSearch = '';
+    renderBudgetGrouped();
+}
+
 // Render Budget Grouped by Category (Collapsible Sections)
 function renderBudgetGrouped() {
     const container = document.getElementById('budget-grouped-container');
@@ -365,14 +436,38 @@ function renderBudgetGrouped() {
         }
     });
 
+    // Update search result count
+    const searchQuery = state.budgetSearch;
+    const isSearching = searchQuery.trim().length > 0;
+    const filteredBudget = isSearching
+        ? state.budget.filter(item => budgetItemMatchesSearch(item, searchQuery))
+        : state.budget;
+
+    const countEl = document.getElementById('budget-search-count');
+    if (countEl) {
+        countEl.textContent = isSearching
+            ? `${filteredBudget.length} of ${state.budget.length} items`
+            : `${state.budget.length} items`;
+        countEl.style.display = state.budget.length > 0 ? '' : 'none';
+    }
+
+    // Toggle clear button visibility
+    const clearBtn = document.getElementById('budget-search-clear');
+    if (clearBtn) clearBtn.style.display = isSearching ? '' : 'none';
+
     if (state.budget.length === 0) {
         container.innerHTML = '<div class="card"><div class="card-body"><p class="empty-state">No budget items</p></div></div>';
         return;
     }
 
-    // Group items by category
+    if (isSearching && filteredBudget.length === 0) {
+        container.innerHTML = `<div class="card"><div class="card-body"><p class="empty-state">No items match "${escapeHtml(searchQuery)}"</p></div></div>`;
+        return;
+    }
+
+    // Group filtered items by category
     const categorized = {};
-    state.budget.forEach(item => {
+    filteredBudget.forEach(item => {
         const cat = item.category || 'Uncategorized';
         if (!categorized[cat]) {
             categorized[cat] = [];
@@ -380,7 +475,7 @@ function renderBudgetGrouped() {
         categorized[cat].push(item);
     });
 
-    // Calculate totals for each category
+    // Calculate totals for each category (based on filtered items)
     const categoryTotals = {};
     Object.keys(categorized).forEach(cat => {
         const budgeted = categorized[cat].reduce((sum, item) => sum + (parseFloat(item.budgeted) || 0), 0);
@@ -393,7 +488,7 @@ function renderBudgetGrouped() {
         return a[0].localeCompare(b[0]);
     });
 
-    // Render each category as a collapsible card (default: collapsed)
+    // Render each category as a collapsible card (default: collapsed, or open when searching)
     container.innerHTML = sortedCategories.map(([category, items]) => {
         const totals = categoryTotals[category];
         const categoryId = category.replace(/[^a-zA-Z0-9]/g, '_');
@@ -404,7 +499,7 @@ function renderBudgetGrouped() {
             <div class="card budget-category-section">
                 <div class="card-header category-section-header" onclick="toggleCategorySection('${categoryId}')">
                     <div style="display: flex; align-items: center; gap: 0.75rem; flex: 1;">
-                        <span class="category-arrow" id="arrow-${categoryId}">▶</span>
+                        <span class="category-arrow" id="arrow-${categoryId}">${isSearching ? '▼' : '▶'}</span>
                         <h3 style="margin: 0;">${escapeHtml(category)}</h3>
                         <span class="category-count">${totals.count} items</span>
                     </div>
@@ -417,7 +512,7 @@ function renderBudgetGrouped() {
                         <div class="budget-category-progress-fill" style="width: ${Math.min(percentage, 100)}%"></div>
                     </div>
                 </div>
-                <div class="category-section-content" id="content-${categoryId}" style="display: none;">
+                <div class="category-section-content" id="content-${categoryId}" style="display: ${isSearching ? 'block' : 'none'};">
                     <div class="table-container">
                         <table class="data-table budget-table">
                             <thead>
@@ -468,14 +563,16 @@ function renderBudgetGrouped() {
         `;
     }).join('');
 
-    // Restore open sections
-    Object.keys(openSections).forEach(id => {
-        const content = document.getElementById(id);
-        const arrowId = id.replace('content-', 'arrow-');
-        const arrow = document.getElementById(arrowId);
-        if (content) content.style.display = 'block';
-        if (arrow) arrow.textContent = '▼';
-    });
+    // Restore open sections (only when not searching — search auto-expands all)
+    if (!isSearching) {
+        Object.keys(openSections).forEach(id => {
+            const content = document.getElementById(id);
+            const arrowId = id.replace('content-', 'arrow-');
+            const arrow = document.getElementById(arrowId);
+            if (content) content.style.display = 'block';
+            if (arrow) arrow.textContent = '▼';
+        });
+    }
 }
 
 // Timeline
@@ -2593,6 +2690,13 @@ function setupUndoRedo() {
 // Setup Keyboard Shortcuts (Delete key)
 function setupKeyboardShortcuts() {
     document.addEventListener('keydown', (e) => {
+        // Focus budget search with '/' key
+        if (e.key === '/' && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA' && state.currentPage === 'budget') {
+            e.preventDefault();
+            const searchInput = document.getElementById('budget-search-input');
+            if (searchInput) searchInput.focus();
+        }
+
         // Undo: Ctrl+Z or Cmd+Z
         if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
             if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {

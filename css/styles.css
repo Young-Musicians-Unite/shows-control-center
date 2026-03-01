@@ -1287,7 +1287,8 @@ tr.task-completed td:not(.checkbox-col):not(.actions-col) {
     .page-header button,
     .header-actions,
     .day-tabs,
-    .stats-grid {
+    .stats-grid,
+    .budget-search-bar {
         display: none !important;
     }
 
@@ -1447,6 +1448,62 @@ tr.editing td {
 .accordion-content {
     overflow: hidden;
     transition: max-height 0.3s ease-out;
+}
+
+/* Budget Search Bar */
+.budget-search-bar {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.budget-search-wrapper {
+    position: relative;
+    flex: 1;
+    display: flex;
+    align-items: center;
+}
+
+.budget-search-icon {
+    position: absolute;
+    left: 0.85rem;
+    color: #95a5a6;
+    pointer-events: none;
+}
+
+.budget-search-bar .search-input {
+    padding-left: 2.5rem;
+    padding-right: 2.25rem;
+}
+
+.budget-search-clear {
+    position: absolute;
+    right: 0.5rem;
+    background: none;
+    border: none;
+    font-size: 1.3rem;
+    color: #95a5a6;
+    cursor: pointer;
+    padding: 0.25rem 0.5rem;
+    line-height: 1;
+    border-radius: 50%;
+    transition: color 0.15s, background-color 0.15s;
+}
+
+.budget-search-clear:hover {
+    color: #2c3e50;
+    background-color: #ecf0f1;
+}
+
+.budget-search-count {
+    font-size: 0.9rem;
+    color: #6c757d;
+    white-space: nowrap;
+    background: #f8f9fa;
+    padding: 0.4rem 0.85rem;
+    border-radius: 20px;
+    border: 1px solid #e9ecef;
 }
 
 /* Budget Category Sections */
