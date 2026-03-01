@@ -385,15 +385,17 @@ function setupVendorFilters() {
         });
     });
 
-    // Dashboard Issues count click
-    const issuesLink = document.getElementById('dashboard-issues-link');
-    if (issuesLink) {
-        issuesLink.addEventListener('click', navigateToVendorIssues);
-    }
+    // Dashboard vendor status card clicks
+    ['confirmed', 'pending', 'issues'].forEach(filter => {
+        const link = document.getElementById(`dashboard-${filter}-link`);
+        if (link) {
+            link.addEventListener('click', () => navigateToVendorFilter(filter));
+        }
+    });
 }
 
-function navigateToVendorIssues() {
-    state.vendorFilter = 'issues';
+function navigateToVendorFilter(filter) {
+    state.vendorFilter = filter;
     switchPage('vendors');
 
     // Update nav active state
@@ -403,12 +405,12 @@ function navigateToVendorIssues() {
 
     // Update filter button active state
     document.querySelectorAll('.vendor-filter-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.filter === 'issues');
+        btn.classList.toggle('active', btn.dataset.filter === filter);
     });
 
     renderVendors();
 }
-window.navigateToVendorIssues = navigateToVendorIssues;
+window.navigateToVendorFilter = navigateToVendorFilter;
 
 function updateTimelineStats() {
     const total = state.timeline.length;
