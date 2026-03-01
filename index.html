@@ -18,6 +18,7 @@
             </button>
             <div class="nav-menu" id="nav-menu">
                 <a href="#" class="nav-link active" data-page="dashboard">Dashboard</a>
+                <a href="#" class="nav-link" data-page="vendors">Vendors</a>
                 <a href="#" class="nav-link" data-page="budget">Budget</a>
                 <a href="#" class="nav-link" data-page="timeline">Timeline</a>
                 <a href="#" class="nav-link" data-page="input-lists">Input Lists</a>
@@ -122,7 +123,7 @@
                             <span class="status-label">Pending</span>
                             <span class="status-count pending" id="vendor-pending-count">0</span>
                         </div>
-                        <div class="status-item">
+                        <div class="status-item status-item-clickable" id="dashboard-issues-link">
                             <span class="status-label">Issues</span>
                             <span class="status-count issue" id="vendor-issue-count">0</span>
                         </div>
@@ -130,6 +131,54 @@
                 </div>
             </div>
 
+        </div>
+
+        <!-- Vendors Page -->
+        <div id="vendors" class="page">
+            <div class="page-header">
+                <h1>Vendors</h1>
+            </div>
+
+            <!-- Filter Tabs -->
+            <div class="vendor-filters">
+                <button class="vendor-filter-btn active" data-filter="all">All</button>
+                <button class="vendor-filter-btn" data-filter="confirmed">Confirmed</button>
+                <button class="vendor-filter-btn" data-filter="pending">Pending</button>
+                <button class="vendor-filter-btn" data-filter="issues">Issues <span class="vendor-filter-count" id="vendor-filter-issue-count"></span></button>
+            </div>
+
+            <!-- Vendor Stats -->
+            <div class="stats-grid vendor-stats-grid">
+                <div class="stat-card">
+                    <div class="stat-content">
+                        <div class="stat-label">Total Vendors</div>
+                        <div class="stat-value" id="vendor-page-total">0</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-content">
+                        <div class="stat-label">Confirmed</div>
+                        <div class="stat-value" id="vendor-page-confirmed">0</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-content">
+                        <div class="stat-label">Pending</div>
+                        <div class="stat-value" id="vendor-page-pending">0</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-content">
+                        <div class="stat-label">Issues</div>
+                        <div class="stat-value" style="color: #e74c3c;" id="vendor-page-issues">0</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Vendor Cards -->
+            <div class="vendor-grid" id="vendor-grid">
+                <p class="empty-state">No vendors found</p>
+            </div>
         </div>
 
         <!-- Budget Page -->
