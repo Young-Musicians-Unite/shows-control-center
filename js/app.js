@@ -10,6 +10,7 @@ const state = {
     budgetSearch: '',
     currentPage: 'dashboard',
     currentDay: 'Thursday',  // For timeline filtering
+    vendorFilter: 'all',  // For vendor page filtering (all/confirmed/pending/issues)
     currentStage: 'main',  // For stage input filtering
     currentStagePlotType: 'main',  // For stage plot tabs
     currentPlotId: null,  // Currently selected plot
@@ -78,6 +79,7 @@ function initializeApp() {
     loadAllData();
     setupFormHandlers();
     setupDayTabs();
+    setupVendorFilters();
     setupStageTabs();
     setupExportAndPrint();
     setupStagePlotTabs();
@@ -165,6 +167,12 @@ function switchPage(pageName) {
 
         // Refresh data for the page
         if (pageName === 'dashboard') updateDashboard();
+        if (pageName === 'vendors') {
+            state.vendorFilter = 'all';
+            const vendorFilterBtns = document.querySelectorAll('.vendor-filter-btn');
+            vendorFilterBtns.forEach(b => b.classList.toggle('active', b.dataset.filter === 'all'));
+            renderVendors();
+        }
         if (pageName === 'budget') renderBudget();
         if (pageName === 'timeline') {
             // Reset to first day tab (Thursday)
@@ -229,7 +237,7 @@ function setupCollectionListener(collectionKey, stateKey, renderCallbacks = []) 
 
 // Load all data from Firestore
 function loadAllData() {
-    setupCollectionListener('budget', 'budget', [renderBudget, updateDashboard]);
+    setupCollectionListener('budget', 'budget', [renderBudget, renderVendors, updateDashboard]);
     setupCollectionListener('timeline', 'timeline', [renderTimeline, updateDashboard]);
     setupCollectionListener('mainStageInputs', 'mainStageInputs', [renderStageInputs]);
     setupCollectionListener('cocktailStageInputs', 'cocktailStageInputs', [renderStageInputs]);
@@ -266,12 +274,141 @@ function updateVendorStats() {
     const confirmed = state.budget.filter(b => b.confirmed).length;
     const total = state.budget.length;
     const pending = total - confirmed;
+    const issueCount = state.budget.filter(b => getVendorIssues(b).length > 0).length;
 
     document.getElementById('vendors-confirmed').textContent = confirmed;
     document.getElementById('vendor-confirmed-count').textContent = confirmed;
     document.getElementById('vendor-pending-count').textContent = pending;
-    document.getElementById('vendor-issue-count').textContent = 0;
+    document.getElementById('vendor-issue-count').textContent = issueCount;
+
+    // Update vendor page stats
+    const el = (id) => document.getElementById(id);
+    if (el('vendor-page-total')) el('vendor-page-total').textContent = total;
+    if (el('vendor-page-confirmed')) el('vendor-page-confirmed').textContent = confirmed;
+    if (el('vendor-page-pending')) el('vendor-page-pending').textContent = pending;
+    if (el('vendor-page-issues')) el('vendor-page-issues').textContent = issueCount;
+
+    // Update filter button issue count badge
+    const filterCount = el('vendor-filter-issue-count');
+    if (filterCount) filterCount.textContent = issueCount > 0 ? issueCount : '';
 }
+
+// Vendor Issues
+function getVendorIssues(item) {
+    const issues = [];
+    if (!item.vendor) issues.push('vendor/item');
+    if (!item.description) issues.push('description');
+    if (!item.budgeted) issues.push('budgeted');
+    if (!item.phone) issues.push('phone');
+    if (!item.email) issues.push('email');
+    return issues;
+}
+
+function renderVendors() {
+    const grid = document.getElementById('vendor-grid');
+    if (!grid) return;
+
+    let items = [...state.budget];
+
+    // Apply filter
+    if (state.vendorFilter === 'confirmed') {
+        items = items.filter(b => b.confirmed);
+    } else if (state.vendorFilter === 'pending') {
+        items = items.filter(b => !b.confirmed);
+    } else if (state.vendorFilter === 'issues') {
+        items = items.filter(b => getVendorIssues(b).length > 0);
+    }
+
+    if (items.length === 0) {
+        if (state.vendorFilter === 'issues') {
+            grid.innerHTML = '<p class="empty-state">All clear — no missing vendor information!</p>';
+        } else {
+            grid.innerHTML = '<p class="empty-state">No vendors found</p>';
+        }
+        return;
+    }
+
+    grid.innerHTML = items.map(item => {
+        const issues = getVendorIssues(item);
+        const hasIssues = issues.length > 0;
+        const isConfirmed = item.confirmed;
+        const category = (item.category || '').replace(/^6811[a-g] - /, '');
+
+        let statusClass = isConfirmed ? 'vendor-confirmed' : 'vendor-pending';
+        if (hasIssues) statusClass = 'vendor-has-issues';
+
+        const issuePills = hasIssues ? `
+            <div class="vendor-issues">
+                <span class="vendor-issues-label">Missing:</span>
+                ${issues.map(i => `<span class="vendor-issue-pill">${escapeHtml(i)}</span>`).join('')}
+            </div>
+        ` : '';
+
+        const actionBtn = hasIssues
+            ? `<button class="btn btn-fix-issues" onclick="editBudgetItem('${item.id}')">Fix Issues</button>`
+            : `<button class="btn btn-edit" onclick="editBudgetItem('${item.id}')">Edit in Budget</button>`;
+
+        return `
+            <div class="vendor-card ${statusClass}">
+                <div class="vendor-card-header">
+                    <div class="vendor-card-title">${escapeHtml(item.vendor || 'Unnamed')}</div>
+                    <span class="status-badge ${isConfirmed ? 'confirmed' : 'pending'}">${isConfirmed ? 'Confirmed' : 'Pending'}</span>
+                </div>
+                ${item.description ? `<div class="vendor-card-description">${escapeHtml(item.description)}</div>` : ''}
+                <div class="vendor-card-category">${escapeHtml(category)}</div>
+                <div class="vendor-card-details">
+                    ${item.contact ? `<div class="vendor-detail"><span class="vendor-detail-icon">👤</span> ${escapeHtml(item.contact)}</div>` : ''}
+                    ${item.phone ? `<div class="vendor-detail"><span class="vendor-detail-icon">📞</span> <a href="tel:${escapeHtml(item.phone)}">${escapeHtml(item.phone)}</a></div>` : ''}
+                    ${item.email ? `<div class="vendor-detail"><span class="vendor-detail-icon">✉</span> <a href="mailto:${escapeHtml(item.email)}">${escapeHtml(item.email)}</a></div>` : ''}
+                </div>
+                <div class="vendor-card-budget">
+                    <span>Budgeted: <strong>${formatCurrency(item.budgeted)}</strong></span>
+                    ${item.actual ? `<span>Actual: <strong>${formatCurrency(item.actual)}</strong></span>` : ''}
+                </div>
+                ${issuePills}
+                <div class="vendor-card-actions">
+                    ${actionBtn}
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function setupVendorFilters() {
+    const filterBtns = document.querySelectorAll('.vendor-filter-btn');
+    filterBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            filterBtns.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            state.vendorFilter = btn.dataset.filter;
+            renderVendors();
+        });
+    });
+
+    // Dashboard Issues count click
+    const issuesLink = document.getElementById('dashboard-issues-link');
+    if (issuesLink) {
+        issuesLink.addEventListener('click', navigateToVendorIssues);
+    }
+}
+
+function navigateToVendorIssues() {
+    state.vendorFilter = 'issues';
+    switchPage('vendors');
+
+    // Update nav active state
+    document.querySelectorAll('.nav-link').forEach(link => {
+        link.classList.toggle('active', link.dataset.page === 'vendors');
+    });
+
+    // Update filter button active state
+    document.querySelectorAll('.vendor-filter-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.filter === 'issues');
+    });
+
+    renderVendors();
+}
+window.navigateToVendorIssues = navigateToVendorIssues;
 
 function updateTimelineStats() {
     const total = state.timeline.length;
