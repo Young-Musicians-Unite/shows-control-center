@@ -65,7 +65,7 @@ function showToast(message, type = 'success', duration = 3000) {
 }
 
 // Event date
-const eventDate = new Date('April 25, 2026 18:00:00');
+const eventDate = new Date('2026-04-25T18:00:00-04:00');
 
 // Initialize app when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
