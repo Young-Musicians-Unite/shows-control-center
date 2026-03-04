@@ -2454,39 +2454,8 @@ function loadPlot(plotId) {
                 // Redraw grid to ensure it's in the background
                 drawGrid();
 
-                // Rebuild rectangle data structure from loaded canvas objects
-                const rectMap = new Map(); // Map rectId to {rect, widthLabel, heightLabel}
-
-                state.canvas.getObjects().forEach(obj => {
-                    if (obj.rectId) {
-                        if (!rectMap.has(obj.rectId)) {
-                            rectMap.set(obj.rectId, {id: obj.rectId});
-                        }
-                        const rectData = rectMap.get(obj.rectId);
-
-                        // Identify what type of object this is
-                        if (obj.type === 'rect' && !obj.isRectDimension) {
-                            rectData.rect = obj;
-                        } else if (obj.isRectDimension) {
-                            if (obj.dimensionType === 'width') {
-                                rectData.widthLabel = obj;
-                            } else if (obj.dimensionType === 'height') {
-                                rectData.heightLabel = obj;
-                            }
-                        }
-                    }
-                });
-
-                // Rebuild stageRectangles array
-                state.stageRectangles = Array.from(rectMap.values()).filter(
-                    rectData => rectData.rect && rectData.widthLabel && rectData.heightLabel
-                );
-
-                // Ensure dimension labels are evented so double-click editing works
-                state.stageRectangles.forEach(rectData => {
-                    rectData.widthLabel.set({ evented: true, hoverCursor: 'pointer' });
-                    rectData.heightLabel.set({ evented: true, hoverCursor: 'pointer' });
-                });
+                rebuildStageRectangles();
+                sendStageRectsToBack();
 
                 // Set to draw tool (tools are always available now)
                 setTool('draw');
@@ -2585,9 +2554,15 @@ function addElementToCanvas(elementType) {
             originY: 'center'
         });
 
-        state.canvas.add(element);
-        state.canvas.setActiveObject(element);
-        state.canvas.renderAll();
+        // If in draw mode, add locked; otherwise add selectable
+        if (state.currentTool === 'draw') {
+            element.set({ selectable: false, evented: false });
+            state.canvas.add(element);
+        } else {
+            state.canvas.add(element);
+            state.canvas.setActiveObject(element);
+        }
+        sendStageRectsToBack();
     }
 }
 
@@ -2848,6 +2823,7 @@ function undo() {
     state.canvas.loadFromJSON(previousState, () => {
         state.canvas.renderAll();
         drawGrid(); // Redraw grid
+        rebuildStageRectangles();
         state.isUndoRedoing = false;
         updateUndoRedoButtons();
         triggerAutoSave();
@@ -2868,6 +2844,7 @@ function redo() {
     state.canvas.loadFromJSON(nextState, () => {
         state.canvas.renderAll();
         drawGrid(); // Redraw grid
+        rebuildStageRectangles();
         state.isUndoRedoing = false;
         updateUndoRedoButtons();
         triggerAutoSave();
@@ -3040,19 +3017,27 @@ function setTool(tool) {
 
     // Make all stage rectangles non-selectable first
     state.stageRectangles.forEach(rectData => {
-        rectData.rect.set({
-            selectable: false,
-            evented: false
-        });
+        rectData.rect.set({ selectable: false, evented: false });
+        rectData.widthLabel.set({ selectable: false, evented: false });
+        rectData.heightLabel.set({ selectable: false, evented: false });
     });
 
     if (tool === 'draw') {
-        // Drawing mode: click and drag creates rectangles
+        // Drawing mode: click and drag creates rectangles, nothing is movable
         state.canvas.on('mouse:down', startDrawingRectangle);
         state.canvas.on('mouse:move', continueDrawingRectangle);
         state.canvas.on('mouse:up', finishDrawingRectangle);
+
+        // Lock all non-grid, non-stage objects so they can't be moved
+        state.canvas.getObjects().forEach(obj => {
+            if (!obj.gridLine && !obj.rectId) {
+                obj.set({ selectable: false, evented: false });
+            }
+        });
+        state.canvas.selection = false;
+        state.canvas.discardActiveObject();
     } else if (tool === 'move') {
-        // Move mode: drag existing rectangles
+        // Move mode: everything is movable, no drawing
         state.stageRectangles.forEach((rectData, index) => {
             rectData.rect.set({
                 selectable: true,
@@ -3077,11 +3062,61 @@ function setTool(tool) {
             rectData.heightLabel.set({ selectable: true, evented: true });
         });
 
+        // Unlock all non-grid objects so they can be moved
+        state.canvas.getObjects().forEach(obj => {
+            if (!obj.gridLine) {
+                obj.set({ selectable: true, evented: true });
+                obj.setCoords();
+            }
+        });
         state.canvas.selection = true;
-
-        state.canvas.renderAll();
     }
 
+    state.canvas.renderAll();
+}
+
+// Rebuild stageRectangles array from current canvas objects (after loadFromJSON)
+function rebuildStageRectangles() {
+    if (!state.canvas) return;
+    const rectMap = new Map();
+
+    state.canvas.getObjects().forEach(obj => {
+        if (obj.rectId) {
+            if (!rectMap.has(obj.rectId)) {
+                rectMap.set(obj.rectId, { id: obj.rectId });
+            }
+            const rectData = rectMap.get(obj.rectId);
+            if (obj.type === 'rect' && !obj.isRectDimension) {
+                rectData.rect = obj;
+            } else if (obj.isRectDimension) {
+                if (obj.dimensionType === 'width') rectData.widthLabel = obj;
+                else if (obj.dimensionType === 'height') rectData.heightLabel = obj;
+            }
+        }
+    });
+
+    state.stageRectangles = Array.from(rectMap.values()).filter(
+        r => r.rect && r.widthLabel && r.heightLabel
+    );
+
+    state.stageRectangles.forEach(rectData => {
+        rectData.widthLabel.set({ evented: true, hoverCursor: 'pointer' });
+        rectData.heightLabel.set({ evented: true, hoverCursor: 'pointer' });
+    });
+}
+
+// Ensure stage rectangles and their labels stay behind all other elements (but above grid)
+function sendStageRectsToBack() {
+    if (!state.canvas) return;
+    state.stageRectangles.forEach(rectData => {
+        state.canvas.sendToBack(rectData.heightLabel);
+        state.canvas.sendToBack(rectData.widthLabel);
+        state.canvas.sendToBack(rectData.rect);
+    });
+    // Grid lines should be at the very back
+    state.canvas.getObjects().forEach(obj => {
+        if (obj.gridLine) state.canvas.sendToBack(obj);
+    });
     state.canvas.renderAll();
 }
 
@@ -3225,7 +3260,7 @@ function finishDrawingRectangle(e) {
     state.currentDrawingRect = null;
     state.drawingStartPoint = null;
 
-    state.canvas.renderAll();
+    sendStageRectsToBack();
 }
 
 // Convert decimal feet to feet and inches format
