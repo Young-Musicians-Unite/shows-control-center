@@ -690,6 +690,7 @@ function renderBudgetGrouped() {
                                             </td>
                                             <td data-field="notes" data-original="${escapeHtml(item.notes || '')}">${escapeHtml(item.notes || '')}</td>
                                             <td class="actions no-print">
+                                                <button class="btn btn-edit" onclick="editBudgetItem('${item.id}')">Edit</button>
                                                 <button class="btn btn-danger" onclick="deleteBudgetItem('${item.id}')">Delete</button>
                                             </td>
                                         </tr>
