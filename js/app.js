@@ -729,7 +729,8 @@ function renderTimeline() {
     const dateMap = {
         'Thursday': 'April 23, 2026',
         'Friday': 'April 24, 2026',
-        'Saturday': 'April 25, 2026'
+        'Saturday': 'April 25, 2026',
+        'Sunday': 'April 26, 2026'
     };
 
     if (dayTitle) {
