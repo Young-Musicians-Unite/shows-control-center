@@ -1604,30 +1604,63 @@ tr.editing td {
     background-color: #f8f9fa;
 }
 
-.stage-table th:first-child,
-.stage-table td:first-child {
+/* Drag handle column */
+.drag-col {
+    width: 32px;
+}
+
+.drag-handle {
+    width: 32px;
+    text-align: center;
+    cursor: grab;
+    color: #adb5bd;
+    font-size: 1.1rem;
+    user-select: none;
+    padding: 4px !important;
+}
+
+.drag-handle:hover {
+    color: #495057;
+}
+
+.stage-table tbody tr.dragging {
+    opacity: 0.4;
+    background: #e9ecef;
+}
+
+.stage-table tbody tr[draggable="true"] {
+    transition: opacity 0.15s;
+}
+
+/* Channel # column */
+.stage-table th:nth-child(2),
+.stage-table td:nth-child(2) {
     width: 50px;
     text-align: center;
     font-weight: 600;
 }
 
-.stage-table th:nth-child(2),
-.stage-table td:nth-child(2) {
+/* Subsnake */
+.stage-table th:nth-child(3),
+.stage-table td:nth-child(3) {
     width: 100px;
 }
 
-.stage-table th:nth-child(3),
-.stage-table td:nth-child(3) {
+/* Instrument */
+.stage-table th:nth-child(4),
+.stage-table td:nth-child(4) {
     min-width: 200px;
 }
 
-.stage-table th:nth-child(4),
-.stage-table td:nth-child(4) {
+/* Mics */
+.stage-table th:nth-child(5),
+.stage-table td:nth-child(5) {
     min-width: 150px;
 }
 
-.stage-table th:nth-child(7),
-.stage-table td:nth-child(7) {
+/* Symbol */
+.stage-table th:nth-child(8),
+.stage-table td:nth-child(8) {
     width: 80px;
     text-align: center;
 }

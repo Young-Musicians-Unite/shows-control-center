@@ -1539,20 +1539,27 @@ function renderStageInputs() {
     title.textContent = `${stageName} - Audio & Technical Inputs`;
 
     if (stageData.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No inputs</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No inputs</td></tr>';
         return;
     }
 
-    // Sort by channel number
+    // Sort by order field, fall back to channel number
     const sorted = [...stageData].sort((a, b) => {
-        const aNum = parseInt(a.channel) || 0;
-        const bNum = parseInt(b.channel) || 0;
-        return aNum - bNum;
+        if (a.order != null && b.order != null) return a.order - b.order;
+        if (a.order != null) return -1;
+        if (b.order != null) return 1;
+        return (parseInt(a.channel) || 0) - (parseInt(b.channel) || 0);
     });
 
     tbody.innerHTML = sorted.map(item => {
         return `
-            <tr data-id="${item.id}" ondblclick="makeStageRowEditable(this, '${collectionName}')">
+            <tr data-id="${item.id}" draggable="true"
+                ondragstart="onStageDragStart(event)"
+                ondragover="onStageDragOver(event)"
+                ondragend="onStageDragEnd(event)"
+                ondrop="onStageDrop(event, '${collectionName}')"
+                ondblclick="makeStageRowEditable(this, '${collectionName}')">
+                <td class="drag-handle" title="Drag to reorder">⠿</td>
                 <td data-field="channel" data-original="${escapeHtml(item.channel || '')}">${escapeHtml(item.channel || '')}</td>
                 <td data-field="subsnake" data-original="${escapeHtml(item.subsnake || '')}">${escapeHtml(item.subsnake || '')}</td>
                 <td data-field="instrument" data-original="${escapeHtml(item.instrument || '')}">${escapeHtml(item.instrument || '')}</td>
@@ -1630,6 +1637,69 @@ function cancelStageRowEdit(collectionName) {
         renderCocktailStage();
     }
 }
+
+// Drag and Drop for Stage Input rows
+let draggedRow = null;
+
+function onStageDragStart(e) {
+    draggedRow = e.target.closest('tr');
+    draggedRow.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+}
+
+function onStageDragOver(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const row = e.target.closest('tr');
+    if (!row || row === draggedRow || !row.parentElement) return;
+
+    const tbody = row.parentElement;
+    const rows = [...tbody.querySelectorAll('tr')];
+    const dragIdx = rows.indexOf(draggedRow);
+    const hoverIdx = rows.indexOf(row);
+
+    if (dragIdx < hoverIdx) {
+        row.after(draggedRow);
+    } else {
+        row.before(draggedRow);
+    }
+}
+
+function onStageDragEnd(e) {
+    if (draggedRow) {
+        draggedRow.classList.remove('dragging');
+        draggedRow = null;
+    }
+}
+
+function onStageDrop(e, collectionName) {
+    e.preventDefault();
+    if (!draggedRow) return;
+
+    const tbody = draggedRow.parentElement;
+    const rows = [...tbody.querySelectorAll('tr')];
+
+    // Batch update order field for all rows
+    const batch = db.batch();
+    rows.forEach((row, index) => {
+        const id = row.dataset.id;
+        if (id) {
+            batch.update(collections[collectionName].doc(id), { order: index });
+        }
+    });
+
+    batch.commit()
+        .then(() => showToast('Order updated'))
+        .catch(err => {
+            console.error('Error saving order:', err);
+            showToast('Error saving order', 'error');
+        });
+}
+
+window.onStageDragStart = onStageDragStart;
+window.onStageDragOver = onStageDragOver;
+window.onStageDragEnd = onStageDragEnd;
+window.onStageDrop = onStageDrop;
 
 // Export Stage Inputs to Excel
 function exportStageInputsToExcel() {
