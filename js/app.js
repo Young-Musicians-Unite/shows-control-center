@@ -30,7 +30,8 @@ const state = {
     undoStack: [],  // History of canvas states for undo
     redoStack: [],  // History of undone states for redo
     isUndoRedoing: false,  // Flag to prevent history recording during undo/redo
-    isInteracting: false  // Flag to prevent canvas resize during user interaction
+    isInteracting: false,  // Flag to prevent canvas resize during user interaction
+    dimensionsVisible: true  // Whether stage dimension labels are shown
 };
 
 // Toast notification system
@@ -2240,6 +2241,20 @@ function setupStagePlotControls() {
     } else {
         console.log('WARNING: Move tool button NOT found!');
     }
+
+    // Toggle dimensions button
+    const toggleDimsBtn = document.getElementById('toggle-dimensions-btn');
+    if (toggleDimsBtn) {
+        toggleDimsBtn.addEventListener('click', () => {
+            state.dimensionsVisible = !state.dimensionsVisible;
+            toggleDimsBtn.classList.toggle('active', state.dimensionsVisible);
+            state.stageRectangles.forEach(rectData => {
+                rectData.widthLabel.set({ visible: state.dimensionsVisible });
+                rectData.heightLabel.set({ visible: state.dimensionsVisible });
+            });
+            if (state.canvas) state.canvas.renderAll();
+        });
+    }
 }
 
 // Update Plot Selector Dropdown
@@ -3100,8 +3115,8 @@ function rebuildStageRectangles() {
     );
 
     state.stageRectangles.forEach(rectData => {
-        rectData.widthLabel.set({ evented: true, hoverCursor: 'pointer' });
-        rectData.heightLabel.set({ evented: true, hoverCursor: 'pointer' });
+        rectData.widthLabel.set({ evented: true, hoverCursor: 'pointer', visible: state.dimensionsVisible });
+        rectData.heightLabel.set({ evented: true, hoverCursor: 'pointer', visible: state.dimensionsVisible });
     });
 }
 
@@ -3240,6 +3255,8 @@ function finishDrawingRectangle(e) {
         dimensionType: 'height'
     });
 
+    widthLabel.set({ visible: state.dimensionsVisible });
+    heightLabel.set({ visible: state.dimensionsVisible });
     state.canvas.add(widthLabel);
     state.canvas.add(heightLabel);
 
