@@ -568,6 +568,9 @@ function clearBudgetSearch() {
 function renderBudgetGrouped() {
     const container = document.getElementById('budget-grouped-container');
 
+    // Skip re-render if a row is being inline-edited (prevents kicking out other users)
+    if (container.querySelector('tr.editing')) return;
+
     // Remember which sections are open
     const openSections = {};
     container.querySelectorAll('.category-section-content').forEach(el => {
@@ -691,6 +694,7 @@ function renderBudgetGrouped() {
                                             <td data-field="notes" data-original="${escapeHtml(item.notes || '')}">${escapeHtml(item.notes || '')}</td>
                                             <td class="actions no-print">
                                                 <button class="btn btn-edit" onclick="editBudgetItem('${item.id}')">Edit</button>
+                                                <button class="btn btn-secondary btn-sm" onclick="duplicateBudgetItem('${item.id}')">Duplicate</button>
                                                 <button class="btn btn-danger" onclick="deleteBudgetItem('${item.id}')">Delete</button>
                                             </td>
                                         </tr>
@@ -1003,6 +1007,24 @@ async function handleTimelineSubmit(e) {
 // CRUD Operations
 window.editBudgetItem = (id) => openBudgetModal(id);
 window.editTimelineItem = (id) => openTimelineModal(id);
+
+window.duplicateBudgetItem = async (id) => {
+    const item = state.budget.find(i => i.id === id);
+    if (!item) return;
+
+    const { id: _id, createdAt, updatedAt, ...data } = item;
+    data.vendor = (data.vendor || '') + ' (copy)';
+    data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+    data.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+
+    try {
+        await collections.budget.add(data);
+        showToast('Item duplicated');
+    } catch (error) {
+        console.error('Error duplicating budget item:', error);
+        showToast('Error duplicating item', 'error');
+    }
+};
 
 // Generic delete handler factory
 function createDeleteHandler(collectionKey, itemName) {

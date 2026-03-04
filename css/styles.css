@@ -1570,10 +1570,9 @@ tr.editing td {
 
 /* Notes column */
 .budget-table td[data-field="notes"] {
-    max-width: 200px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    max-width: 250px;
+    white-space: normal;
+    word-wrap: break-word;
 }
 
 .budget-table tr.editing td[data-field="notes"] {
