@@ -778,7 +778,19 @@ function renderTimeline() {
                 <td class="responsible-col" data-field="responsible" data-original="${escapeHtml(item.responsible || '')}">${escapeHtml(item.responsible || '')}</td>
                 <td class="staff-col" data-field="staff" data-original="${escapeHtml(item.staff || '')}">${escapeHtml(item.staff || '')}</td>
                 <td class="actions-col no-print">
-                    <input type="color" class="color-picker" value="${rowColor || '#ffffff'}" title="Highlight color" onchange="setTimelineColor('${item.id}', this.value)">
+                    <div class="color-swatch-wrapper">
+                        <button class="color-swatch-btn" style="background-color: ${rowColor || '#ffffff'}; ${rowColor ? '' : 'border: 2px dashed #ccc;'}" onclick="toggleColorPicker('${item.id}')" title="Highlight color"></button>
+                        <div class="color-swatch-dropdown" id="color-picker-${item.id}">
+                            <button class="color-swatch" style="background:#ffffff; border: 1px dashed #ccc;" onclick="setTimelineColor('${item.id}','#ffffff')" title="None"></button>
+                            <button class="color-swatch" style="background:#fff3cd;" onclick="setTimelineColor('${item.id}','#fff3cd')" title="Yellow"></button>
+                            <button class="color-swatch" style="background:#d4edda;" onclick="setTimelineColor('${item.id}','#d4edda')" title="Green"></button>
+                            <button class="color-swatch" style="background:#cce5ff;" onclick="setTimelineColor('${item.id}','#cce5ff')" title="Blue"></button>
+                            <button class="color-swatch" style="background:#f8d7da;" onclick="setTimelineColor('${item.id}','#f8d7da')" title="Red"></button>
+                            <button class="color-swatch" style="background:#e2d6f3;" onclick="setTimelineColor('${item.id}','#e2d6f3')" title="Purple"></button>
+                            <button class="color-swatch" style="background:#fde0c8;" onclick="setTimelineColor('${item.id}','#fde0c8')" title="Orange"></button>
+                            <button class="color-swatch" style="background:#d6d6d6;" onclick="setTimelineColor('${item.id}','#d6d6d6')" title="Gray"></button>
+                        </div>
+                    </div>
                     <button class="btn btn-secondary btn-sm" onclick="duplicateTimelineItem('${item.id}')">Dup</button>
                     <button class="btn btn-danger" onclick="deleteTimelineItem('${item.id}')">Delete</button>
                 </td>
@@ -1137,7 +1149,25 @@ window.undoTimelineAction = async () => {
     }
 };
 
+window.toggleColorPicker = (id) => {
+    // Close any other open pickers
+    document.querySelectorAll('.color-swatch-dropdown.open').forEach(el => {
+        if (el.id !== `color-picker-${id}`) el.classList.remove('open');
+    });
+    const picker = document.getElementById(`color-picker-${id}`);
+    if (picker) picker.classList.toggle('open');
+};
+
+// Close color pickers when clicking elsewhere
+document.addEventListener('click', (e) => {
+    if (!e.target.closest('.color-swatch-wrapper')) {
+        document.querySelectorAll('.color-swatch-dropdown.open').forEach(el => el.classList.remove('open'));
+    }
+});
+
 window.setTimelineColor = async (id, color) => {
+    // Close the picker
+    document.querySelectorAll('.color-swatch-dropdown.open').forEach(el => el.classList.remove('open'));
     const item = state.timeline.find(i => i.id === id);
     if (item) pushTimelineUndo({ type: 'update', id, previousData: { highlightColor: item.highlightColor || '' } });
 
