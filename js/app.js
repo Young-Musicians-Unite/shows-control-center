@@ -31,7 +31,8 @@ const state = {
     redoStack: [],  // History of undone states for redo
     isUndoRedoing: false,  // Flag to prevent history recording during undo/redo
     isInteracting: false,  // Flag to prevent canvas resize during user interaction
-    dimensionsVisible: true  // Whether stage dimension labels are shown
+    dimensionsVisible: true,  // Whether stage dimension labels are shown
+    timelineUndoStack: []  // Undo history for timeline actions
 };
 
 // Toast notification system
@@ -759,9 +760,13 @@ function renderTimeline() {
     tbody.innerHTML = sorted.map(item => {
         const isComplete = item.completed === true || item.status === 'complete';
 
+        const rowColor = item.highlightColor || '';
+        const rowStyle = rowColor ? `background-color: ${rowColor};` : '';
+
         return `
             <tr class="${isComplete ? 'task-completed' : ''}"
                 data-id="${item.id}"
+                style="${rowStyle}"
                 ondblclick="makeRowEditable(this)">
                 <td class="checkbox-col">
                     <input type="checkbox"
@@ -773,6 +778,8 @@ function renderTimeline() {
                 <td class="responsible-col" data-field="responsible" data-original="${escapeHtml(item.responsible || '')}">${escapeHtml(item.responsible || '')}</td>
                 <td class="staff-col" data-field="staff" data-original="${escapeHtml(item.staff || '')}">${escapeHtml(item.staff || '')}</td>
                 <td class="actions-col no-print">
+                    <input type="color" class="color-picker" value="${rowColor || '#ffffff'}" title="Highlight color" onchange="setTimelineColor('${item.id}', this.value)">
+                    <button class="btn btn-secondary btn-sm" onclick="duplicateTimelineItem('${item.id}')">Dup</button>
                     <button class="btn btn-danger" onclick="deleteTimelineItem('${item.id}')">Delete</button>
                 </td>
             </tr>
@@ -950,15 +957,18 @@ async function handleFormSubmit(e, config) {
     const id = document.getElementById(config.idFieldId).value;
 
     try {
+        let result = { isNew: false, docId: id };
         if (id) {
             await collections[config.collection].doc(id).update(data);
             showToast(`${config.itemName.charAt(0).toUpperCase() + config.itemName.slice(1)} updated`);
         } else {
             data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
-            await collections[config.collection].add(data);
+            const docRef = await collections[config.collection].add(data);
+            result = { isNew: true, docId: docRef.id };
             showToast(`${config.itemName.charAt(0).toUpperCase() + config.itemName.slice(1)} added`);
         }
         closeAllModals();
+        return result;
     } catch (error) {
         console.error(`Error saving ${config.collection}:`, error);
         showToast(`Error saving ${config.itemName}. Please try again.`, 'error');
@@ -988,7 +998,18 @@ async function handleBudgetSubmit(e) {
 }
 
 async function handleTimelineSubmit(e) {
-    await handleFormSubmit(e, {
+    const editId = document.getElementById('timeline-id').value;
+    // Capture previous data for undo on edits
+    let previousData = null;
+    if (editId) {
+        const item = state.timeline.find(i => i.id === editId);
+        if (item) {
+            const { id: _id, ...rest } = item;
+            previousData = rest;
+        }
+    }
+
+    const result = await handleFormSubmit(e, {
         collection: 'timeline',
         idFieldId: 'timeline-id',
         itemName: 'task',
@@ -1002,6 +1023,14 @@ async function handleTimelineSubmit(e) {
         },
         numericFields: []
     });
+
+    if (result) {
+        if (result.isNew) {
+            pushTimelineUndo({ type: 'add', id: result.docId });
+        } else if (previousData) {
+            pushTimelineUndo({ type: 'update', id: result.docId, previousData });
+        }
+    }
 }
 
 // CRUD Operations
@@ -1043,9 +1072,26 @@ function createDeleteHandler(collectionKey, itemName) {
 
 window.deleteBudgetItem = createDeleteHandler('budget', 'budget item');
 window.toggleBudgetConfirmed = toggleBudgetConfirmed;
-window.deleteTimelineItem = createDeleteHandler('timeline', 'task');
+window.deleteTimelineItem = async (id) => {
+    if (!confirm('Are you sure you want to delete this task?')) return;
+    const item = state.timeline.find(i => i.id === id);
+    if (item) {
+        const { id: _id, ...data } = item;
+        pushTimelineUndo({ type: 'delete', id, previousData: data });
+    }
+    try {
+        await collections.timeline.doc(id).delete();
+        showToast('Task deleted');
+    } catch (error) {
+        console.error('Error deleting task:', error);
+        showToast('Error deleting task', 'error');
+    }
+};
 
 window.toggleTaskComplete = async (id, completed) => {
+    const item = state.timeline.find(i => i.id === id);
+    if (item) pushTimelineUndo({ type: 'update', id, previousData: { completed: item.completed || false, status: item.status || 'not-started' } });
+
     try {
         await collections.timeline.doc(id).update({
             completed: completed,
@@ -1056,6 +1102,73 @@ window.toggleTaskComplete = async (id, completed) => {
     } catch (error) {
         console.error('Error updating task:', error);
         showToast('Error updating task. Please try again.', 'error');
+    }
+};
+
+// Timeline undo system
+function pushTimelineUndo(action) {
+    state.timelineUndoStack.push(action);
+    if (state.timelineUndoStack.length > 30) state.timelineUndoStack.shift();
+    updateTimelineUndoButton();
+}
+
+function updateTimelineUndoButton() {
+    const btn = document.getElementById('timeline-undo-btn');
+    if (btn) btn.disabled = state.timelineUndoStack.length === 0;
+}
+
+window.undoTimelineAction = async () => {
+    const action = state.timelineUndoStack.pop();
+    updateTimelineUndoButton();
+    if (!action) return;
+
+    try {
+        if (action.type === 'update') {
+            await collections.timeline.doc(action.id).update(action.previousData);
+        } else if (action.type === 'add') {
+            await collections.timeline.doc(action.id).delete();
+        } else if (action.type === 'delete') {
+            await collections.timeline.doc(action.id).set(action.previousData);
+        }
+        showToast('Undone');
+    } catch (error) {
+        console.error('Error undoing:', error);
+        showToast('Error undoing action', 'error');
+    }
+};
+
+window.setTimelineColor = async (id, color) => {
+    const item = state.timeline.find(i => i.id === id);
+    if (item) pushTimelineUndo({ type: 'update', id, previousData: { highlightColor: item.highlightColor || '' } });
+
+    try {
+        const highlightColor = (color === '#ffffff') ? '' : color;
+        await collections.timeline.doc(id).update({
+            highlightColor: highlightColor,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+    } catch (error) {
+        console.error('Error setting color:', error);
+        showToast('Error setting color', 'error');
+    }
+};
+
+window.duplicateTimelineItem = async (id) => {
+    const item = state.timeline.find(i => i.id === id);
+    if (!item) return;
+
+    const { id: _id, createdAt, updatedAt, ...data } = item;
+    data.event = (data.event || '') + ' (copy)';
+    data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+    data.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+
+    try {
+        const docRef = await collections.timeline.add(data);
+        pushTimelineUndo({ type: 'add', id: docRef.id });
+        showToast('Task duplicated');
+    } catch (error) {
+        console.error('Error duplicating task:', error);
+        showToast('Error duplicating task', 'error');
     }
 };
 
@@ -1171,6 +1284,11 @@ function setupExportAndPrint() {
 
     if (printTimelineBtn) {
         printTimelineBtn.addEventListener('click', () => window.print());
+    }
+
+    const timelineUndoBtn = document.getElementById('timeline-undo-btn');
+    if (timelineUndoBtn) {
+        timelineUndoBtn.addEventListener('click', () => window.undoTimelineAction());
     }
     if (printStaffBtn) {
         printStaffBtn.addEventListener('click', () => window.print());
@@ -1364,16 +1482,23 @@ function saveRowChanges(row) {
     const id = row.dataset.id;
     const inputs = row.querySelectorAll('.inline-edit-input');
 
+    // Capture previous values for undo
+    const item = state.timeline.find(i => i.id === id);
+    const previousData = {};
+
     const updates = {};
     inputs.forEach(input => {
         const field = input.dataset.field;
         updates[field] = input.value;
+        if (item) previousData[field] = item[field] || '';
     });
 
     // Convert 12hr time back to 24hr for storage
     if (updates.time) {
         updates.time = convertTo24Hour(updates.time);
     }
+
+    if (item) pushTimelineUndo({ type: 'update', id, previousData });
 
     // Update Firebase
     collections.timeline.doc(id).update(updates)

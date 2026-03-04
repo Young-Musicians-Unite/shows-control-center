@@ -1262,7 +1262,17 @@ body {
 
 .timeline-table th.actions-col,
 .timeline-table td.actions-col {
-    width: 180px;
+    width: 220px;
+}
+
+.timeline-table .color-picker {
+    width: 28px;
+    height: 28px;
+    padding: 1px;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    cursor: pointer;
+    vertical-align: middle;
 }
 
 tr.task-completed td:not(.checkbox-col):not(.actions-col) {
