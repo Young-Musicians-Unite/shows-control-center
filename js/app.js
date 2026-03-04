@@ -893,16 +893,20 @@ function openTimelineModal(itemId = null) {
         stateKey: 'timeline',
         title: 'Task',
         fieldMap: {
-            'timeline-task': 'task',
-            'timeline-due-date': 'dueDate',
-            'timeline-status': 'status',
+            'timeline-time': 'time',
+            'timeline-day': 'day',
+            'timeline-event': 'event',
             'timeline-responsible': 'responsible',
+            'timeline-staff': 'staff',
             'timeline-notes': 'notes'
         },
         defaultValues: {
-            'timeline-status': 'not-started'
+            'timeline-day': state.currentDay
         }
     });
+    // Show the current day in the read-only display field
+    document.getElementById('timeline-day-display').value =
+        document.getElementById('timeline-day').value || state.currentDay;
 }
 
 // Form Handlers
@@ -982,10 +986,11 @@ async function handleTimelineSubmit(e) {
         idFieldId: 'timeline-id',
         itemName: 'task',
         fieldMap: {
-            'timeline-task': 'task',
-            'timeline-due-date': 'dueDate',
-            'timeline-status': 'status',
+            'timeline-time': 'time',
+            'timeline-day': 'day',
+            'timeline-event': 'event',
             'timeline-responsible': 'responsible',
+            'timeline-staff': 'staff',
             'timeline-notes': 'notes'
         },
         numericFields: []

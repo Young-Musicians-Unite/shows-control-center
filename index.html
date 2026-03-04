@@ -592,27 +592,30 @@
             <div class="modal-body">
                 <form id="timeline-form">
                     <input type="hidden" id="timeline-id">
+                    <input type="hidden" id="timeline-day">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="timeline-time">Time</label>
+                            <input type="time" id="timeline-time">
+                        </div>
+                        <div class="form-group">
+                            <label for="timeline-day-display">Day</label>
+                            <input type="text" id="timeline-day-display" readonly>
+                        </div>
+                    </div>
                     <div class="form-group">
-                        <label for="timeline-task">Task *</label>
-                        <input type="text" id="timeline-task" required>
+                        <label for="timeline-event">Event *</label>
+                        <input type="text" id="timeline-event" required>
                     </div>
                     <div class="form-row">
                         <div class="form-group">
-                            <label for="timeline-due-date">Due Date</label>
-                            <input type="date" id="timeline-due-date">
+                            <label for="timeline-responsible">Responsible</label>
+                            <input type="text" id="timeline-responsible">
                         </div>
                         <div class="form-group">
-                            <label for="timeline-status">Status *</label>
-                            <select id="timeline-status" required>
-                                <option value="not-started">Not Started</option>
-                                <option value="in-progress">In Progress</option>
-                                <option value="complete">Complete</option>
-                            </select>
+                            <label for="timeline-staff">Staff</label>
+                            <input type="text" id="timeline-staff">
                         </div>
-                    </div>
-                    <div class="form-group">
-                        <label for="timeline-responsible">Responsible Person</label>
-                        <input type="text" id="timeline-responsible">
                     </div>
                     <div class="form-group">
                         <label for="timeline-notes">Notes</label>
