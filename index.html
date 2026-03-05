@@ -377,9 +377,109 @@
         <div id="venue-map" class="page">
             <div class="page-header">
                 <h1>Venue Map</h1>
+                <div class="header-actions">
+                    <span class="vm-save-status" id="vm-save-status"></span>
+                    <button class="btn btn-icon" id="vm-print-btn" title="Print">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+                    </button>
+                    <button class="btn btn-icon" id="vm-export-btn" title="Export PNG">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                    </button>
+                </div>
             </div>
-            <div class="venue-map-container">
-                <img src="venue-map.png" alt="Venue Map - Mana Wynwood" class="venue-map-image" id="venue-map-image">
+
+            <!-- Drawing Toolbar -->
+            <div class="vm-toolbar">
+                <div class="vm-tools">
+                    <button class="vm-tool-btn active" data-tool="select" title="Select / Move">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/></svg>
+                    </button>
+                    <button class="vm-tool-btn" data-tool="pen" title="Freehand Draw">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/></svg>
+                    </button>
+                    <button class="vm-tool-btn" data-tool="line" title="Line">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="19" x2="19" y2="5"/></svg>
+                    </button>
+                    <button class="vm-tool-btn" data-tool="rect" title="Rectangle">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+                    </button>
+                    <button class="vm-tool-btn" data-tool="circle" title="Circle">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>
+                    </button>
+                    <button class="vm-tool-btn" data-tool="text" title="Text Label">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9.5" y1="20" x2="14.5" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
+                    </button>
+                </div>
+
+                <div class="vm-separator"></div>
+
+                <!-- Color Swatches -->
+                <div class="vm-colors">
+                    <button class="vm-color-swatch active" data-color="#e53e3e" style="background:#e53e3e" title="Red"></button>
+                    <button class="vm-color-swatch" data-color="#3182ce" style="background:#3182ce" title="Blue"></button>
+                    <button class="vm-color-swatch" data-color="#38a169" style="background:#38a169" title="Green"></button>
+                    <button class="vm-color-swatch" data-color="#d69e2e" style="background:#d69e2e" title="Yellow"></button>
+                    <button class="vm-color-swatch" data-color="#805ad5" style="background:#805ad5" title="Purple"></button>
+                    <button class="vm-color-swatch" data-color="#dd6b20" style="background:#dd6b20" title="Orange"></button>
+                    <button class="vm-color-swatch" data-color="#e53e9e" style="background:#e53e9e" title="Pink"></button>
+                    <button class="vm-color-swatch" data-color="#1a202c" style="background:#1a202c" title="Black"></button>
+                    <button class="vm-color-swatch" data-color="#ffffff" style="background:#ffffff; border: 1px solid #ccc" title="White"></button>
+                </div>
+
+                <div class="vm-separator"></div>
+
+                <!-- Stroke Width -->
+                <div class="vm-stroke-control">
+                    <label>Width:</label>
+                    <select id="vm-stroke-width">
+                        <option value="2">Thin</option>
+                        <option value="4" selected>Medium</option>
+                        <option value="8">Thick</option>
+                        <option value="14">Extra Thick</option>
+                    </select>
+                </div>
+
+                <div class="vm-separator"></div>
+
+                <!-- Zoom Controls -->
+                <div class="vm-zoom-controls">
+                    <button class="vm-action-btn" id="vm-zoom-out-btn" title="Zoom Out">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+                    </button>
+                    <span class="vm-zoom-level" id="vm-zoom-level">100%</span>
+                    <button class="vm-action-btn" id="vm-zoom-in-btn" title="Zoom In">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+                    </button>
+                    <button class="vm-action-btn" id="vm-zoom-fit-btn" title="Fit to Screen">Fit</button>
+                </div>
+
+                <div class="vm-separator"></div>
+
+                <button class="vm-action-btn" id="vm-delete-btn" title="Delete Selected">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                    Delete
+                </button>
+            </div>
+
+            <!-- Main Content: Layers Panel + Canvas -->
+            <div class="vm-layout">
+                <!-- Layers Panel -->
+                <div class="vm-layers-panel">
+                    <div class="vm-layers-header">
+                        <h3>Layers</h3>
+                        <button class="btn btn-sm btn-primary-gold" id="vm-add-layer-btn">+ Layer</button>
+                    </div>
+                    <div class="vm-layers-list" id="vm-layers-list">
+                        <!-- Layers rendered dynamically -->
+                    </div>
+                </div>
+
+                <!-- Canvas Area -->
+                <div class="vm-canvas-area">
+                    <div class="vm-canvas-wrapper" id="vm-canvas-wrapper">
+                        <canvas id="vm-canvas"></canvas>
+                    </div>
+                </div>
             </div>
         </div>
 

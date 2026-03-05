@@ -32,5 +32,6 @@ const collections = {
     cocktailStageInputs: db.collection('cocktailStageInputs'),
     staff: db.collection('staff'),
     eventInfo: db.collection('event-info'),
-    stagePlots: db.collection('stagePlots')
+    stagePlots: db.collection('stagePlots'),
+    venueMapLayers: db.collection('venueMapLayers')
 };

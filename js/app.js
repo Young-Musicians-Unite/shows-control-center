@@ -43,7 +43,21 @@ const state = {
     pendingNewBudgetRow: {},
     stageEditingRowId: null,
     stageRenderPending: false,
-    pendingNewStageRow: {}
+    pendingNewStageRow: {},
+    // Venue map annotation state
+    vmCanvas: null,
+    vmLayers: [],         // [{id, name, color, visible, objects: [fabricJSON]}]
+    vmActiveLayerId: null,
+    vmCurrentTool: 'select',
+    vmCurrentColor: '#e53e3e',
+    vmStrokeWidth: 4,
+    vmDrawingObj: null,
+    vmDrawStart: null,
+    vmAutoSaveTimeout: null,
+    vmImageLoaded: false,
+    vmZoom: 1.0,
+    vmBaseWidth: 0,
+    vmBaseHeight: 0
 };
 
 // Toast notification system
@@ -104,14 +118,7 @@ function initializeApp() {
     setupVenueMap();
 }
 
-// Venue Map
-function setupVenueMap() {
-    const img = document.getElementById('venue-map-image');
-    if (!img) return;
-    img.addEventListener('click', () => {
-        img.classList.toggle('zoomed');
-    });
-}
+// Venue Map - setup is at end of file (setupVenueMap)
 
 // Navigation
 function setupNavigation() {
@@ -227,6 +234,15 @@ function switchPage(pageName) {
         }
         if (pageName === 'staff') renderStaff();
         if (pageName === 'stage-plots') initializeStagePlots();
+        if (pageName === 'venue-map') {
+            if (state.vmCanvas) {
+                // Re-render canvas after it becomes visible
+                setTimeout(() => state.vmCanvas.renderAll(), 50);
+            } else {
+                // First visit — initialize canvas now that the page is visible
+                vmInitCanvas();
+            }
+        }
     }
 }
 
@@ -4943,6 +4959,596 @@ function printPlot() {
             printWindow.print();
         }, 250);
     };
+}
+
+// ========================================
+// Venue Map Annotation Tool
+// ========================================
+
+function setupVenueMap() {
+    const wrapper = document.getElementById('vm-canvas-wrapper');
+    if (!wrapper) return;
+
+    // Pre-load the image but defer canvas creation until the page is visible
+    state.vmBgImage = new Image();
+    state.vmBgImage.src = 'venue-map.png';
+
+    // Tool buttons
+    document.querySelectorAll('.vm-tool-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.vm-tool-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            state.vmCurrentTool = btn.dataset.tool;
+            vmUpdateCanvasMode();
+        });
+    });
+
+    // Color swatches
+    document.querySelectorAll('.vm-color-swatch').forEach(swatch => {
+        swatch.addEventListener('click', () => {
+            document.querySelectorAll('.vm-color-swatch').forEach(s => s.classList.remove('active'));
+            swatch.classList.add('active');
+            state.vmCurrentColor = swatch.dataset.color;
+            // Update the active brush if currently in pen mode
+            if (state.vmCanvas && state.vmCanvas.isDrawingMode) {
+                state.vmCanvas.freeDrawingBrush.color = state.vmCurrentColor;
+            }
+        });
+    });
+
+    // Stroke width
+    const strokeSelect = document.getElementById('vm-stroke-width');
+    if (strokeSelect) {
+        strokeSelect.addEventListener('change', () => {
+            state.vmStrokeWidth = parseInt(strokeSelect.value);
+            // Update the active brush if currently in pen mode
+            if (state.vmCanvas && state.vmCanvas.isDrawingMode) {
+                state.vmCanvas.freeDrawingBrush.width = state.vmStrokeWidth;
+            }
+        });
+    }
+
+    // Zoom buttons
+    const zoomInBtn = document.getElementById('vm-zoom-in-btn');
+    const zoomOutBtn = document.getElementById('vm-zoom-out-btn');
+    const zoomFitBtn = document.getElementById('vm-zoom-fit-btn');
+    if (zoomInBtn) zoomInBtn.addEventListener('click', () => vmSetZoom(state.vmZoom + 0.15));
+    if (zoomOutBtn) zoomOutBtn.addEventListener('click', () => vmSetZoom(state.vmZoom - 0.15));
+    if (zoomFitBtn) zoomFitBtn.addEventListener('click', vmZoomFit);
+
+    // Delete button
+    const deleteBtn = document.getElementById('vm-delete-btn');
+    if (deleteBtn) {
+        deleteBtn.addEventListener('click', vmDeleteSelected);
+    }
+
+    // Add layer button
+    const addLayerBtn = document.getElementById('vm-add-layer-btn');
+    if (addLayerBtn) {
+        addLayerBtn.addEventListener('click', () => vmAddLayer());
+    }
+
+    // Print & Export buttons
+    const printBtn = document.getElementById('vm-print-btn');
+    const exportBtn = document.getElementById('vm-export-btn');
+    if (printBtn) printBtn.addEventListener('click', vmPrintMap);
+    if (exportBtn) exportBtn.addEventListener('click', vmExportPNG);
+
+    // Keyboard shortcuts for venue map
+    document.addEventListener('keydown', (e) => {
+        if (state.currentPage !== 'venue-map' || !state.vmCanvas) return;
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+        if (e.key === 'Delete' || e.key === 'Backspace') {
+            vmDeleteSelected();
+            e.preventDefault();
+        }
+    });
+}
+
+function vmInitCanvas() {
+    if (state.vmCanvas) return; // Already initialized
+
+    const wrapper = document.getElementById('vm-canvas-wrapper');
+    const img = state.vmBgImage;
+    if (!wrapper || !img) return;
+
+    // If image hasn't loaded yet, wait for it
+    if (!img.naturalWidth) {
+        img.onload = () => vmInitCanvas();
+        return;
+    }
+
+    const wrapperWidth = wrapper.clientWidth || 1000;
+    const scale = wrapperWidth / img.naturalWidth;
+    const canvasWidth = Math.floor(img.naturalWidth * scale);
+    const canvasHeight = Math.floor(img.naturalHeight * scale);
+
+    state.vmCanvas = new fabric.Canvas('vm-canvas', {
+        width: canvasWidth,
+        height: canvasHeight,
+        selection: true,
+        preserveObjectStacking: true
+    });
+
+    state.vmCanvas.setBackgroundImage(
+        new fabric.Image(img, {
+            scaleX: scale,
+            scaleY: scale,
+            originX: 'left',
+            originY: 'top'
+        }),
+        state.vmCanvas.renderAll.bind(state.vmCanvas)
+    );
+
+    state.vmImageLoaded = true;
+    state.vmBaseWidth = canvasWidth;
+    state.vmBaseHeight = canvasHeight;
+    state.vmZoom = 1.0;
+
+    vmSetupDrawingEvents();
+    vmLoadLayers();
+}
+
+function vmUpdateCanvasMode() {
+    const c = state.vmCanvas;
+    if (!c) return;
+
+    if (state.vmCurrentTool === 'select') {
+        c.isDrawingMode = false;
+        c.selection = true;
+        c.forEachObject(o => { if (!o._vmBackground) o.selectable = true; });
+    } else if (state.vmCurrentTool === 'pen') {
+        c.isDrawingMode = true;
+        c.freeDrawingBrush.color = state.vmCurrentColor;
+        c.freeDrawingBrush.width = state.vmStrokeWidth;
+        c.selection = false;
+    } else {
+        // Line, rect, circle, text — handled via mouse events
+        c.isDrawingMode = false;
+        c.selection = false;
+        c.forEachObject(o => { if (!o._vmBackground) o.selectable = false; });
+    }
+}
+
+function vmSetupDrawingEvents() {
+    const c = state.vmCanvas;
+
+    // When freehand path is created, tag it with the active layer
+    c.on('path:created', (e) => {
+        const path = e.path;
+        path._vmLayerId = state.vmActiveLayerId;
+        vmTriggerSave();
+    });
+
+    c.on('mouse:down', (opt) => {
+        if (state.vmCurrentTool === 'select' || state.vmCurrentTool === 'pen') return;
+        if (!state.vmActiveLayerId) {
+            showToast('Create a layer first', 'warning');
+            return;
+        }
+
+        const pointer = c.getPointer(opt.e);
+        state.vmDrawStart = { x: pointer.x, y: pointer.y };
+
+        if (state.vmCurrentTool === 'text') {
+            const text = prompt('Enter text:');
+            if (!text) return;
+            const textObj = new fabric.Text(text, {
+                left: pointer.x,
+                top: pointer.y,
+                fontSize: state.vmStrokeWidth * 5 + 10,
+                fill: state.vmCurrentColor,
+                fontFamily: 'DM Sans, sans-serif',
+                _vmLayerId: state.vmActiveLayerId
+            });
+            c.add(textObj);
+            c.setActiveObject(textObj);
+            vmTriggerSave();
+            // Switch back to select
+            state.vmCurrentTool = 'select';
+            document.querySelectorAll('.vm-tool-btn').forEach(b => b.classList.toggle('active', b.dataset.tool === 'select'));
+            vmUpdateCanvasMode();
+            return;
+        }
+
+        if (state.vmCurrentTool === 'line') {
+            state.vmDrawingObj = new fabric.Line(
+                [pointer.x, pointer.y, pointer.x, pointer.y],
+                { stroke: state.vmCurrentColor, strokeWidth: state.vmStrokeWidth, selectable: false, _vmLayerId: state.vmActiveLayerId }
+            );
+            c.add(state.vmDrawingObj);
+        } else if (state.vmCurrentTool === 'rect') {
+            state.vmDrawingObj = new fabric.Rect({
+                left: pointer.x, top: pointer.y, width: 0, height: 0,
+                stroke: state.vmCurrentColor, strokeWidth: state.vmStrokeWidth,
+                fill: 'transparent', selectable: false, _vmLayerId: state.vmActiveLayerId
+            });
+            c.add(state.vmDrawingObj);
+        } else if (state.vmCurrentTool === 'circle') {
+            state.vmDrawingObj = new fabric.Ellipse({
+                left: pointer.x, top: pointer.y, rx: 0, ry: 0,
+                stroke: state.vmCurrentColor, strokeWidth: state.vmStrokeWidth,
+                fill: 'transparent', selectable: false, _vmLayerId: state.vmActiveLayerId
+            });
+            c.add(state.vmDrawingObj);
+        }
+    });
+
+    c.on('mouse:move', (opt) => {
+        if (!state.vmDrawingObj || !state.vmDrawStart) return;
+        const pointer = c.getPointer(opt.e);
+
+        if (state.vmCurrentTool === 'line') {
+            state.vmDrawingObj.set({ x2: pointer.x, y2: pointer.y });
+        } else if (state.vmCurrentTool === 'rect') {
+            const left = Math.min(state.vmDrawStart.x, pointer.x);
+            const top = Math.min(state.vmDrawStart.y, pointer.y);
+            state.vmDrawingObj.set({
+                left, top,
+                width: Math.abs(pointer.x - state.vmDrawStart.x),
+                height: Math.abs(pointer.y - state.vmDrawStart.y)
+            });
+        } else if (state.vmCurrentTool === 'circle') {
+            const rx = Math.abs(pointer.x - state.vmDrawStart.x) / 2;
+            const ry = Math.abs(pointer.y - state.vmDrawStart.y) / 2;
+            state.vmDrawingObj.set({
+                left: Math.min(state.vmDrawStart.x, pointer.x),
+                top: Math.min(state.vmDrawStart.y, pointer.y),
+                rx, ry
+            });
+        }
+        c.renderAll();
+    });
+
+    c.on('mouse:up', () => {
+        if (state.vmDrawingObj) {
+            state.vmDrawingObj.setCoords();
+            state.vmDrawingObj = null;
+            state.vmDrawStart = null;
+            vmTriggerSave();
+        }
+    });
+
+    // Auto-save on object modifications
+    c.on('object:modified', () => vmTriggerSave());
+    c.on('object:removed', () => vmTriggerSave());
+}
+
+// --- Layer Management ---
+
+function vmAddLayer(name) {
+    const layerName = name || `Layer ${state.vmLayers.length + 1}`;
+    const colors = ['#e53e3e', '#3182ce', '#38a169', '#d69e2e', '#805ad5', '#dd6b20', '#e53e9e'];
+    const color = colors[state.vmLayers.length % colors.length];
+
+    const layer = {
+        id: 'layer_' + Date.now(),
+        name: layerName,
+        color: color,
+        visible: true
+    };
+
+    state.vmLayers.push(layer);
+    state.vmActiveLayerId = layer.id;
+    vmRenderLayers();
+    vmSaveLayers();
+    return layer;
+}
+
+function vmRenderLayers() {
+    const list = document.getElementById('vm-layers-list');
+    if (!list) return;
+
+    if (state.vmLayers.length === 0) {
+        list.innerHTML = '<p style="padding: 1rem; color: #a0aec0; font-size: 0.85rem; text-align: center;">No layers yet. Click "+ Layer" to start annotating.</p>';
+        return;
+    }
+
+    list.innerHTML = state.vmLayers.map(layer => `
+        <div class="vm-layer-item ${layer.id === state.vmActiveLayerId ? 'active' : ''}"
+             data-layer-id="${layer.id}" onclick="vmSelectLayer('${layer.id}')">
+            <div class="vm-layer-color" style="background:${layer.color}"></div>
+            <span class="vm-layer-name" ondblclick="vmRenameLayer(event, '${layer.id}')">${layer.name}</span>
+            <button class="vm-layer-visibility" onclick="vmToggleLayerVisibility(event, '${layer.id}')" title="${layer.visible ? 'Hide' : 'Show'}">
+                ${layer.visible ? '&#128065;' : '&#128064;'}
+            </button>
+            <button class="vm-layer-delete" onclick="vmDeleteLayer(event, '${layer.id}')" title="Delete layer">&times;</button>
+        </div>
+    `).join('');
+}
+
+function vmSelectLayer(layerId) {
+    // Don't re-render if we're in the middle of renaming a layer
+    if (state.vmRenamingLayer) return;
+    state.vmActiveLayerId = layerId;
+    vmRenderLayers();
+}
+window.vmSelectLayer = vmSelectLayer;
+
+function vmToggleLayerVisibility(e, layerId) {
+    e.stopPropagation();
+    const layer = state.vmLayers.find(l => l.id === layerId);
+    if (!layer) return;
+    layer.visible = !layer.visible;
+
+    // Show/hide objects on canvas
+    if (state.vmCanvas) {
+        state.vmCanvas.getObjects().forEach(obj => {
+            if (obj._vmLayerId === layerId) {
+                obj.visible = layer.visible;
+            }
+        });
+        state.vmCanvas.renderAll();
+    }
+
+    vmRenderLayers();
+    vmSaveLayers();
+}
+window.vmToggleLayerVisibility = vmToggleLayerVisibility;
+
+function vmRenameLayer(e, layerId) {
+    e.stopPropagation();
+    const layer = state.vmLayers.find(l => l.id === layerId);
+    if (!layer) return;
+
+    state.vmRenamingLayer = true;
+    const nameSpan = e.currentTarget;
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = layer.name;
+    input.className = 'vm-layer-name-input';
+
+    const finish = () => {
+        const newName = input.value.trim() || layer.name;
+        layer.name = newName;
+        state.vmRenamingLayer = false;
+        vmRenderLayers();
+        vmSaveLayers();
+    };
+
+    input.addEventListener('blur', finish);
+    input.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter') input.blur();
+        if (ev.key === 'Escape') { input.value = layer.name; input.blur(); }
+    });
+
+    nameSpan.replaceWith(input);
+    input.focus();
+    input.select();
+}
+window.vmRenameLayer = vmRenameLayer;
+
+function vmDeleteLayer(e, layerId) {
+    e.stopPropagation();
+    const layer = state.vmLayers.find(l => l.id === layerId);
+    if (!layer) return;
+    if (!confirm(`Delete layer "${layer.name}" and all its annotations?`)) return;
+
+    // Remove objects from canvas
+    if (state.vmCanvas) {
+        const toRemove = state.vmCanvas.getObjects().filter(o => o._vmLayerId === layerId);
+        toRemove.forEach(o => state.vmCanvas.remove(o));
+    }
+
+    state.vmLayers = state.vmLayers.filter(l => l.id !== layerId);
+    if (state.vmActiveLayerId === layerId) {
+        state.vmActiveLayerId = state.vmLayers.length > 0 ? state.vmLayers[0].id : null;
+    }
+    vmRenderLayers();
+    vmSaveLayers();
+}
+window.vmDeleteLayer = vmDeleteLayer;
+
+// --- Print & Export ---
+
+function vmGetExportDataURL() {
+    // Temporarily reset zoom to 1:1 so the export is full resolution
+    const c = state.vmCanvas;
+    if (!c) return null;
+
+    const prevZoom = state.vmZoom;
+    c.setZoom(1);
+    c.setWidth(state.vmBaseWidth);
+    c.setHeight(state.vmBaseHeight);
+    c.renderAll();
+
+    const dataURL = c.toDataURL({ format: 'png', quality: 1, multiplier: 2 });
+
+    // Restore zoom
+    c.setZoom(prevZoom);
+    c.setWidth(Math.round(state.vmBaseWidth * prevZoom));
+    c.setHeight(Math.round(state.vmBaseHeight * prevZoom));
+    c.renderAll();
+
+    return dataURL;
+}
+
+function vmExportPNG() {
+    const dataURL = vmGetExportDataURL();
+    if (!dataURL) return;
+
+    // Build a label from visible layer names
+    const visibleNames = state.vmLayers.filter(l => l.visible).map(l => l.name);
+    const suffix = visibleNames.length > 0 ? ' (' + visibleNames.join(', ') + ')' : '';
+
+    const link = document.createElement('a');
+    link.download = 'Venue Map' + suffix + '.png';
+    link.href = dataURL;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast('Map exported');
+}
+
+function vmPrintMap() {
+    const dataURL = vmGetExportDataURL();
+    if (!dataURL) return;
+
+    const visibleNames = state.vmLayers.filter(l => l.visible).map(l => l.name);
+    const layerLabel = visibleNames.length > 0 ? visibleNames.join(', ') : 'No annotation layers';
+
+    const printWindow = window.open('', '_blank');
+    printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Venue Map - YMU Gala 2026</title>
+            <style>
+                * { margin: 0; padding: 0; box-sizing: border-box; }
+                body { font-family: 'DM Sans', sans-serif; }
+                .header { text-align: center; padding: 12px 0 8px; }
+                .header h1 { font-size: 18px; color: #1a3a35; }
+                .header p { font-size: 12px; color: #718096; margin-top: 2px; }
+                .map { text-align: center; padding: 0 10px; }
+                .map img { max-width: 100%; height: auto; }
+                @media print {
+                    @page { size: landscape; margin: 0.4in; }
+                }
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <h1>YMU Gala 2026 - Venue Map</h1>
+                <p>Layers: ${layerLabel}</p>
+            </div>
+            <div class="map">
+                <img src="${dataURL}" />
+            </div>
+        </body>
+        </html>
+    `);
+    printWindow.document.close();
+    printWindow.onload = () => {
+        setTimeout(() => printWindow.print(), 250);
+    };
+}
+
+// --- Zoom ---
+
+function vmSetZoom(newZoom) {
+    const c = state.vmCanvas;
+    if (!c) return;
+    newZoom = Math.max(0.25, Math.min(3, newZoom));
+    state.vmZoom = newZoom;
+
+    const newWidth = Math.round(state.vmBaseWidth * newZoom);
+    const newHeight = Math.round(state.vmBaseHeight * newZoom);
+
+    c.setZoom(newZoom);
+    c.setWidth(newWidth);
+    c.setHeight(newHeight);
+    c.renderAll();
+
+    const label = document.getElementById('vm-zoom-level');
+    if (label) label.textContent = Math.round(newZoom * 100) + '%';
+}
+
+function vmZoomFit() {
+    const wrapper = document.getElementById('vm-canvas-wrapper');
+    if (!wrapper || !state.vmBaseWidth) return;
+    const fitZoom = wrapper.clientWidth / state.vmBaseWidth;
+    vmSetZoom(fitZoom);
+}
+
+function vmDeleteSelected() {
+    const c = state.vmCanvas;
+    if (!c) return;
+    const active = c.getActiveObjects();
+    if (active.length === 0) return;
+    active.forEach(obj => c.remove(obj));
+    c.discardActiveObject();
+    c.renderAll();
+    vmTriggerSave();
+}
+
+// --- Persistence (Firestore) ---
+
+function vmTriggerSave() {
+    if (state.vmAutoSaveTimeout) clearTimeout(state.vmAutoSaveTimeout);
+    vmUpdateSaveStatus('Saving...');
+    state.vmAutoSaveTimeout = setTimeout(() => vmSaveLayers(), 600);
+}
+
+function vmUpdateSaveStatus(text) {
+    const el = document.getElementById('vm-save-status');
+    if (el) el.textContent = text;
+}
+
+async function vmSaveLayers() {
+    if (!state.vmCanvas || !state.vmImageLoaded) return;
+
+    // Serialize each layer: metadata + its canvas objects
+    const layersData = state.vmLayers.map(layer => {
+        const objects = state.vmCanvas.getObjects().filter(o => o._vmLayerId === layer.id);
+        const serialized = objects.map(o => {
+            const json = o.toJSON(['_vmLayerId']);
+            return json;
+        });
+        return {
+            id: layer.id,
+            name: layer.name,
+            color: layer.color,
+            visible: layer.visible,
+            objects: serialized
+        };
+    });
+
+    try {
+        await collections.venueMapLayers.doc('default').set({
+            layers: JSON.stringify(layersData),
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        vmUpdateSaveStatus('Saved');
+        setTimeout(() => vmUpdateSaveStatus(''), 2000);
+    } catch (error) {
+        console.error('Error saving venue map layers:', error);
+        vmUpdateSaveStatus('Error saving');
+    }
+}
+
+async function vmLoadLayers() {
+    try {
+        const doc = await collections.venueMapLayers.doc('default').get();
+        if (!doc.exists) {
+            vmRenderLayers();
+            return;
+        }
+
+        const data = doc.data();
+        const layersData = JSON.parse(data.layers || '[]');
+
+        state.vmLayers = layersData.map(ld => ({
+            id: ld.id,
+            name: ld.name,
+            color: ld.color,
+            visible: ld.visible
+        }));
+
+        if (state.vmLayers.length > 0) {
+            state.vmActiveLayerId = state.vmLayers[0].id;
+        }
+
+        // Restore objects to canvas
+        const c = state.vmCanvas;
+        layersData.forEach(ld => {
+            ld.objects.forEach(objJson => {
+                fabric.util.enlivenObjects([objJson], (enlivened) => {
+                    enlivened.forEach(obj => {
+                        obj._vmLayerId = ld.id;
+                        obj.visible = ld.visible;
+                        c.add(obj);
+                    });
+                    c.renderAll();
+                });
+            });
+        });
+
+        vmRenderLayers();
+    } catch (error) {
+        console.error('Error loading venue map layers:', error);
+        vmRenderLayers();
+    }
 }
 
 // Make functions globally accessible
