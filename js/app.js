@@ -5343,9 +5343,9 @@ window.vmDeleteLayer = vmDeleteLayer;
 
 // --- Print & Export ---
 
-// Build an export by: loading a fresh CORS copy of the background image,
-// getting annotations from Fabric (with background stripped so it's untainted),
-// and compositing them on an offscreen canvas.
+// Build a data URL export of the venue map. Tries direct canvas export first
+// (works on same-origin HTTP). Falls back to CORS composite for tainted canvases.
+// Used by vmExportPNG (download). vmPrintMap uses its own layered approach.
 function vmBuildExport(callback) {
     const c = state.vmCanvas;
     if (!c) {
@@ -5355,34 +5355,51 @@ function vmBuildExport(callback) {
 
     const w = state.vmBaseWidth;
     const h = state.vmBaseHeight;
-
-    // Step 1: Get annotation-only data URL from Fabric (no background = no taint)
     const prevZoom = state.vmZoom;
-    const bg = c.backgroundImage;
-    c.backgroundImage = null;
+
+    // Reset to base dimensions for export
     c.setZoom(1);
     c.setWidth(w);
     c.setHeight(h);
     c.renderAll();
 
-    let annotationDataURL;
-    try {
-        annotationDataURL = c.toDataURL({ format: 'png' });
-    } catch (err) {
-        console.error('Annotation export failed:', err);
-        showToast('Error exporting annotations', 'error');
+    function restoreZoom() {
+        c.setZoom(prevZoom);
+        c.setWidth(Math.round(w * prevZoom));
+        c.setHeight(Math.round(h * prevZoom));
+        c.renderAll();
     }
 
-    // Restore canvas
-    c.backgroundImage = bg;
-    c.setZoom(prevZoom);
-    c.setWidth(Math.round(w * prevZoom));
-    c.setHeight(Math.round(h * prevZoom));
-    c.renderAll();
+    // Try direct export (works if background was loaded with crossOrigin)
+    try {
+        const dataURL = c.toDataURL({ format: 'png' });
+        restoreZoom();
+        callback(dataURL);
+        return;
+    } catch (e) {
+        // Canvas is tainted by the background image — use composite approach
+    }
 
-    if (!annotationDataURL) return;
+    // Composite approach: export annotations separately, then layer onto a CORS background
+    const hasAnnotations = c.getObjects().length > 0;
+    let annotationDataURL = null;
 
-    // Step 2: Load a fresh CORS copy of the background for the export canvas
+    if (hasAnnotations) {
+        const bg = c.backgroundImage;
+        c.backgroundImage = null;
+        c.renderAll();
+        try {
+            annotationDataURL = c.toDataURL({ format: 'png' });
+        } catch (err) {
+            console.error('Annotation export failed:', err);
+        }
+        c.backgroundImage = bg;
+        c.renderAll();
+    }
+
+    restoreZoom();
+
+    // Load a fresh CORS copy of the background for the export canvas
     const corsImg = new Image();
     corsImg.crossOrigin = 'anonymous';
     corsImg.onload = () => {
@@ -5390,23 +5407,28 @@ function vmBuildExport(callback) {
         offscreen.width = w;
         offscreen.height = h;
         const ctx = offscreen.getContext('2d');
-
-        // Draw background
         ctx.drawImage(corsImg, 0, 0, w, h);
 
-        // Draw annotations on top
-        const annotImg = new Image();
-        annotImg.onload = () => {
-            ctx.drawImage(annotImg, 0, 0);
+        if (annotationDataURL) {
+            const annotImg = new Image();
+            annotImg.onload = () => {
+                ctx.drawImage(annotImg, 0, 0);
+                callback(offscreen.toDataURL('image/png'));
+            };
+            annotImg.src = annotationDataURL;
+        } else {
+            // No annotations — just export the background
             callback(offscreen.toDataURL('image/png'));
-        };
-        annotImg.src = annotationDataURL;
+        }
     };
     corsImg.onerror = () => {
-        // CORS load failed (e.g. local file://), export annotations only
-        console.warn('CORS image load failed, exporting annotations only');
-        showToast('Exported annotations only (background unavailable in local mode)', 'warning');
-        callback(annotationDataURL);
+        if (annotationDataURL) {
+            console.warn('CORS image load failed, exporting annotations only');
+            showToast('Exported annotations only (background unavailable in local mode)', 'warning');
+            callback(annotationDataURL);
+        } else {
+            showToast('Cannot export venue map in local mode — deploy to GitHub Pages', 'error');
+        }
     };
     corsImg.src = 'venue-map.png?export=' + Date.now();
 }
@@ -5427,17 +5449,71 @@ function vmExportPNG() {
 }
 
 function vmPrintMap() {
-    vmBuildExport((dataURL) => {
-        const visibleNames = state.vmLayers.filter(l => l.visible).map(l => l.name);
-        const layerLabel = visibleNames.length > 0 ? visibleNames.join(', ') : 'No annotation layers';
+    const c = state.vmCanvas;
+    if (!c) {
+        showToast('Canvas not ready — navigate to Venue Map first', 'error');
+        return;
+    }
 
-        const printWindow = window.open('', '_blank');
-        if (!printWindow) {
-            showToast('Popup blocked — please allow popups for this site', 'error');
-            return;
-        }
+    const w = state.vmBaseWidth;
+    const h = state.vmBaseHeight;
+    const prevZoom = state.vmZoom;
 
-        const html = `<!DOCTYPE html>
+    // Reset zoom to base dimensions for annotation export
+    c.setZoom(1);
+    c.setWidth(w);
+    c.setHeight(h);
+    c.renderAll();
+
+    // Try direct full-canvas export (works on same-origin HTTP)
+    let fullDataURL = null;
+    try {
+        fullDataURL = c.toDataURL({ format: 'png' });
+    } catch (e) {
+        // Canvas tainted — will use layered approach
+    }
+
+    // If direct export failed, get annotations-only as a transparent overlay
+    let annotationDataURL = null;
+    if (!fullDataURL && c.getObjects().length > 0) {
+        const bg = c.backgroundImage;
+        c.backgroundImage = null;
+        c.renderAll();
+        try {
+            annotationDataURL = c.toDataURL({ format: 'png' });
+        } catch (e) { /* shouldn't happen — annotations don't taint */ }
+        c.backgroundImage = bg;
+        c.renderAll();
+    }
+
+    // Restore zoom
+    c.setZoom(prevZoom);
+    c.setWidth(Math.round(w * prevZoom));
+    c.setHeight(Math.round(h * prevZoom));
+    c.renderAll();
+
+    const visibleNames = state.vmLayers.filter(l => l.visible).map(l => l.name);
+    const layerLabel = visibleNames.length > 0 ? visibleNames.join(', ') : 'No annotation layers';
+
+    // Build the map image HTML — either a single composited image or layered images
+    let mapHTML;
+    if (fullDataURL) {
+        mapHTML = `<img src="${fullDataURL}" style="max-width:100%; height:auto;" />`;
+    } else {
+        // Layered: use venue-map.png directly (always displayable) + annotation overlay
+        mapHTML = `<div style="position:relative; display:inline-block; max-width:100%;">
+            <img src="venue-map.png" style="width:100%; height:auto; display:block;" />
+            ${annotationDataURL ? `<img src="${annotationDataURL}" style="position:absolute; top:0; left:0; width:100%; height:100%;" />` : ''}
+        </div>`;
+    }
+
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+        showToast('Popup blocked — please allow popups for this site', 'error');
+        return;
+    }
+
+    const html = `<!DOCTYPE html>
 <html>
 <head>
     <title>Venue Map - YMU Gala 2026</title>
@@ -5448,7 +5524,6 @@ function vmPrintMap() {
         .header h1 { font-size: 18px; color: #1a3a35; }
         .header p { font-size: 12px; color: #718096; margin-top: 2px; }
         .map { text-align: center; padding: 0 10px; }
-        .map img { max-width: 100%; height: auto; }
         @media print {
             @page { size: landscape; margin: 0.4in; }
         }
@@ -5460,17 +5535,16 @@ function vmPrintMap() {
         <p>Layers: ${layerLabel}</p>
     </div>
     <div class="map">
-        <img src="${dataURL}" />
+        ${mapHTML}
     </div>
 </body>
 </html>`;
 
-        printWindow.document.write(html);
-        printWindow.document.close();
-        printWindow.onload = () => {
-            setTimeout(() => printWindow.print(), 250);
-        };
-    });
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.onload = () => {
+        setTimeout(() => printWindow.print(), 250);
+    };
 }
 
 // --- Zoom ---
