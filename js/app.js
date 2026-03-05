@@ -101,6 +101,16 @@ function initializeApp() {
     setupUndoRedo();
     setupKeyboardShortcuts();
     setupPlotNameInput();
+    setupVenueMap();
+}
+
+// Venue Map
+function setupVenueMap() {
+    const img = document.getElementById('venue-map-image');
+    if (!img) return;
+    img.addEventListener('click', () => {
+        img.classList.toggle('zoomed');
+    });
 }
 
 // Navigation

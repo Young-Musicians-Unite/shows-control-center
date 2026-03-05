@@ -4118,6 +4118,35 @@ body.menu-open {
     font-size: 0.85rem;
 }
 
+/* ========================================
+   Venue Map Page
+   ======================================== */
+
+.venue-map-container {
+    background: var(--card-bg, #fff);
+    border-radius: 12px;
+    padding: 1rem;
+    overflow: auto;
+    text-align: center;
+}
+
+.venue-map-image {
+    max-width: 100%;
+    height: auto;
+    border-radius: 8px;
+    cursor: zoom-in;
+}
+
+.venue-map-image.zoomed {
+    max-width: none;
+    width: 180%;
+    cursor: zoom-out;
+}
+
+/* ========================================
+   Stage Plots Page
+   ======================================== */
+
 /* Main Container */
 .stage-plot-container {
     display: flex;
