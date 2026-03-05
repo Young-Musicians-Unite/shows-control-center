@@ -5343,89 +5343,101 @@ window.vmDeleteLayer = vmDeleteLayer;
 
 // --- Print & Export ---
 
-function vmGetExportDataURL() {
+// Build an export by: loading a fresh CORS copy of the background image,
+// getting annotations from Fabric (with background stripped so it's untainted),
+// and compositing them on an offscreen canvas.
+function vmBuildExport(callback) {
     const c = state.vmCanvas;
     if (!c) {
         showToast('Canvas not ready — navigate to Venue Map first', 'error');
-        return null;
+        return;
     }
 
-    try {
-        // Compose export on an offscreen canvas to avoid tainted-canvas issues.
-        // 1) Draw the background image directly
-        // 2) Draw the Fabric annotation layer on top (without its background)
-        const w = state.vmBaseWidth;
-        const h = state.vmBaseHeight;
+    const w = state.vmBaseWidth;
+    const h = state.vmBaseHeight;
 
+    // Step 1: Get annotation-only data URL from Fabric (no background = no taint)
+    const prevZoom = state.vmZoom;
+    const bg = c.backgroundImage;
+    c.backgroundImage = null;
+    c.setZoom(1);
+    c.setWidth(w);
+    c.setHeight(h);
+    c.renderAll();
+
+    let annotationDataURL;
+    try {
+        annotationDataURL = c.toDataURL({ format: 'png' });
+    } catch (err) {
+        console.error('Annotation export failed:', err);
+        showToast('Error exporting annotations', 'error');
+    }
+
+    // Restore canvas
+    c.backgroundImage = bg;
+    c.setZoom(prevZoom);
+    c.setWidth(Math.round(w * prevZoom));
+    c.setHeight(Math.round(h * prevZoom));
+    c.renderAll();
+
+    if (!annotationDataURL) return;
+
+    // Step 2: Load a fresh CORS copy of the background for the export canvas
+    const corsImg = new Image();
+    corsImg.crossOrigin = 'anonymous';
+    corsImg.onload = () => {
         const offscreen = document.createElement('canvas');
         offscreen.width = w;
         offscreen.height = h;
         const ctx = offscreen.getContext('2d');
 
-        // Draw venue map background from the original loaded image
-        const img = state.vmBgImage;
-        if (img && img.naturalWidth) {
-            ctx.drawImage(img, 0, 0, w, h);
-        }
+        // Draw background
+        ctx.drawImage(corsImg, 0, 0, w, h);
 
-        // Temporarily strip the background from Fabric canvas, reset zoom, and export annotations only
-        const prevZoom = state.vmZoom;
-        const bg = c.backgroundImage;
-        c.backgroundImage = null;
-        c.setZoom(1);
-        c.setWidth(w);
-        c.setHeight(h);
-        c.renderAll();
-
-        // Get annotation layer as a transparent PNG from the raw Fabric lower canvas
-        const fabricCanvas = c.lowerCanvasEl;
-        ctx.drawImage(fabricCanvas, 0, 0);
-
-        // Restore Fabric canvas state
-        c.backgroundImage = bg;
-        c.setZoom(prevZoom);
-        c.setWidth(Math.round(w * prevZoom));
-        c.setHeight(Math.round(h * prevZoom));
-        c.renderAll();
-
-        return offscreen.toDataURL('image/png');
-    } catch (err) {
-        console.error('Export error:', err);
-        showToast('Error exporting map: ' + err.message, 'error');
-        return null;
-    }
+        // Draw annotations on top
+        const annotImg = new Image();
+        annotImg.onload = () => {
+            ctx.drawImage(annotImg, 0, 0);
+            callback(offscreen.toDataURL('image/png'));
+        };
+        annotImg.src = annotationDataURL;
+    };
+    corsImg.onerror = () => {
+        // CORS load failed (e.g. local file://), export annotations only
+        console.warn('CORS image load failed, exporting annotations only');
+        showToast('Exported annotations only (background unavailable in local mode)', 'warning');
+        callback(annotationDataURL);
+    };
+    corsImg.src = 'venue-map.png';
 }
 
 function vmExportPNG() {
-    const dataURL = vmGetExportDataURL();
-    if (!dataURL) return;
+    vmBuildExport((dataURL) => {
+        const visibleNames = state.vmLayers.filter(l => l.visible).map(l => l.name);
+        const suffix = visibleNames.length > 0 ? ' (' + visibleNames.join(', ') + ')' : '';
 
-    const visibleNames = state.vmLayers.filter(l => l.visible).map(l => l.name);
-    const suffix = visibleNames.length > 0 ? ' (' + visibleNames.join(', ') + ')' : '';
-
-    const link = document.createElement('a');
-    link.download = 'Venue Map' + suffix + '.png';
-    link.href = dataURL;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    showToast('Map exported');
+        const link = document.createElement('a');
+        link.download = 'Venue Map' + suffix + '.png';
+        link.href = dataURL;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        showToast('Map exported');
+    });
 }
 
 function vmPrintMap() {
-    const dataURL = vmGetExportDataURL();
-    if (!dataURL) return;
+    vmBuildExport((dataURL) => {
+        const visibleNames = state.vmLayers.filter(l => l.visible).map(l => l.name);
+        const layerLabel = visibleNames.length > 0 ? visibleNames.join(', ') : 'No annotation layers';
 
-    const visibleNames = state.vmLayers.filter(l => l.visible).map(l => l.name);
-    const layerLabel = visibleNames.length > 0 ? visibleNames.join(', ') : 'No annotation layers';
+        const printWindow = window.open('', '_blank');
+        if (!printWindow) {
+            showToast('Popup blocked — please allow popups for this site', 'error');
+            return;
+        }
 
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-        showToast('Popup blocked — please allow popups for this site', 'error');
-        return;
-    }
-
-    const html = `<!DOCTYPE html>
+        const html = `<!DOCTYPE html>
 <html>
 <head>
     <title>Venue Map - YMU Gala 2026</title>
@@ -5453,11 +5465,12 @@ function vmPrintMap() {
 </body>
 </html>`;
 
-    printWindow.document.write(html);
-    printWindow.document.close();
-    printWindow.onload = () => {
-        setTimeout(() => printWindow.print(), 250);
-    };
+        printWindow.document.write(html);
+        printWindow.document.close();
+        printWindow.onload = () => {
+            setTimeout(() => printWindow.print(), 250);
+        };
+    });
 }
 
 // --- Zoom ---
