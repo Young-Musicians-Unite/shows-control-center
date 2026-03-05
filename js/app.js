@@ -5408,7 +5408,7 @@ function vmBuildExport(callback) {
         showToast('Exported annotations only (background unavailable in local mode)', 'warning');
         callback(annotationDataURL);
     };
-    corsImg.src = 'venue-map.png';
+    corsImg.src = 'venue-map.png?export=' + Date.now();
 }
 
 function vmExportPNG() {
