@@ -4971,7 +4971,6 @@ function setupVenueMap() {
 
     // Pre-load the image but defer canvas creation until the page is visible
     state.vmBgImage = new Image();
-    state.vmBgImage.crossOrigin = 'anonymous';
     state.vmBgImage.src = 'venue-map.png';
 
     // Tool buttons
@@ -5072,11 +5071,16 @@ function vmInitCanvas() {
         preserveObjectStacking: true
     });
 
-    // Use fabric.Image.fromURL to ensure crossOrigin is set properly for toDataURL
-    fabric.Image.fromURL('venue-map.png', (fabricImg) => {
-        fabricImg.set({ scaleX: scale, scaleY: scale, originX: 'left', originY: 'top' });
-        state.vmCanvas.setBackgroundImage(fabricImg, state.vmCanvas.renderAll.bind(state.vmCanvas));
-    }, { crossOrigin: 'anonymous' });
+    state.vmCanvas.setBackgroundImage(
+        new fabric.Image(img, {
+            scaleX: scale,
+            scaleY: scale,
+            originX: 'left',
+            originY: 'top'
+        }),
+        state.vmCanvas.renderAll.bind(state.vmCanvas)
+    );
+    state.vmBgScale = scale;
 
     state.vmImageLoaded = true;
     state.vmBaseWidth = canvasWidth;
@@ -5347,35 +5351,44 @@ function vmGetExportDataURL() {
     }
 
     try {
-        // Temporarily reset zoom to 1:1 so the export is full resolution
-        const prevZoom = state.vmZoom;
-        c.setZoom(1);
-        c.setWidth(state.vmBaseWidth);
-        c.setHeight(state.vmBaseHeight);
-        c.renderAll();
+        // Compose export on an offscreen canvas to avoid tainted-canvas issues.
+        // 1) Draw the background image directly
+        // 2) Draw the Fabric annotation layer on top (without its background)
+        const w = state.vmBaseWidth;
+        const h = state.vmBaseHeight;
 
-        let dataURL;
-        try {
-            dataURL = c.toDataURL({ format: 'png', quality: 1 });
-        } catch (taintErr) {
-            // Canvas tainted — re-render background from a clean source
-            console.warn('Canvas tainted, falling back to non-background export:', taintErr);
-            // Try without background
-            const bg = c.backgroundImage;
-            c.backgroundImage = null;
-            c.renderAll();
-            dataURL = c.toDataURL({ format: 'png', quality: 1 });
-            c.backgroundImage = bg;
-            c.renderAll();
+        const offscreen = document.createElement('canvas');
+        offscreen.width = w;
+        offscreen.height = h;
+        const ctx = offscreen.getContext('2d');
+
+        // Draw venue map background from the original loaded image
+        const img = state.vmBgImage;
+        if (img && img.naturalWidth) {
+            ctx.drawImage(img, 0, 0, w, h);
         }
 
-        // Restore zoom
-        c.setZoom(prevZoom);
-        c.setWidth(Math.round(state.vmBaseWidth * prevZoom));
-        c.setHeight(Math.round(state.vmBaseHeight * prevZoom));
+        // Temporarily strip the background from Fabric canvas, reset zoom, and export annotations only
+        const prevZoom = state.vmZoom;
+        const bg = c.backgroundImage;
+        c.backgroundImage = null;
+        c.setZoom(1);
+        c.setWidth(w);
+        c.setHeight(h);
         c.renderAll();
 
-        return dataURL;
+        // Get annotation layer as a transparent PNG from the raw Fabric lower canvas
+        const fabricCanvas = c.lowerCanvasEl;
+        ctx.drawImage(fabricCanvas, 0, 0);
+
+        // Restore Fabric canvas state
+        c.backgroundImage = bg;
+        c.setZoom(prevZoom);
+        c.setWidth(Math.round(w * prevZoom));
+        c.setHeight(Math.round(h * prevZoom));
+        c.renderAll();
+
+        return offscreen.toDataURL('image/png');
     } catch (err) {
         console.error('Export error:', err);
         showToast('Error exporting map: ' + err.message, 'error');
