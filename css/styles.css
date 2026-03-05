@@ -1394,6 +1394,11 @@ body {
     animation: tl-row-in 0.35s ease both;
 }
 
+/* Pastel highlight background for color-tagged rows */
+.timeline-table .tl-row.tl-highlighted {
+    background-color: var(--row-accent) !important;
+}
+
 @keyframes tl-row-in {
     from { opacity: 0; transform: translateY(6px); }
     to { opacity: 1; transform: translateY(0); }
@@ -1857,10 +1862,75 @@ tr.editing td {
     padding: 0.5rem;
 }
 
-/* Double-click cursor hint */
+/* Single-click cell editing cursor */
+.timeline-table tbody tr:not(.editing) td[data-field] {
+    cursor: cell;
+}
 .timeline-table tbody tr:not(.editing):hover {
-    cursor: pointer;
     background-color: rgba(250, 248, 243, 0.8);
+}
+.timeline-table tbody td[data-field]:hover {
+    background-color: rgba(201, 169, 97, 0.08);
+}
+
+/* Active editing cell gold highlight */
+.timeline-table td[data-field] .inline-edit-input {
+    border-color: #c9a961;
+}
+.timeline-table td[data-field] .inline-edit-input:focus {
+    border-color: #c9a961;
+    box-shadow: 0 0 0 3px rgba(201, 169, 97, 0.18);
+}
+
+/* Phantom row (inline add) */
+.tl-phantom-row {
+    opacity: 0.5;
+    transition: opacity 0.2s ease;
+}
+.tl-phantom-row:hover,
+.tl-phantom-row:focus-within {
+    opacity: 1;
+}
+.tl-phantom-row.editing {
+    opacity: 1;
+    background-color: transparent !important;
+    border: none;
+}
+.phantom-placeholder {
+    color: #aaa;
+    font-style: italic;
+    font-size: 0.88rem;
+    user-select: none;
+}
+
+/* Skip entrance animation on edit-triggered re-renders */
+.tl-row.no-anim {
+    animation: none !important;
+}
+
+/* Keyboard hints bar */
+.timeline-keyboard-hints {
+    display: flex;
+    justify-content: center;
+    gap: 1.2rem;
+    padding: 0.5rem 1rem;
+    font-size: 0.78rem;
+    color: #8a9bae;
+    letter-spacing: 0.2px;
+    flex-wrap: wrap;
+}
+.timeline-keyboard-hints span {
+    white-space: nowrap;
+}
+.timeline-keyboard-hints kbd {
+    display: inline-block;
+    padding: 1px 5px;
+    font-size: 0.72rem;
+    font-family: inherit;
+    background: #f0ece3;
+    border: 1px solid #ddd6c6;
+    border-radius: 3px;
+    margin: 0 1px;
 }
 
 /* Budget Category Accordion */

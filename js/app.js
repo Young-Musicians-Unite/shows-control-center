@@ -33,7 +33,11 @@ const state = {
     isInteracting: false,  // Flag to prevent canvas resize during user interaction
     dimensionsVisible: true,  // Whether stage dimension labels are shown
     timelineUndoStack: [],  // Undo history for timeline actions
-    timelineFilter: 'all'  // Current timeline filter: 'all', 'production', 'run-of-show'
+    timelineFilter: 'all',  // Current timeline filter: 'all', 'production', 'run-of-show'
+    timelineAnimateRows: true,  // Only animate rows on day/filter switch, not data updates
+    timelineEditingRowId: null,  // Row ID currently being inline-edited (blocks re-render)
+    timelineRenderPending: false,  // True if a Firestore snapshot arrived during editing
+    pendingNewRow: {}  // Accumulates phantom row data before commit
 };
 
 // Toast notification system
@@ -179,6 +183,7 @@ function switchPage(pageName) {
         if (pageName === 'budget') renderBudget();
         if (pageName === 'timeline') {
             // Reset to first day tab (Thursday)
+            state.timelineAnimateRows = true;
             state.currentDay = 'Thursday';
             const dayTabs = document.querySelectorAll('.day-tab[data-day]');
             dayTabs.forEach(t => t.classList.remove('active'));
@@ -724,6 +729,12 @@ function renderBudgetGrouped() {
 
 // Timeline
 function renderTimeline() {
+    // Guard: don't rebuild DOM if user is editing a cell
+    if (state.timelineEditingRowId) {
+        state.timelineRenderPending = true;
+        return;
+    }
+
     const tbody = document.getElementById('timeline-tbody');
 
     // Filter by current day
@@ -758,7 +769,19 @@ function renderTimeline() {
     }
 
     if (filteredTimeline.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No tasks for this day</td></tr>';
+        const phantomOnly = `
+            <tr class="tl-row tl-phantom-row no-anim" data-phantom="true">
+                <td class="checkbox-col"></td>
+                <td class="time-col" data-field="time" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ time</span></td>
+                <td class="event-col" data-field="event" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ event</span></td>
+                <td class="tag-col"></td>
+                <td class="responsible-col" data-field="responsible" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ responsible</span></td>
+                <td class="staff-col" data-field="staff" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ staff</span></td>
+                <td class="actions-col no-print"></td>
+            </tr>
+        `;
+        tbody.innerHTML = phantomOnly;
+        state.pendingNewRow = {};
         return;
     }
 
@@ -769,33 +792,34 @@ function renderTimeline() {
         return a.time.localeCompare(b.time);
     });
 
-    tbody.innerHTML = sorted.map((item, idx) => {
+    const rowsHtml = sorted.map((item, idx) => {
         const isComplete = item.completed === true || item.status === 'complete';
 
         const rowColor = item.highlightColor || '';
-        const borderColor = (rowColor && rowColor !== '#ffffff') ? rowColor : 'transparent';
-        const animDelay = `animation-delay: ${idx * 30}ms;`;
+        const hasHighlight = rowColor && rowColor !== '#ffffff';
+        const borderColor = hasHighlight ? rowColor : 'transparent';
+        const skipAnim = !state.timelineAnimateRows;
+        const animDelay = skipAnim ? '' : `animation-delay: ${idx * 30}ms;`;
 
         return `
-            <tr class="tl-row ${isComplete ? 'task-completed' : ''}"
+            <tr class="tl-row ${isComplete ? 'task-completed' : ''} ${hasHighlight ? 'tl-highlighted' : ''} ${skipAnim ? 'no-anim' : ''}"
                 data-id="${item.id}"
-                style="--row-accent: ${borderColor}; ${animDelay}"
-                ondblclick="makeRowEditable(this)">
+                style="--row-accent: ${borderColor}; ${animDelay}">
                 <td class="checkbox-col">
                     <input type="checkbox" class="tl-checkbox"
                            ${isComplete ? 'checked' : ''}
                            onchange="toggleTaskComplete('${item.id}', this.checked)">
                 </td>
-                <td class="time-col" data-field="time" data-original="${escapeHtml(item.time || '')}"><span class="tl-time">${formatTime12Hour(item.time)}</span></td>
-                <td class="event-col" data-field="event" data-original="${escapeHtml(item.event || '')}">${escapeHtml(item.event || '')}</td>
+                <td class="time-col" data-field="time" data-original="${escapeHtml(item.time || '')}" onclick="editTimelineCell(this)"><span class="tl-time">${formatTime12Hour(item.time)}</span></td>
+                <td class="event-col" data-field="event" data-original="${escapeHtml(item.event || '')}" onclick="editTimelineCell(this)">${escapeHtml(item.event || '')}</td>
                 <td class="tag-col">
                     <select class="inline-tag-select" onchange="setTimelineTag('${item.id}', this.value)">
                         <option value=""${!item.tag ? ' selected' : ''}>—</option>
                         <option value="production"${item.tag === 'production' ? ' selected' : ''}>Prod</option>
                     </select>
                 </td>
-                <td class="responsible-col" data-field="responsible" data-original="${escapeHtml(item.responsible || '')}">${escapeHtml(item.responsible || '')}</td>
-                <td class="staff-col" data-field="staff" data-original="${escapeHtml(item.staff || '')}">${escapeHtml(item.staff || '')}</td>
+                <td class="responsible-col" data-field="responsible" data-original="${escapeHtml(item.responsible || '')}" onclick="editTimelineCell(this)">${escapeHtml(item.responsible || '')}</td>
+                <td class="staff-col" data-field="staff" data-original="${escapeHtml(item.staff || '')}" onclick="editTimelineCell(this)">${escapeHtml(item.staff || '')}</td>
                 <td class="actions-col no-print">
                     <div class="actions-row">
                         <div class="color-swatch-wrapper">
@@ -825,6 +849,23 @@ function renderTimeline() {
             </tr>
         `;
     }).join('');
+
+    // Phantom row for inline adding
+    const phantomRow = `
+        <tr class="tl-row tl-phantom-row no-anim" data-phantom="true">
+            <td class="checkbox-col"></td>
+            <td class="time-col" data-field="time" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ time</span></td>
+            <td class="event-col" data-field="event" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ event</span></td>
+            <td class="tag-col"></td>
+            <td class="responsible-col" data-field="responsible" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ responsible</span></td>
+            <td class="staff-col" data-field="staff" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ staff</span></td>
+            <td class="actions-col no-print"></td>
+        </tr>
+    `;
+
+    tbody.innerHTML = rowsHtml + phantomRow;
+    state.pendingNewRow = {};
+    state.timelineAnimateRows = false;
 }
 
 // Modal Management
@@ -1115,7 +1156,6 @@ function createDeleteHandler(collectionKey, itemName) {
 window.deleteBudgetItem = createDeleteHandler('budget', 'budget item');
 window.toggleBudgetConfirmed = toggleBudgetConfirmed;
 window.deleteTimelineItem = async (id) => {
-    if (!confirm('Are you sure you want to delete this task?')) return;
     const item = state.timeline.find(i => i.id === id);
     if (item) {
         const { id: _id, ...data } = item;
@@ -1216,6 +1256,7 @@ window.setTimelineTag = async (id, tag) => {
 
 window.setTimelineFilter = (filter) => {
     state.timelineFilter = filter;
+    state.timelineAnimateRows = true;
     document.querySelectorAll('.timeline-filters .filter-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.filter === filter);
     });
@@ -1356,6 +1397,7 @@ function setupDayTabs() {
 
             // Update state and re-render
             state.currentDay = day;
+            state.timelineAnimateRows = true;
             renderTimeline();
         });
     });
@@ -1532,130 +1574,376 @@ function exportBudgetToExcel() {
 }
 
 // Inline Editing for Timeline
-function makeRowEditable(row) {
-    // Skip if already in edit mode
-    if (row.classList.contains('editing')) return;
+// Editable cell field order for Tab navigation (skip tag — it has its own <select>)
+const TIMELINE_FIELD_ORDER = ['time', 'event', 'responsible', 'staff'];
+
+// Single-click cell editing
+function editTimelineCell(cell) {
+    // Already has an input? Just focus it
+    if (cell.querySelector('.inline-edit-input')) return;
+
+    const row = cell.closest('tr');
+    const field = cell.dataset.field;
+    if (!field) return;
+
+    const isPhantom = row.dataset.phantom === 'true';
+    const rowId = row.dataset.id;
+
+    // Set editing guard (use 'phantom' for phantom row)
+    state.timelineEditingRowId = isPhantom ? 'phantom' : rowId;
 
     row.classList.add('editing');
 
-    // Get all editable cells (skip checkbox and actions)
-    const cells = row.querySelectorAll('td[data-field]');
+    // Determine the original value
+    let original = '';
+    if (isPhantom) {
+        original = state.pendingNewRow[field] || '';
+    } else {
+        original = cell.dataset.original || '';
+    }
 
-    cells.forEach(cell => {
-        const field = cell.dataset.field;
-        const original = cell.dataset.original;
+    // Create input
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = original;
+    input.className = 'inline-edit-input';
+    input.dataset.field = field;
 
-        // Create input field
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.value = original;
-        input.className = 'inline-edit-input';
-        input.dataset.field = field;
+    cell.textContent = '';
+    cell.appendChild(input);
+    input.focus();
+    input.select();
 
-        // Replace cell content with input
-        cell.textContent = '';
-        cell.appendChild(input);
+    // Keyboard navigation
+    input.addEventListener('keydown', (e) => handleCellKeydown(e, cell, row));
 
-        // Auto-focus first input
-        if (field === 'time') {
-            input.focus();
-            input.select();
-        }
-
-        // Save on Enter, cancel on Escape
-        input.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                saveRowChanges(row);
-            } else if (e.key === 'Escape') {
-                cancelRowEdit(row);
-            }
-        });
-    });
-
-    // Click outside to auto-save
-    setTimeout(() => {
-        const clickOutside = (e) => {
-            if (!row.contains(e.target) && !e.target.closest('.color-swatch-dropdown')) {
-                document.removeEventListener('mousedown', clickOutside);
-                if (row.classList.contains('editing')) {
-                    saveRowChanges(row);
+    // Blur handler: auto-save if focus leaves the row entirely
+    input.addEventListener('blur', () => {
+        setTimeout(() => {
+            const activeEl = document.activeElement;
+            // If focus moved to another cell input in the same row, do nothing
+            if (row.contains(activeEl) && activeEl.classList.contains('inline-edit-input')) return;
+            // Otherwise, save this cell
+            if (cell.querySelector('.inline-edit-input')) {
+                if (isPhantom) {
+                    // Accumulate phantom value but don't commit yet
+                    const val = input.value.trim();
+                    if (val) state.pendingNewRow[field] = val;
+                    restoreCellDisplay(cell, isPhantom);
+                    // Clear editing flag if no other inputs active in the row
+                    if (!row.querySelector('.inline-edit-input')) {
+                        row.classList.remove('editing');
+                        clearTimelineEditingFlag();
+                    }
+                } else {
+                    saveSingleCell(cell, row);
                 }
             }
-        };
-        document.addEventListener('mousedown', clickOutside);
-        row._clickOutsideHandler = clickOutside;
-    }, 0);
+        }, 50);
+    });
 }
 
-function cleanupRowClickOutside(row) {
-    if (row._clickOutsideHandler) {
-        document.removeEventListener('mousedown', row._clickOutsideHandler);
-        row._clickOutsideHandler = null;
+function handleCellKeydown(e, cell, row) {
+    const field = cell.dataset.field;
+    const isPhantom = row.dataset.phantom === 'true';
+
+    if (e.key === 'Tab') {
+        e.preventDefault();
+        const direction = e.shiftKey ? -1 : 1;
+        if (isPhantom) {
+            // Accumulate value
+            const input = cell.querySelector('.inline-edit-input');
+            const val = input ? input.value.trim() : '';
+            if (val) state.pendingNewRow[field] = val;
+            restoreCellDisplay(cell, true);
+        } else {
+            saveSingleCell(cell, row);
+        }
+        navigateToAdjacentCell(row, field, direction);
+    } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (isPhantom) {
+            // Accumulate value then commit the row
+            const input = cell.querySelector('.inline-edit-input');
+            const val = input ? input.value.trim() : '';
+            if (val) state.pendingNewRow[field] = val;
+            restoreCellDisplay(cell, true);
+            commitNewRow();
+        } else {
+            saveSingleCell(cell, row);
+            // Move to same column in next row
+            navigateToNextRowSameColumn(row, field);
+        }
+    } else if (e.key === 'Escape') {
+        e.preventDefault();
+        // Cancel: restore original
+        restoreCellDisplay(cell, isPhantom);
+        row.classList.remove('editing');
+        clearTimelineEditingFlag();
     }
+}
+
+function saveSingleCell(cell, row) {
+    const input = cell.querySelector('.inline-edit-input');
+    if (!input) return;
+
+    const field = cell.dataset.field;
+    const id = row.dataset.id;
+    const item = state.timeline.find(i => i.id === id);
+    if (!item) { restoreCellDisplay(cell, false); return; }
+
+    let newValue = input.value.trim();
+    const oldValue = item[field] || '';
+
+    // Convert time if needed
+    if (field === 'time' && newValue) {
+        newValue = convertTo24Hour(newValue);
+    }
+
+    // Restore cell to display mode
+    cell.dataset.original = newValue;
+    if (field === 'time') {
+        cell.innerHTML = `<span class="tl-time">${formatTime12Hour(newValue)}</span>`;
+    } else {
+        cell.textContent = newValue;
+    }
+
+    // If no other cells are being edited in this row, clear editing state
+    if (!row.querySelector('.inline-edit-input')) {
+        row.classList.remove('editing');
+        clearTimelineEditingFlag();
+    }
+
+    // Only save if value changed
+    if (newValue === oldValue) return;
+
+    // Undo batching: merge if same row within 2 seconds
+    const now = Date.now();
+    const lastUndo = state.timelineUndoStack[state.timelineUndoStack.length - 1];
+    if (lastUndo && lastUndo.type === 'update' && lastUndo.id === id && (now - (lastUndo._ts || 0)) < 2000) {
+        // Merge: keep the earliest previousData for each field
+        if (!(field in lastUndo.previousData)) {
+            lastUndo.previousData[field] = oldValue;
+        }
+        lastUndo._ts = now;
+    } else {
+        const undoEntry = { type: 'update', id, previousData: { [field]: oldValue }, _ts: now };
+        pushTimelineUndo(undoEntry);
+    }
+
+    // Save to Firestore
+    const updates = { [field]: newValue, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+    collections.timeline.doc(id).update(updates)
+        .then(() => showToast('Updated'))
+        .catch(err => {
+            console.error('Error saving cell:', err);
+            showToast('Error saving', 'error');
+        });
+}
+
+function restoreCellDisplay(cell, isPhantom) {
+    const field = cell.dataset.field;
+    if (isPhantom) {
+        const val = state.pendingNewRow[field] || '';
+        if (val) {
+            if (field === 'time') {
+                cell.innerHTML = `<span class="tl-time">${formatTime12Hour(val)}</span>`;
+            } else {
+                cell.textContent = val;
+            }
+        } else {
+            cell.innerHTML = `<span class="phantom-placeholder">+ ${field}</span>`;
+        }
+    } else {
+        const original = cell.dataset.original || '';
+        if (field === 'time') {
+            cell.innerHTML = `<span class="tl-time">${formatTime12Hour(original)}</span>`;
+        } else {
+            cell.textContent = original;
+        }
+    }
+}
+
+function clearTimelineEditingFlag() {
+    state.timelineEditingRowId = null;
+    if (state.timelineRenderPending) {
+        state.timelineRenderPending = false;
+        renderTimeline();
+    }
+}
+
+function navigateToAdjacentCell(row, currentField, direction) {
+    const idx = TIMELINE_FIELD_ORDER.indexOf(currentField);
+    const nextIdx = idx + direction;
+
+    if (nextIdx >= 0 && nextIdx < TIMELINE_FIELD_ORDER.length) {
+        // Same row, next/prev cell
+        const nextField = TIMELINE_FIELD_ORDER[nextIdx];
+        const nextCell = row.querySelector(`td[data-field="${nextField}"]`);
+        if (nextCell) editTimelineCell(nextCell);
+    } else if (direction > 0) {
+        // Tab past last field: wrap to next row's first field
+        const isPhantom = row.dataset.phantom === 'true';
+        if (isPhantom) {
+            // Tab past last cell in phantom row = commit
+            commitNewRow();
+            return;
+        }
+        const nextRow = row.nextElementSibling;
+        if (nextRow && nextRow.querySelector('td[data-field]')) {
+            const firstField = TIMELINE_FIELD_ORDER[0];
+            const nextCell = nextRow.querySelector(`td[data-field="${firstField}"]`);
+            if (nextCell) editTimelineCell(nextCell);
+        }
+    } else if (direction < 0) {
+        // Shift+Tab past first field: wrap to prev row's last field
+        const prevRow = row.previousElementSibling;
+        if (prevRow && prevRow.querySelector('td[data-field]')) {
+            const lastField = TIMELINE_FIELD_ORDER[TIMELINE_FIELD_ORDER.length - 1];
+            const prevCell = prevRow.querySelector(`td[data-field="${lastField}"]`);
+            if (prevCell) editTimelineCell(prevCell);
+        }
+    }
+}
+
+function navigateToNextRowSameColumn(row, field) {
+    const nextRow = row.nextElementSibling;
+    if (nextRow && nextRow.querySelector('td[data-field]')) {
+        const nextCell = nextRow.querySelector(`td[data-field="${field}"]`);
+        if (nextCell) editTimelineCell(nextCell);
+    }
+}
+
+// Commit the phantom row to Firestore
+async function commitNewRow() {
+    const data = { ...state.pendingNewRow };
+
+    // Need at least time or event
+    if (!data.time && !data.event) {
+        state.pendingNewRow = {};
+        clearTimelineEditingFlag();
+        renderTimeline();
+        return;
+    }
+
+    // Convert time to 24hr
+    if (data.time) data.time = convertTo24Hour(data.time);
+
+    data.day = state.currentDay;
+    data.completed = false;
+    data.status = 'not-started';
+    data.tag = '';
+    data.notes = '';
+    data.highlightColor = '';
+    data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+    data.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+
+    state.pendingNewRow = {};
+    clearTimelineEditingFlag();
+
+    try {
+        const docRef = await collections.timeline.add(data);
+        pushTimelineUndo({ type: 'add', id: docRef.id });
+        showToast('Task added');
+    } catch (error) {
+        console.error('Error adding task:', error);
+        showToast('Error adding task', 'error');
+    }
+}
+
+// Backward compat: makeRowEditable now just clicks the first cell
+function makeRowEditable(row) {
+    if (row.classList.contains('editing')) return;
+    const firstCell = row.querySelector(`td[data-field="${TIMELINE_FIELD_ORDER[0]}"]`);
+    if (firstCell) editTimelineCell(firstCell);
 }
 
 function saveRowChanges(row) {
-    cleanupRowClickOutside(row);
-    const id = row.dataset.id;
+    // Save all active inputs in the row
     const inputs = row.querySelectorAll('.inline-edit-input');
-
-    // Capture previous values for undo
-    const item = state.timeline.find(i => i.id === id);
-    const previousData = {};
-
-    const updates = {};
     inputs.forEach(input => {
-        const field = input.dataset.field;
-        updates[field] = input.value;
-        if (item) previousData[field] = item[field] || '';
+        const cell = input.closest('td');
+        if (cell) saveSingleCell(cell, row);
     });
-
-    // Convert 12hr time back to 24hr for storage
-    if (updates.time) {
-        updates.time = convertTo24Hour(updates.time);
-    }
-
-    if (item) pushTimelineUndo({ type: 'update', id, previousData });
-
-    // Exit edit mode immediately
-    row.classList.remove('editing');
-    renderTimeline();
-
-    // Update Firebase
-    collections.timeline.doc(id).update(updates)
-        .then(() => {
-            showToast('Timeline item updated');
-        })
-        .catch((error) => {
-            console.error('Error updating timeline item:', error);
-            showToast('Error saving changes. Please try again.', 'error');
-            cancelRowEdit(row);
-        });
 }
 
 function cancelRowEdit(row) {
-    cleanupRowClickOutside(row);
-    renderTimeline();
+    const cells = row.querySelectorAll('td[data-field]');
+    const isPhantom = row.dataset.phantom === 'true';
+    cells.forEach(cell => restoreCellDisplay(cell, isPhantom));
+    row.classList.remove('editing');
+    clearTimelineEditingFlag();
 }
 
-function convertTo24Hour(time12) {
-    // If already in 24hr format, return as is
-    if (!time12.includes('AM') && !time12.includes('PM')) {
-        return time12;
+// Flexible time parser: accepts nearly any format and returns 24hr "HH:MM"
+// Examples: "5pm" → "17:00", "530p" → "17:30", "5:30 PM" → "17:30",
+//   "17:00" → "17:00", "530" → "05:30", "5" → "05:00", "12a" → "00:00",
+//   "noon" → "12:00", "midnight" → "00:00", "9:5p" → "21:05"
+function convertTo24Hour(raw) {
+    if (!raw) return '';
+    let s = raw.trim().toLowerCase();
+
+    // Special words
+    if (s === 'noon' || s === '12n') return '12:00';
+    if (s === 'midnight' || s === '12mn') return '00:00';
+
+    // Extract AM/PM indicator
+    let period = null;
+    if (/a\.?m?\.?$/i.test(s)) {
+        period = 'am';
+        s = s.replace(/\s*a\.?m?\.?$/i, '');
+    } else if (/p\.?m?\.?$/i.test(s)) {
+        period = 'pm';
+        s = s.replace(/\s*p\.?m?\.?$/i, '');
     }
 
-    const [time, period] = time12.split(' ');
-    let [hours, minutes] = time.split(':');
-    hours = parseInt(hours);
+    s = s.trim();
 
-    if (period === 'PM' && hours !== 12) {
-        hours += 12;
-    } else if (period === 'AM' && hours === 12) {
-        hours = 0;
+    let hours, minutes;
+
+    if (s.includes(':')) {
+        // Has colon: "5:30", "17:00", "5:5"
+        const parts = s.split(':');
+        hours = parseInt(parts[0], 10);
+        minutes = parseInt(parts[1], 10) || 0;
+    } else {
+        // No colon: "5", "530", "1730", "17"
+        const digits = s.replace(/\D/g, '');
+        if (digits.length === 0) return raw; // can't parse, return as-is
+
+        if (digits.length <= 2) {
+            // "5" → 5:00, "17" → 17:00
+            hours = parseInt(digits, 10);
+            minutes = 0;
+        } else if (digits.length === 3) {
+            // "530" → 5:30
+            hours = parseInt(digits.charAt(0), 10);
+            minutes = parseInt(digits.substring(1), 10);
+        } else {
+            // "0530", "1730" → 17:30
+            hours = parseInt(digits.substring(0, digits.length - 2), 10);
+            minutes = parseInt(digits.substring(digits.length - 2), 10);
+        }
     }
 
-    return `${hours.toString().padStart(2, '0')}:${minutes}`;
+    // Validate
+    if (isNaN(hours) || isNaN(minutes)) return raw;
+    if (minutes < 0 || minutes > 59) return raw;
+
+    // Apply AM/PM
+    if (period === 'am') {
+        if (hours === 12) hours = 0;
+    } else if (period === 'pm') {
+        if (hours !== 12) hours += 12;
+    } else {
+        // No AM/PM specified — if hours <= 12, guess based on context
+        // (leave as-is for 24hr values like 17, 23, etc.)
+        if (hours > 24) return raw;
+    }
+
+    if (hours < 0 || hours > 23) return raw;
+
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
 }
 
 // Budget Category Accordion Toggle
@@ -1676,6 +1964,13 @@ function toggleCategorySection(categoryId) {
 }
 
 // Inline Editing for Budget Items
+function cleanupRowClickOutside(row) {
+    if (row._clickOutsideHandler) {
+        document.removeEventListener('mousedown', row._clickOutsideHandler);
+        row._clickOutsideHandler = null;
+    }
+}
+
 function makeBudgetRowEditable(row) {
     // Skip if already in edit mode
     if (row.classList.contains('editing')) return;
@@ -3193,7 +3488,25 @@ function setupKeyboardShortcuts() {
             if (searchInput) searchInput.focus();
         }
 
-        // Undo: Ctrl+Z or Cmd+Z
+        // Timeline: N to focus phantom row, Ctrl/Cmd+Z for undo
+        if (state.currentPage === 'timeline' && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA' && e.target.tagName !== 'SELECT') {
+            if (e.key === 'n' || e.key === 'N') {
+                e.preventDefault();
+                const phantom = document.querySelector('.tl-phantom-row');
+                if (phantom) {
+                    const firstCell = phantom.querySelector(`td[data-field="${TIMELINE_FIELD_ORDER[0]}"]`);
+                    if (firstCell) editTimelineCell(firstCell);
+                }
+                return;
+            }
+            if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+                e.preventDefault();
+                undoTimelineAction();
+                return;
+            }
+        }
+
+        // Undo: Ctrl+Z or Cmd+Z (stage plots)
         if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
             if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
                 e.preventDefault();
@@ -4159,5 +4472,7 @@ window.cancelBudgetRowEdit = cancelBudgetRowEdit;
 window.makeRowEditable = makeRowEditable;
 window.saveRowChanges = saveRowChanges;
 window.cancelRowEdit = cancelRowEdit;
+window.editTimelineCell = editTimelineCell;
+window.commitNewRow = commitNewRow;
 window.makeStageRowEditable = makeStageRowEditable;
 
