@@ -13,8 +13,8 @@
 
 body {
     font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-    background-color: #f5f7fa;
-    color: #2c3e50;
+    background-color: #faf8f3;
+    color: #2d2d2d;
     line-height: 1.6;
 }
 
@@ -108,8 +108,11 @@ body {
 }
 
 .page-header h1 {
-    font-size: 2rem;
-    color: #2c3e50;
+    font-family: 'Cormorant Garamond', Georgia, serif;
+    font-size: 2.2rem;
+    font-weight: 700;
+    color: #1a3a35;
+    letter-spacing: 0.5px;
 }
 
 /* Dashboard Page Header - HAVANA NIGHTS */
@@ -133,46 +136,54 @@ body {
 }
 
 .btn-primary {
-    background-color: #3498db;
-    color: white;
+    background: linear-gradient(135deg, #1a3a35, #0f2621);
+    color: #c9a961;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    border-radius: 8px;
 }
 
 .btn-primary:hover {
-    background-color: #2980b9;
+    box-shadow: 0 4px 16px rgba(15, 38, 33, 0.3);
     transform: translateY(-1px);
-    box-shadow: 0 4px 8px rgba(52, 152, 219, 0.3);
 }
 
 .btn-secondary {
-    background-color: #95a5a6;
-    color: white;
+    background: transparent;
+    color: #1a3a35;
+    border: 1px solid #f0ece3;
 }
 
 .btn-secondary:hover {
-    background-color: #7f8c8d;
+    background: #faf8f3;
+    border-color: #ebe6dc;
 }
 
 .btn-danger {
-    background-color: #e74c3c;
-    color: white;
+    background: transparent;
+    color: #8b4532;
+    border: 1px solid rgba(139, 69, 50, 0.2);
     padding: 0.5rem 1rem;
     font-size: 0.9rem;
 }
 
 .btn-danger:hover {
-    background-color: #c0392b;
+    background: rgba(139, 69, 50, 0.08);
+    border-color: rgba(139, 69, 50, 0.4);
 }
 
 .btn-edit {
-    background-color: #3498db;
-    color: white;
+    background: transparent;
+    color: #1a3a35;
     padding: 0.5rem 1rem;
     font-size: 0.9rem;
     margin-right: 0.5rem;
+    border: 1px solid #f0ece3;
 }
 
 .btn-edit:hover {
-    background-color: #2980b9;
+    background: #faf8f3;
+    border-color: #c9a961;
 }
 
 /* Dashboard Buttons Override - HAVANA NIGHTS */
@@ -282,7 +293,7 @@ body {
     z-index: 1;
 }
 
-/* Stats Grid - Default (Clean) */
+/* Stats Grid - Default (Warm) */
 .stats-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -291,10 +302,12 @@ body {
 }
 
 .stat-card {
-    background: white;
+    background: #faf8f3;
     border-radius: 12px;
     padding: 1.5rem;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.06);
+    border: 1px solid #f0ece3;
+    border-left: 4px solid #c9a961;
     display: flex;
     align-items: center;
     gap: 1rem;
@@ -303,7 +316,7 @@ body {
 
 .stat-card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 8px rgba(0,0,0,0.12);
+    box-shadow: 0 6px 16px rgba(201, 169, 97, 0.12);
 }
 
 .stat-icon {
@@ -345,7 +358,7 @@ body {
 .stat-label {
     display: block;
     font-size: 0.9rem;
-    color: #7f8c8d;
+    color: #8a8778;
     margin-bottom: 0.25rem;
 }
 
@@ -353,7 +366,8 @@ body {
     display: block;
     font-size: 1.8rem;
     font-weight: 600;
-    color: #2c3e50;
+    color: #2d2d2d;
+    font-family: 'Cormorant Garamond', Georgia, serif;
 }
 
 .stat-value.warning {
@@ -415,23 +429,27 @@ body {
     color: #d9a366;
 }
 
-/* Card - Default (Clean) */
+/* Card - Default (Warm) */
 .card {
     background: white;
-    border-radius: 12px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+    border-radius: 14px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
     margin-bottom: 2rem;
     overflow: hidden;
+    border: 1px solid #f0ece3;
 }
 
 .card-header {
-    padding: 1.5rem;
-    border-bottom: 1px solid #ecf0f1;
+    padding: 1.25rem 1.5rem;
+    border-bottom: 1px solid #ebe6dc;
+    background: #fdfcfa;
 }
 
 .card-header h2 {
-    font-size: 1.3rem;
-    color: #2c3e50;
+    font-family: 'Cormorant Garamond', Georgia, serif;
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: #1a3a35;
 }
 
 .card-body {
@@ -464,7 +482,7 @@ body {
 .progress-bar {
     width: 100%;
     height: 24px;
-    background-color: #ecf0f1;
+    background-color: #f0ece3;
     border-radius: 12px;
     overflow: hidden;
     margin-bottom: 0.75rem;
@@ -472,7 +490,7 @@ body {
 
 .progress-fill {
     height: 100%;
-    background: linear-gradient(90deg, #3498db 0%, #2ecc71 100%);
+    background: linear-gradient(90deg, #c9a961 0%, #d4b896 100%);
     border-radius: 12px;
     transition: width 0.5s ease;
     display: flex;
@@ -701,14 +719,16 @@ body {
     flex: 1;
     min-width: 250px;
     padding: 0.75rem 1rem;
-    border: 1px solid #ddd;
-    border-radius: 6px;
+    border: 1px solid #f0ece3;
+    border-radius: 8px;
     font-size: 1rem;
+    background: #faf8f3;
 }
 
 .search-input:focus {
     outline: none;
-    border-color: #3498db;
+    border-color: #c9a961;
+    box-shadow: 0 0 0 2px rgba(201, 169, 97, 0.3);
 }
 
 .filter-select {
@@ -736,25 +756,33 @@ body {
 }
 
 .data-table thead {
-    background-color: #f8f9fa;
+    background: #1a3a35;
 }
 
 .data-table th {
-    padding: 1rem;
+    padding: 0.85rem 1rem;
     text-align: left;
     font-weight: 600;
-    color: #2c3e50;
-    border-bottom: 2px solid #ecf0f1;
+    color: #f0ece3;
+    border-bottom: 2px solid rgba(201, 169, 97, 0.3);
     white-space: nowrap;
+    font-size: 0.82rem;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
 }
 
 .data-table td {
-    padding: 1rem;
-    border-bottom: 1px solid #ecf0f1;
+    padding: 0.85rem 1rem;
+    border-bottom: 1px solid #f0ece3;
+    color: #2d2d2d;
 }
 
 .data-table tbody tr:hover {
-    background-color: #f8f9fa;
+    background-color: rgba(250, 248, 243, 0.8);
+}
+
+.data-table tbody tr:nth-child(even) {
+    background-color: rgba(250, 248, 243, 0.5);
 }
 
 .data-table .empty-state {
@@ -763,43 +791,45 @@ body {
     color: #95a5a6;
 }
 
-/* Status Badges */
+/* Status Badges - Earth-toned pills */
 .status-badge {
     display: inline-block;
     padding: 0.35rem 0.75rem;
-    border-radius: 12px;
-    font-size: 0.85rem;
-    font-weight: 500;
+    border-radius: 20px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
 }
 
 .status-badge.confirmed {
-    background-color: #d4edda;
-    color: #155724;
+    background-color: rgba(26, 58, 53, 0.1);
+    color: #1a3a35;
 }
 
 .status-badge.pending {
-    background-color: #fff3cd;
-    color: #856404;
+    background-color: rgba(201, 169, 97, 0.15);
+    color: #8a7234;
 }
 
 .status-badge.issue {
-    background-color: #f8d7da;
-    color: #721c24;
+    background-color: rgba(180, 90, 60, 0.12);
+    color: #8b4532;
 }
 
 .status-badge.paid {
-    background-color: #d4edda;
-    color: #155724;
+    background-color: rgba(26, 58, 53, 0.1);
+    color: #1a3a35;
 }
 
 .status-badge.partial {
-    background-color: #cce5ff;
-    color: #004085;
+    background-color: rgba(201, 169, 97, 0.15);
+    color: #8a7234;
 }
 
 .status-badge.not-paid {
-    background-color: #f8d7da;
-    color: #721c24;
+    background-color: rgba(180, 90, 60, 0.12);
+    color: #8b4532;
 }
 
 /* Budget Categories */
@@ -852,16 +882,16 @@ body {
 
 .budget-category-progress {
     width: 100%;
-    height: 8px;
-    background-color: #e0e0e0;
-    border-radius: 4px;
+    height: 6px;
+    background-color: #f0ece3;
+    border-radius: 3px;
     overflow: hidden;
 }
 
 .budget-category-progress-fill {
     height: 100%;
-    background-color: #3498db;
-    border-radius: 4px;
+    background: linear-gradient(90deg, #c9a961, #d4b896);
+    border-radius: 3px;
     transition: width 0.5s ease;
 }
 
@@ -1035,7 +1065,8 @@ body {
 .form-group select:focus,
 .form-group textarea:focus {
     outline: none;
-    border-color: #3498db;
+    border-color: #c9a961;
+    box-shadow: 0 0 0 2px rgba(201, 169, 97, 0.3);
 }
 
 .form-group textarea {
@@ -1838,15 +1869,15 @@ tr.task-completed td:not(.checkbox-col):not(.actions-col) {
 
 /* Inline Editing Styles */
 tr.editing {
-    background-color: #fff3cd !important;
-    border: 2px solid #ffc107;
+    background-color: rgba(250, 248, 243, 0.9) !important;
+    border: 2px solid #c9a961;
 }
 
 .inline-edit-input {
     width: 100%;
     padding: 0.5rem;
-    border: 1px solid #3498db;
-    border-radius: 4px;
+    border: 1px solid #c9a961;
+    border-radius: 6px;
     font-size: 0.95rem;
     font-family: inherit;
     background: white;
@@ -1854,8 +1885,8 @@ tr.editing {
 
 .inline-edit-input:focus {
     outline: none;
-    border-color: #2980b9;
-    box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+    border-color: #c9a961;
+    box-shadow: 0 0 0 2px rgba(201, 169, 97, 0.3);
 }
 
 tr.editing td {
@@ -1901,6 +1932,35 @@ tr.editing td {
     font-style: italic;
     font-size: 0.88rem;
     user-select: none;
+}
+
+/* Cell hover hints for Budget and Stage tables */
+.budget-table tbody tr:not(.editing) td[data-field],
+.stage-table tbody tr:not(.editing) td[data-field] {
+    cursor: cell;
+}
+.budget-table tbody td[data-field]:hover,
+.stage-table tbody td[data-field]:hover {
+    background-color: rgba(201, 169, 97, 0.08);
+}
+
+/* Phantom row styles for Budget and Stage */
+.budget-phantom-row, .stage-phantom-row {
+    opacity: 0.5;
+    transition: opacity 0.2s;
+}
+.budget-phantom-row:hover, .stage-phantom-row:hover,
+.budget-phantom-row:focus-within, .stage-phantom-row:focus-within {
+    opacity: 1;
+}
+.budget-phantom-row.editing, .stage-phantom-row.editing {
+    opacity: 1;
+    background-color: transparent !important;
+    border: none;
+}
+.stage-phantom-row .drag-handle {
+    cursor: default;
+    color: transparent;
 }
 
 /* Skip entrance animation on edit-triggered re-renders */
@@ -2003,13 +2063,13 @@ tr.editing td {
 }
 
 .budget-search-count {
-    font-size: 0.9rem;
-    color: #6c757d;
+    font-size: 0.85rem;
+    color: #8a8778;
     white-space: nowrap;
-    background: #f8f9fa;
+    background: rgba(201, 169, 97, 0.1);
     padding: 0.4rem 0.85rem;
     border-radius: 20px;
-    border: 1px solid #e9ecef;
+    border: 1px solid #f0ece3;
 }
 
 /* Budget Category Sections */
@@ -2021,8 +2081,8 @@ tr.editing td {
     cursor: pointer;
     user-select: none;
     padding: 1rem 1.5rem;
-    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-    border-bottom: 2px solid #dee2e6;
+    background: #faf8f3;
+    border-bottom: 2px solid #f0ece3;
     transition: all 0.2s ease;
     flex-wrap: wrap;
 }
@@ -2032,24 +2092,31 @@ tr.editing td {
 }
 
 .category-section-header:hover {
-    background: linear-gradient(135deg, #e9ecef 0%, #dee2e6 100%);
+    background: #f5f1ea;
+}
+
+.category-section-header h3 {
+    font-family: 'Cormorant Garamond', Georgia, serif;
+    color: #1a3a35;
+    font-size: 1.15rem;
+    font-weight: 700;
 }
 
 .category-arrow {
     display: inline-block;
     transition: transform 0.2s ease;
     font-size: 1rem;
-    color: #495057;
+    color: #c9a961;
     font-weight: bold;
 }
 
 .category-count {
-    color: #6c757d;
-    font-size: 0.9rem;
-    background: white;
+    color: #8a8778;
+    font-size: 0.85rem;
+    background: rgba(201, 169, 97, 0.1);
     padding: 0.25rem 0.75rem;
-    border-radius: 12px;
-    border: 1px solid #dee2e6;
+    border-radius: 20px;
+    border: 1px solid #f0ece3;
 }
 
 .category-section-content {
@@ -2059,8 +2126,35 @@ tr.editing td {
 
 /* Budget table specific styles */
 .budget-table tbody tr:not(.editing):hover {
+    background-color: rgba(250, 248, 243, 0.8);
+}
+
+/* Sortable header styling */
+.sortable-th {
     cursor: pointer;
-    background-color: #f8f9fa;
+    transition: color 0.15s ease;
+}
+
+.sortable-th:hover {
+    color: #c9a961 !important;
+}
+
+/* Budget action buttons - hover-reveal icons */
+.budget-actions-cell {
+    white-space: nowrap;
+}
+
+.budget-actions-cell .actions-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.budget-table tbody tr:hover .budget-actions-cell .actions-row {
+    opacity: 1;
 }
 
 /* Over/Under budget indicators */
@@ -2105,8 +2199,21 @@ tr.editing td {
 
 /* Stage Input Tables */
 .stage-table tbody tr:not(.editing):hover {
-    cursor: pointer;
-    background-color: #f8f9fa;
+    background-color: rgba(250, 248, 243, 0.8);
+}
+
+/* Stage table action buttons - hover-reveal icons */
+.stage-actions-cell .actions-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.stage-table tbody tr:hover .stage-actions-cell .actions-row {
+    opacity: 1;
 }
 
 /* Drag handle column */
@@ -2118,14 +2225,17 @@ tr.editing td {
     width: 32px;
     text-align: center;
     cursor: grab;
-    color: #adb5bd;
+    color: #c9a961;
     font-size: 1.1rem;
     user-select: none;
     padding: 4px !important;
+    opacity: 0.5;
+    transition: opacity 0.2s ease;
 }
 
 .drag-handle:hover {
-    color: #495057;
+    color: #1a3a35;
+    opacity: 1;
 }
 
 .stage-table tbody tr.dragging {
@@ -2958,6 +3068,11 @@ tr.editing td {
         background: #333;
     }
 
+    .budget-table tbody td[data-field]:hover,
+    .stage-table tbody td[data-field]:hover {
+        background-color: rgba(201, 169, 97, 0.12);
+    }
+
     /* Scrollbars (Webkit browsers) */
     ::-webkit-scrollbar {
         width: 12px;
@@ -3380,54 +3495,52 @@ body.menu-open {
    Card-based vendor view with issue tracking
    ============================================= */
 
-/* Vendor Filter Buttons */
+/* Vendor Filter Buttons - Pill Group */
 .vendor-filters {
     display: flex;
-    gap: 0;
+    gap: 4px;
     margin-bottom: 1.5rem;
-    background: white;
-    border-radius: 8px;
-    overflow: hidden;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    background: #faf8f3;
+    border-radius: 10px;
+    padding: 3px;
+    border: 1px solid #f0ece3;
 }
 
 .vendor-filter-btn {
     flex: 1;
-    padding: 0.85rem 1.5rem;
-    background: white;
+    padding: 0.55rem 1.25rem;
+    background: transparent;
     border: none;
-    border-right: 1px solid #e0e6ed;
-    color: #5a6c7d;
-    font-size: 1rem;
+    border-radius: 8px;
+    color: #7a8a9b;
+    font-size: 0.9rem;
     font-weight: 500;
     cursor: pointer;
-    transition: all 0.3s ease;
-}
-
-.vendor-filter-btn:last-child {
-    border-right: none;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    font-family: 'DM Sans', sans-serif;
 }
 
 .vendor-filter-btn:hover {
-    background: #f5f7fa;
-    color: #3498db;
+    background: #f0ece3;
+    color: #1a3a35;
 }
 
 .vendor-filter-btn.active {
-    background: #3498db;
-    color: white;
+    background: #1a3a35;
+    color: #c9a961;
     font-weight: 600;
 }
 
 .vendor-filter-btn[data-filter="issues"].active {
-    background: #e74c3c;
+    background: #5a3a2a;
+    color: #f0d8c0;
 }
 
 .vendor-filter-count {
     display: inline-block;
-    background: rgba(231, 76, 60, 0.15);
-    color: #e74c3c;
-    font-size: 0.8rem;
+    background: rgba(0, 0, 0, 0.08);
+    color: inherit;
+    font-size: 0.75rem;
     font-weight: 700;
     padding: 0.1rem 0.45rem;
     border-radius: 10px;
@@ -3436,9 +3549,19 @@ body.menu-open {
     text-align: center;
 }
 
+.vendor-filter-btn.active .vendor-filter-count {
+    background: rgba(255, 255, 255, 0.2);
+    color: inherit;
+}
+
+.vendor-filter-btn[data-filter="issues"] .vendor-filter-count {
+    background: rgba(180, 90, 60, 0.15);
+    color: #8b4532;
+}
+
 .vendor-filter-btn[data-filter="issues"].active .vendor-filter-count {
-    background: rgba(255,255,255,0.25);
-    color: white;
+    background: rgba(255,255,255,0.2);
+    color: #f0d8c0;
 }
 
 /* Vendor Grid */
@@ -3450,29 +3573,31 @@ body.menu-open {
 
 /* Vendor Card */
 .vendor-card {
-    background: white;
-    border-radius: 8px;
+    background: #faf8f3;
+    border-radius: 12px;
     padding: 1.5rem;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    border-left: 4px solid #95a5a6;
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    border: 1px solid #f0ece3;
+    border-left: 4px solid #8a8778;
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-left-color 0.2s ease;
 }
 
 .vendor-card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    box-shadow: 0 6px 20px rgba(201, 169, 97, 0.15);
+    border-left-color: #c9a961;
 }
 
 .vendor-confirmed {
-    border-left-color: #2ecc71;
+    border-left-color: #1a3a35;
 }
 
 .vendor-pending {
-    border-left-color: #f39c12;
+    border-left-color: #c9a961;
 }
 
 .vendor-has-issues {
-    border-left-color: #e74c3c;
+    border-left-color: #8b4532;
 }
 
 .vendor-card-header {
@@ -3484,9 +3609,10 @@ body.menu-open {
 }
 
 .vendor-card-title {
-    font-size: 1.2rem;
-    font-weight: 600;
-    color: #2c3e50;
+    font-family: 'Cormorant Garamond', Georgia, serif;
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: #1a3a35;
 }
 
 .vendor-card-description {
@@ -3496,8 +3622,13 @@ body.menu-open {
 }
 
 .vendor-card-category {
-    font-size: 0.85rem;
-    color: #95a5a6;
+    display: inline-block;
+    font-size: 0.78rem;
+    color: #8a7234;
+    background: rgba(201, 169, 97, 0.12);
+    padding: 0.2rem 0.6rem;
+    border-radius: 12px;
+    font-weight: 500;
     margin-bottom: 0.75rem;
 }
 
@@ -3523,11 +3654,12 @@ body.menu-open {
 }
 
 .vendor-detail a {
-    color: #3498db;
+    color: #1a3a35;
     text-decoration: none;
 }
 
 .vendor-detail a:hover {
+    color: #c9a961;
     text-decoration: underline;
 }
 
@@ -3538,7 +3670,7 @@ body.menu-open {
     color: #555;
     margin-bottom: 0.75rem;
     padding-top: 0.5rem;
-    border-top: 1px solid #ecf0f1;
+    border-top: 1px solid #f0ece3;
 }
 
 /* Issue Pills */
@@ -3553,47 +3685,85 @@ body.menu-open {
 .vendor-issues-label {
     font-size: 0.8rem;
     font-weight: 600;
-    color: #e74c3c;
+    color: #8b4532;
     margin-right: 0.15rem;
 }
 
 .vendor-issue-pill {
     display: inline-block;
-    background: #fde8e8;
-    color: #c0392b;
+    background: rgba(180, 90, 60, 0.1);
+    color: #8b4532;
     font-size: 0.75rem;
     font-weight: 600;
     padding: 0.15rem 0.55rem;
     border-radius: 10px;
-    border: 1px solid rgba(231, 76, 60, 0.2);
+    border: 1px solid rgba(180, 90, 60, 0.2);
 }
 
 /* Vendor Card Actions */
 .vendor-card-actions {
     padding-top: 0.75rem;
-    border-top: 1px solid #ecf0f1;
+    border-top: 1px solid #f0ece3;
+    display: flex;
+    gap: 0.5rem;
 }
 
 .vendor-card-actions .btn {
-    width: 100%;
     font-size: 0.85rem;
     padding: 0.5rem 1rem;
 }
 
-.btn-fix-issues {
-    background-color: #e74c3c;
-    color: white;
+/* Hover-reveal icon actions on vendor cards */
+.vendor-card-actions .vendor-action-icons {
+    display: flex;
+    gap: 4px;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.vendor-card:hover .vendor-action-icons {
+    opacity: 1;
+}
+
+.vendor-action-icons .action-icon {
+    background: none;
     border: none;
+    cursor: pointer;
+    padding: 5px;
     border-radius: 6px;
+    transition: all 0.15s ease;
+    line-height: 1;
+    color: #8a8778;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+}
+
+.vendor-action-icons .action-icon:hover {
+    background: rgba(26, 58, 53, 0.08);
+    color: #1a3a35;
+}
+
+.vendor-action-icons .action-icon.action-icon-danger:hover {
+    background: rgba(139, 69, 50, 0.08);
+    color: #8b4532;
+}
+
+.btn-fix-issues {
+    background-color: #5a3a2a;
+    color: #f0d8c0;
+    border: none;
+    border-radius: 8px;
     cursor: pointer;
     transition: all 0.3s;
     font-weight: 500;
 }
 
 .btn-fix-issues:hover {
-    background-color: #c0392b;
+    background-color: #6b4535;
     transform: translateY(-1px);
-    box-shadow: 0 4px 8px rgba(231, 76, 60, 0.3);
+    box-shadow: 0 4px 8px rgba(90, 58, 42, 0.3);
 }
 
 /* Clickable dashboard status item */
@@ -3641,9 +3811,6 @@ body.menu-open {
         font-size: 0.9rem;
     }
 
-    .vendor-stats-grid {
-        grid-template-columns: repeat(2, 1fr);
-    }
 }
 
 /* Vendor page dark mode */
@@ -3673,6 +3840,10 @@ body.menu-open {
     }
 
     .vendor-filter-count {
+        background: rgba(255, 255, 255, 0.1);
+    }
+
+    .vendor-filter-btn[data-filter="issues"] .vendor-filter-count {
         background: rgba(231, 76, 60, 0.25);
     }
 

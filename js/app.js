@@ -37,7 +37,13 @@ const state = {
     timelineAnimateRows: true,  // Only animate rows on day/filter switch, not data updates
     timelineEditingRowId: null,  // Row ID currently being inline-edited (blocks re-render)
     timelineRenderPending: false,  // True if a Firestore snapshot arrived during editing
-    pendingNewRow: {}  // Accumulates phantom row data before commit
+    pendingNewRow: {},  // Accumulates phantom row data before commit
+    budgetEditingRowId: null,
+    budgetRenderPending: false,
+    pendingNewBudgetRow: {},
+    stageEditingRowId: null,
+    stageRenderPending: false,
+    pendingNewStageRow: {}
 };
 
 // Toast notification system
@@ -172,6 +178,17 @@ function switchPage(pageName) {
         targetPage.classList.add('active');
         state.currentPage = pageName;
 
+        // Clear editing state when switching pages
+        state.budgetEditingRowId = null;
+        state.budgetRenderPending = false;
+        state.pendingNewBudgetRow = {};
+        state.stageEditingRowId = null;
+        state.stageRenderPending = false;
+        state.pendingNewStageRow = {};
+        state.timelineEditingRowId = null;
+        state.timelineRenderPending = false;
+        state.pendingNewRow = {};
+
         // Refresh data for the page
         if (pageName === 'dashboard') updateDashboard();
         if (pageName === 'vendors') {
@@ -289,16 +306,13 @@ function updateVendorStats() {
     document.getElementById('vendor-pending-count').textContent = pending;
     document.getElementById('vendor-issue-count').textContent = issueCount;
 
-    // Update vendor page stats
+    // Update filter button count badges
     const el = (id) => document.getElementById(id);
-    if (el('vendor-page-total')) el('vendor-page-total').textContent = total;
-    if (el('vendor-page-confirmed')) el('vendor-page-confirmed').textContent = confirmed;
-    if (el('vendor-page-pending')) el('vendor-page-pending').textContent = pending;
-    if (el('vendor-page-issues')) el('vendor-page-issues').textContent = issueCount;
-
-    // Update filter button issue count badge
-    const filterCount = el('vendor-filter-issue-count');
-    if (filterCount) filterCount.textContent = issueCount > 0 ? issueCount : '';
+    const setCount = (id, count) => { const e = el(id); if (e) e.textContent = count > 0 ? count : ''; };
+    setCount('vendor-filter-all-count', total);
+    setCount('vendor-filter-confirmed-count', confirmed);
+    setCount('vendor-filter-pending-count', pending);
+    setCount('vendor-filter-issue-count', issueCount);
 }
 
 // Vendor Issues
@@ -352,10 +366,6 @@ function renderVendors() {
             </div>
         ` : '';
 
-        const actionBtn = hasIssues
-            ? `<button class="btn btn-fix-issues" onclick="editBudgetItem('${item.id}')">Fix Issues</button>`
-            : `<button class="btn btn-edit" onclick="editBudgetItem('${item.id}')">Edit in Budget</button>`;
-
         return `
             <div class="vendor-card ${statusClass}">
                 <div class="vendor-card-header">
@@ -375,7 +385,17 @@ function renderVendors() {
                 </div>
                 ${issuePills}
                 <div class="vendor-card-actions">
-                    ${actionBtn}
+                    ${hasIssues
+                        ? `<button class="btn btn-fix-issues" onclick="editBudgetItem('${item.id}')">Fix Issues</button>`
+                        : `<button class="btn btn-edit" onclick="editBudgetItem('${item.id}')">Edit</button>`}
+                    <div class="vendor-action-icons">
+                        <button class="action-icon" onclick="editBudgetItem('${item.id}')" title="Edit">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                        </button>
+                        <button class="action-icon action-icon-danger" onclick="deleteBudgetItem('${item.id}')" title="Delete">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                        </button>
+                    </div>
                 </div>
             </div>
         `;
@@ -575,8 +595,11 @@ function clearBudgetSearch() {
 function renderBudgetGrouped() {
     const container = document.getElementById('budget-grouped-container');
 
-    // Skip re-render if a row is being inline-edited (prevents kicking out other users)
-    if (container.querySelector('tr.editing')) return;
+    // Skip re-render if a row is being inline-edited
+    if (state.budgetEditingRowId) {
+        state.budgetRenderPending = true;
+        return;
+    }
 
     // Remember which sections are open
     const openSections = {};
@@ -686,27 +709,46 @@ function renderBudgetGrouped() {
                                     const diffClass = difference < 0 ? 'over-budget' : difference > 0 ? 'under-budget' : '';
 
                                     return `
-                                        <tr data-id="${item.id}" ondblclick="makeBudgetRowEditable(this)">
+                                        <tr data-id="${item.id}">
                                             <td class="confirmed-cell">
                                                 <input type="checkbox" class="confirmed-checkbox" ${item.confirmed ? 'checked' : ''} onchange="toggleBudgetConfirmed('${item.id}', this.checked)">
                                             </td>
-                                            <td data-field="vendor" data-original="${escapeHtml(item.vendor || '')}">${escapeHtml(item.vendor || '')}</td>
-                                            <td data-field="description" data-original="${escapeHtml(item.description || '')}">${escapeHtml(item.description || '')}</td>
-                                            <td data-field="budgeted" data-original="${budgeted}">${formatCurrency(budgeted)}</td>
-                                            <td data-field="actual" data-original="${actual}">${formatCurrency(actual)}</td>
-                                            <td class="${diffClass}">${formatCurrency(Math.abs(difference))} ${difference < 0 ? 'over' : difference > 0 ? 'under' : ''}</td>
-                                            <td data-field="paymentStatus" data-original="${item.paymentStatus || 'not-paid'}">
+                                            <td data-field="vendor" data-original="${escapeHtml(item.vendor || '')}" onclick="editBudgetCell(this)">${escapeHtml(item.vendor || '')}</td>
+                                            <td data-field="description" data-original="${escapeHtml(item.description || '')}" onclick="editBudgetCell(this)">${escapeHtml(item.description || '')}</td>
+                                            <td data-field="budgeted" data-original="${budgeted}" onclick="editBudgetCell(this)">${formatCurrency(budgeted)}</td>
+                                            <td data-field="actual" data-original="${actual}" onclick="editBudgetCell(this)">${formatCurrency(actual)}</td>
+                                            <td data-computed="difference" class="${diffClass}">${formatCurrency(Math.abs(difference))} ${difference < 0 ? 'over' : difference > 0 ? 'under' : ''}</td>
+                                            <td data-field="paymentStatus" data-original="${item.paymentStatus || 'not-paid'}" onclick="editBudgetCell(this)">
                                                 <span class="status-badge ${item.paymentStatus}">${formatPaymentStatus(item.paymentStatus)}</span>
                                             </td>
-                                            <td data-field="notes" data-original="${escapeHtml(item.notes || '')}">${escapeHtml(item.notes || '')}</td>
-                                            <td class="actions no-print">
-                                                <button class="btn btn-edit" onclick="editBudgetItem('${item.id}')">Edit</button>
-                                                <button class="btn btn-secondary btn-sm" onclick="duplicateBudgetItem('${item.id}')">Duplicate</button>
-                                                <button class="btn btn-danger" onclick="deleteBudgetItem('${item.id}')">Delete</button>
+                                            <td data-field="notes" data-original="${escapeHtml(item.notes || '')}" onclick="editBudgetCell(this)">${escapeHtml(item.notes || '')}</td>
+                                            <td class="actions budget-actions-cell no-print">
+                                                <div class="actions-row">
+                                                    <button class="action-icon" onclick="editBudgetItem('${item.id}')" title="Edit">
+                                                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                                                    </button>
+                                                    <button class="action-icon" onclick="duplicateBudgetItem('${item.id}')" title="Duplicate">
+                                                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                                                    </button>
+                                                    <button class="action-icon action-icon-danger" onclick="deleteBudgetItem('${item.id}')" title="Delete">
+                                                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                                                    </button>
+                                                </div>
                                             </td>
                                         </tr>
                                     `;
                                 }).join('')}
+                                <tr class="budget-phantom-row" data-phantom="true" data-category="${escapeHtml(category)}">
+                                    <td class="confirmed-cell"></td>
+                                    <td data-field="vendor" onclick="editBudgetCell(this)"><span class="phantom-placeholder">+ vendor</span></td>
+                                    <td data-field="description" onclick="editBudgetCell(this)"><span class="phantom-placeholder">+ description</span></td>
+                                    <td data-field="budgeted" onclick="editBudgetCell(this)"><span class="phantom-placeholder">+ budgeted</span></td>
+                                    <td data-field="actual" onclick="editBudgetCell(this)"><span class="phantom-placeholder">+ actual</span></td>
+                                    <td data-computed="difference"></td>
+                                    <td data-field="paymentStatus" onclick="editBudgetCell(this)"><span class="phantom-placeholder">+ status</span></td>
+                                    <td data-field="notes" onclick="editBudgetCell(this)"><span class="phantom-placeholder">+ notes</span></td>
+                                    <td class="actions budget-actions-cell no-print"></td>
+                                </tr>
                             </tbody>
                         </table>
                     </div>
@@ -725,6 +767,8 @@ function renderBudgetGrouped() {
             if (arrow) arrow.textContent = '▼';
         });
     }
+
+    state.pendingNewBudgetRow = {};
 }
 
 // Timeline
@@ -885,7 +929,26 @@ function setupModals() {
     });
 
     // Add button handlers
-    document.getElementById('add-budget-item-btn').addEventListener('click', () => openBudgetModal());
+    document.getElementById('add-budget-item-btn').addEventListener('click', () => {
+        // Scroll to first visible phantom row and focus its first cell
+        const phantomRow = document.querySelector('.budget-phantom-row');
+        if (phantomRow) {
+            // Expand collapsed section if needed
+            const sectionContent = phantomRow.closest('.category-section-content');
+            if (sectionContent && sectionContent.style.display === 'none') {
+                const categoryId = sectionContent.id.replace('content-', '');
+                toggleCategorySection(categoryId);
+            }
+            phantomRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            setTimeout(() => {
+                const firstCell = phantomRow.querySelector(`td[data-field="${BUDGET_FIELD_ORDER[0]}"]`);
+                if (firstCell) editBudgetCell(firstCell);
+            }, 300);
+        } else {
+            // No categories exist yet — fall back to modal
+            openBudgetModal();
+        }
+    });
     document.getElementById('add-timeline-item-btn').addEventListener('click', () => openTimelineModal());
     document.getElementById('add-staff-btn').addEventListener('click', () => openStaffModal());
 }
@@ -1414,11 +1477,30 @@ function setupStageTabs() {
             stageTabs.forEach(t => t.classList.remove('active'));
             tab.classList.add('active');
 
-            // Update state and re-render
+            // Clear editing state and re-render
+            state.stageEditingRowId = null;
+            state.stageRenderPending = false;
+            state.pendingNewStageRow = {};
             state.currentStage = stage;
             renderStageInputs();
         });
     });
+
+    // Add Input button - scroll to phantom row and focus first cell
+    const addInputBtn = document.getElementById('add-stage-input-btn');
+    if (addInputBtn) {
+        addInputBtn.addEventListener('click', () => {
+            const collectionName = state.currentStage === 'main' ? 'mainStageInputs' : 'cocktailStageInputs';
+            const phantomRow = document.querySelector('.stage-phantom-row');
+            if (phantomRow) {
+                phantomRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                setTimeout(() => {
+                    const firstCell = phantomRow.querySelector(`td[data-field="${STAGE_FIELD_ORDER[0]}"]`);
+                    if (firstCell) editStageCell(firstCell, collectionName);
+                }, 300);
+            }
+        });
+    }
 }
 
 // Export and Print Functionality
@@ -1576,6 +1658,8 @@ function exportBudgetToExcel() {
 // Inline Editing for Timeline
 // Editable cell field order for Tab navigation (skip tag — it has its own <select>)
 const TIMELINE_FIELD_ORDER = ['time', 'event', 'responsible', 'staff'];
+const BUDGET_FIELD_ORDER = ['vendor', 'description', 'budgeted', 'actual', 'paymentStatus', 'notes'];
+const STAGE_FIELD_ORDER = ['channel', 'subsnake', 'instrument', 'mics', 'stands', 'notes', 'symbol'];
 
 // Single-click cell editing
 function editTimelineCell(cell) {
@@ -1964,134 +2048,294 @@ function toggleCategorySection(categoryId) {
 }
 
 // Inline Editing for Budget Items
-function cleanupRowClickOutside(row) {
-    if (row._clickOutsideHandler) {
-        document.removeEventListener('mousedown', row._clickOutsideHandler);
-        row._clickOutsideHandler = null;
-    }
-}
+// Single-click cell editing for Budget
+function editBudgetCell(cell) {
+    // Already has an input? Just focus it
+    if (cell.querySelector('.inline-edit-input')) return;
 
-function makeBudgetRowEditable(row) {
-    // Skip if already in edit mode
-    if (row.classList.contains('editing')) return;
+    const row = cell.closest('tr');
+    const field = cell.dataset.field;
+    if (!field) return;
+
+    const isPhantom = row.dataset.phantom === 'true';
+    const rowId = row.dataset.id;
+
+    // Set editing guard
+    state.budgetEditingRowId = isPhantom ? 'phantom' : rowId;
 
     row.classList.add('editing');
 
-    // Get all editable cells
-    const cells = row.querySelectorAll('td[data-field]');
+    // Determine the original value
+    let original = '';
+    if (isPhantom) {
+        original = state.pendingNewBudgetRow[field] || '';
+    } else {
+        original = cell.dataset.original || '';
+    }
 
-    cells.forEach(cell => {
-        const field = cell.dataset.field;
-        const original = cell.dataset.original;
+    // Create appropriate input based on field type
+    let inputEl;
+    if (field === 'paymentStatus') {
+        inputEl = document.createElement('select');
+        inputEl.className = 'inline-edit-input';
+        inputEl.dataset.field = field;
+        inputEl.innerHTML = `
+            <option value="paid" ${original === 'paid' ? 'selected' : ''}>Paid</option>
+            <option value="partial" ${original === 'partial' ? 'selected' : ''}>Partial</option>
+            <option value="not-paid" ${original === 'not-paid' ? 'selected' : ''}>Not Paid</option>
+        `;
+    } else if (field === 'budgeted' || field === 'actual') {
+        inputEl = document.createElement('input');
+        inputEl.type = 'number';
+        inputEl.step = '0.01';
+        inputEl.value = original;
+        inputEl.className = 'inline-edit-input';
+        inputEl.dataset.field = field;
+    } else {
+        inputEl = document.createElement('input');
+        inputEl.type = 'text';
+        inputEl.value = original;
+        inputEl.className = 'inline-edit-input';
+        inputEl.dataset.field = field;
+    }
 
-        // For payment status, create dropdown
-        if (field === 'paymentStatus') {
-            const select = document.createElement('select');
-            select.className = 'inline-edit-input';
-            select.dataset.field = field;
-            select.innerHTML = `
-                <option value="paid" ${original === 'paid' ? 'selected' : ''}>Paid</option>
-                <option value="partial" ${original === 'partial' ? 'selected' : ''}>Partial</option>
-                <option value="not-paid" ${original === 'not-paid' ? 'selected' : ''}>Not Paid</option>
-            `;
-            cell.textContent = '';
-            cell.appendChild(select);
-        }
-        // For budgeted and actual, create number input
-        else if (field === 'budgeted' || field === 'actual') {
-            const input = document.createElement('input');
-            input.type = 'number';
-            input.step = '0.01';
-            input.value = original;
-            input.className = 'inline-edit-input';
-            input.dataset.field = field;
-            cell.textContent = '';
-            cell.appendChild(input);
+    cell.textContent = '';
+    cell.appendChild(inputEl);
+    inputEl.focus();
+    if (inputEl.select) inputEl.select();
 
-            if (field === 'budgeted') {
-                input.focus();
-                input.select();
-            }
-        }
-        // For others, create text input
-        else {
-            const input = document.createElement('input');
-            input.type = 'text';
-            input.value = original;
-            input.className = 'inline-edit-input';
-            input.dataset.field = field;
-            cell.textContent = '';
-            cell.appendChild(input);
-        }
+    // Keyboard navigation
+    inputEl.addEventListener('keydown', (e) => handleBudgetCellKeydown(e, cell, row));
 
-        // Add keyboard shortcuts
-        const inputElement = cell.querySelector('input, select');
-        inputElement.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                saveBudgetRowChanges(row);
-            } else if (e.key === 'Escape') {
-                cancelBudgetRowEdit(row);
-            }
-        });
-    });
-
-    // Add save/cancel buttons
-    const actionsCell = row.querySelector('.actions');
-    actionsCell.innerHTML = `
-        <button class="btn btn-primary" onclick="saveBudgetRowChanges(this.closest('tr'))">Save</button>
-        <button class="btn btn-secondary" onclick="cancelBudgetRowEdit(this.closest('tr'))">Cancel</button>
-    `;
-
-    // Click outside to auto-save
-    setTimeout(() => {
-        const clickOutside = (e) => {
-            if (!row.contains(e.target)) {
-                document.removeEventListener('mousedown', clickOutside);
-                if (row.classList.contains('editing')) {
-                    saveBudgetRowChanges(row);
+    // Blur handler: auto-save if focus leaves the row entirely
+    inputEl.addEventListener('blur', () => {
+        setTimeout(() => {
+            const activeEl = document.activeElement;
+            if (row.contains(activeEl) && activeEl.classList.contains('inline-edit-input')) return;
+            if (cell.querySelector('.inline-edit-input')) {
+                if (isPhantom) {
+                    const val = inputEl.value.trim();
+                    if (val) state.pendingNewBudgetRow[field] = val;
+                    restoreBudgetCellDisplay(cell, isPhantom);
+                    if (!row.querySelector('.inline-edit-input')) {
+                        row.classList.remove('editing');
+                        clearBudgetEditingFlag();
+                    }
+                } else {
+                    saveSingleBudgetCell(cell, row);
                 }
             }
-        };
-        document.addEventListener('mousedown', clickOutside);
-        row._clickOutsideHandler = clickOutside;
-    }, 0);
+        }, 50);
+    });
 }
 
-function saveBudgetRowChanges(row) {
-    cleanupRowClickOutside(row);
-    const id = row.dataset.id;
-    const inputs = row.querySelectorAll('.inline-edit-input');
+function handleBudgetCellKeydown(e, cell, row) {
+    const field = cell.dataset.field;
+    const isPhantom = row.dataset.phantom === 'true';
 
-    const updates = {};
-    inputs.forEach(input => {
-        const field = input.dataset.field;
-        updates[field] = input.value;
-    });
+    if (e.key === 'Tab') {
+        e.preventDefault();
+        const direction = e.shiftKey ? -1 : 1;
+        if (isPhantom) {
+            const input = cell.querySelector('.inline-edit-input');
+            const val = input ? input.value.trim() : '';
+            if (val) state.pendingNewBudgetRow[field] = val;
+            restoreBudgetCellDisplay(cell, true);
+        } else {
+            saveSingleBudgetCell(cell, row);
+        }
+        navigateBudgetCell(row, field, direction);
+    } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (isPhantom) {
+            const input = cell.querySelector('.inline-edit-input');
+            const val = input ? input.value.trim() : '';
+            if (val) state.pendingNewBudgetRow[field] = val;
+            restoreBudgetCellDisplay(cell, true);
+            commitNewBudgetRow(row);
+        } else {
+            saveSingleBudgetCell(cell, row);
+            navigateBudgetNextRowSameColumn(row, field);
+        }
+    } else if (e.key === 'Escape') {
+        e.preventDefault();
+        restoreBudgetCellDisplay(cell, isPhantom);
+        row.classList.remove('editing');
+        clearBudgetEditingFlag();
+    }
+}
+
+function saveSingleBudgetCell(cell, row) {
+    const input = cell.querySelector('.inline-edit-input');
+    if (!input) return;
+
+    const field = cell.dataset.field;
+    const id = row.dataset.id;
+    const item = state.budget.find(i => i.id === id);
+    if (!item) { restoreBudgetCellDisplay(cell, false); return; }
+
+    let newValue = input.value.trim();
+    const oldValue = (field === 'budgeted' || field === 'actual')
+        ? (parseFloat(item[field]) || 0)
+        : (item[field] || '');
 
     // Convert number fields
-    if (updates.budgeted) updates.budgeted = parseFloat(updates.budgeted) || 0;
-    if (updates.actual) updates.actual = parseFloat(updates.actual) || 0;
+    if (field === 'budgeted' || field === 'actual') {
+        newValue = parseFloat(newValue) || 0;
+    }
 
-    // Exit edit mode immediately
-    row.classList.remove('editing');
-    renderBudget();
+    // Restore cell to display mode
+    cell.dataset.original = String(newValue);
+    restoreBudgetCellDisplay(cell, false);
 
-    // Update Firebase
+    // Live-update difference column
+    if (field === 'budgeted' || field === 'actual') {
+        const budgetedCell = row.querySelector('td[data-field="budgeted"]');
+        const actualCell = row.querySelector('td[data-field="actual"]');
+        const budgetedVal = parseFloat(budgetedCell.dataset.original) || 0;
+        const actualVal = parseFloat(actualCell.dataset.original) || 0;
+        const difference = budgetedVal - actualVal;
+        const diffCell = row.querySelector('td[data-computed="difference"]');
+        if (diffCell) {
+            diffCell.className = difference < 0 ? 'over-budget' : difference > 0 ? 'under-budget' : '';
+            diffCell.textContent = `${formatCurrency(Math.abs(difference))} ${difference < 0 ? 'over' : difference > 0 ? 'under' : ''}`;
+        }
+    }
+
+    // If no other cells are being edited in this row, clear editing state
+    if (!row.querySelector('.inline-edit-input')) {
+        row.classList.remove('editing');
+        clearBudgetEditingFlag();
+    }
+
+    // Only save if value changed
+    if (String(newValue) === String(oldValue)) return;
+
+    // Save to Firestore
+    const updates = { [field]: newValue, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
     collections.budget.doc(id).update(updates)
-        .then(() => {
-            showToast('Budget item updated');
-        })
-        .catch((error) => {
-            console.error('Error updating budget item:', error);
-            showToast('Error saving changes. Please try again.', 'error');
-            cancelBudgetRowEdit(row);
+        .then(() => showToast('Updated'))
+        .catch(err => {
+            console.error('Error saving cell:', err);
+            showToast('Error saving', 'error');
         });
 }
 
-function cancelBudgetRowEdit(row) {
-    cleanupRowClickOutside(row);
-    renderBudget();
+function restoreBudgetCellDisplay(cell, isPhantom) {
+    const field = cell.dataset.field;
+    if (isPhantom) {
+        const val = state.pendingNewBudgetRow[field] || '';
+        if (val) {
+            if (field === 'budgeted' || field === 'actual') {
+                cell.textContent = formatCurrency(parseFloat(val) || 0);
+            } else if (field === 'paymentStatus') {
+                cell.innerHTML = `<span class="status-badge ${val}">${formatPaymentStatus(val)}</span>`;
+            } else {
+                cell.textContent = val;
+            }
+        } else {
+            const placeholder = field === 'paymentStatus' ? '+ status' : `+ ${field}`;
+            cell.innerHTML = `<span class="phantom-placeholder">${placeholder}</span>`;
+        }
+    } else {
+        const original = cell.dataset.original || '';
+        if (field === 'budgeted' || field === 'actual') {
+            cell.textContent = formatCurrency(parseFloat(original) || 0);
+        } else if (field === 'paymentStatus') {
+            cell.innerHTML = `<span class="status-badge ${original}">${formatPaymentStatus(original)}</span>`;
+        } else {
+            cell.textContent = original;
+        }
+    }
+}
+
+function clearBudgetEditingFlag() {
+    state.budgetEditingRowId = null;
+    if (state.budgetRenderPending) {
+        state.budgetRenderPending = false;
+        renderBudget();
+    }
+}
+
+function navigateBudgetCell(row, currentField, direction) {
+    const idx = BUDGET_FIELD_ORDER.indexOf(currentField);
+    const nextIdx = idx + direction;
+    const tbody = row.closest('tbody');
+
+    if (nextIdx >= 0 && nextIdx < BUDGET_FIELD_ORDER.length) {
+        const nextField = BUDGET_FIELD_ORDER[nextIdx];
+        const nextCell = row.querySelector(`td[data-field="${nextField}"]`);
+        if (nextCell) editBudgetCell(nextCell);
+    } else if (direction > 0) {
+        const isPhantom = row.dataset.phantom === 'true';
+        if (isPhantom) {
+            commitNewBudgetRow(row);
+            return;
+        }
+        // Wrap to next row within the same tbody (category)
+        const nextRow = row.nextElementSibling;
+        if (nextRow && nextRow.querySelector('td[data-field]')) {
+            const firstField = BUDGET_FIELD_ORDER[0];
+            const nextCell = nextRow.querySelector(`td[data-field="${firstField}"]`);
+            if (nextCell) editBudgetCell(nextCell);
+        }
+    } else if (direction < 0) {
+        const prevRow = row.previousElementSibling;
+        if (prevRow && prevRow.querySelector('td[data-field]')) {
+            const lastField = BUDGET_FIELD_ORDER[BUDGET_FIELD_ORDER.length - 1];
+            const prevCell = prevRow.querySelector(`td[data-field="${lastField}"]`);
+            if (prevCell) editBudgetCell(prevCell);
+        }
+    }
+}
+
+function navigateBudgetNextRowSameColumn(row, field) {
+    const nextRow = row.nextElementSibling;
+    if (nextRow && nextRow.querySelector('td[data-field]')) {
+        const nextCell = nextRow.querySelector(`td[data-field="${field}"]`);
+        if (nextCell) editBudgetCell(nextCell);
+    }
+}
+
+async function commitNewBudgetRow(phantomRow) {
+    const data = { ...state.pendingNewBudgetRow };
+
+    // Need at least vendor or description
+    if (!data.vendor && !data.description) {
+        state.pendingNewBudgetRow = {};
+        clearBudgetEditingFlag();
+        renderBudget();
+        return;
+    }
+
+    // Get category from phantom row
+    const category = phantomRow.dataset.category || 'Uncategorized';
+    data.category = category;
+
+    // Convert number fields
+    if (data.budgeted) data.budgeted = parseFloat(data.budgeted) || 0;
+    if (data.actual) data.actual = parseFloat(data.actual) || 0;
+
+    // Fill missing fields
+    BUDGET_FIELD_ORDER.forEach(f => {
+        if (data[f] === undefined) data[f] = (f === 'budgeted' || f === 'actual') ? 0 : '';
+    });
+
+    data.confirmed = false;
+    data.paymentStatus = data.paymentStatus || 'not-paid';
+    data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+    data.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+
+    state.pendingNewBudgetRow = {};
+    clearBudgetEditingFlag();
+
+    try {
+        await collections.budget.add(data);
+        showToast('Budget item added');
+    } catch (error) {
+        console.error('Error adding budget item:', error);
+        showToast('Error adding item', 'error');
+    }
 }
 
 // Initialize accordion state on page load
@@ -2112,6 +2356,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Render Stage Inputs
 function renderStageInputs() {
+    // Render guard: don't rebuild DOM if user is editing a cell
+    if (state.stageEditingRowId) {
+        state.stageRenderPending = true;
+        return;
+    }
+
     const tbody = document.getElementById('stage-tbody');
     const title = document.getElementById('stage-title');
 
@@ -2124,8 +2374,28 @@ function renderStageInputs() {
     // Update title
     title.textContent = `${stageName} - Audio & Technical Inputs`;
 
+    // Calculate next channel for phantom row
+    const nextChannel = stageData.length > 0
+        ? Math.max(...stageData.map(i => parseInt(i.channel) || 0)) + 1
+        : 1;
+
     if (stageData.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No inputs</td></tr>';
+        // Show phantom row even when empty
+        const phantomRow = `
+            <tr class="stage-phantom-row" data-phantom="true" data-collection="${collectionName}">
+                <td class="drag-handle" style="cursor: default; color: transparent;">⠿</td>
+                <td data-field="channel" onclick="editStageCell(this, '${collectionName}')"><span class="phantom-placeholder">+ ${nextChannel}</span></td>
+                <td data-field="subsnake" onclick="editStageCell(this, '${collectionName}')"><span class="phantom-placeholder">+ subsnake</span></td>
+                <td data-field="instrument" onclick="editStageCell(this, '${collectionName}')"><span class="phantom-placeholder">+ instrument</span></td>
+                <td data-field="mics" onclick="editStageCell(this, '${collectionName}')"><span class="phantom-placeholder">+ mics</span></td>
+                <td data-field="stands" onclick="editStageCell(this, '${collectionName}')"><span class="phantom-placeholder">+ stands</span></td>
+                <td data-field="notes" onclick="editStageCell(this, '${collectionName}')"><span class="phantom-placeholder">+ notes</span></td>
+                <td data-field="symbol" onclick="editStageCell(this, '${collectionName}')"><span class="phantom-placeholder">+ symbol</span></td>
+                <td class="stage-actions-cell no-print"></td>
+            </tr>
+        `;
+        tbody.innerHTML = phantomRow;
+        state.pendingNewStageRow = {};
         return;
     }
 
@@ -2137,92 +2407,293 @@ function renderStageInputs() {
         return (parseInt(a.channel) || 0) - (parseInt(b.channel) || 0);
     });
 
-    tbody.innerHTML = sorted.map(item => {
+    const rowsHtml = sorted.map(item => {
         return `
             <tr data-id="${item.id}" draggable="true"
                 ondragstart="onStageDragStart(event)"
                 ondragover="onStageDragOver(event)"
                 ondragend="onStageDragEnd(event)"
-                ondrop="onStageDrop(event, '${collectionName}')"
-                ondblclick="makeStageRowEditable(this, '${collectionName}')">
+                ondrop="onStageDrop(event, '${collectionName}')">
                 <td class="drag-handle" title="Drag to reorder">⠿</td>
-                <td data-field="channel" data-original="${escapeHtml(item.channel || '')}">${escapeHtml(item.channel || '')}</td>
-                <td data-field="subsnake" data-original="${escapeHtml(item.subsnake || '')}">${escapeHtml(item.subsnake || '')}</td>
-                <td data-field="instrument" data-original="${escapeHtml(item.instrument || '')}">${escapeHtml(item.instrument || '')}</td>
-                <td data-field="mics" data-original="${escapeHtml(item.mics || '')}">${escapeHtml(item.mics || '')}</td>
-                <td data-field="stands" data-original="${escapeHtml(item.stands || '')}">${escapeHtml(item.stands || '')}</td>
-                <td data-field="notes" data-original="${escapeHtml(item.notes || '')}">${escapeHtml(item.notes || '')}</td>
-                <td data-field="symbol" data-original="${escapeHtml(item.symbol || '')}">${escapeHtml(item.symbol || '')}</td>
+                <td data-field="channel" data-original="${escapeHtml(item.channel || '')}" onclick="editStageCell(this, '${collectionName}')">${escapeHtml(item.channel || '')}</td>
+                <td data-field="subsnake" data-original="${escapeHtml(item.subsnake || '')}" onclick="editStageCell(this, '${collectionName}')">${escapeHtml(item.subsnake || '')}</td>
+                <td data-field="instrument" data-original="${escapeHtml(item.instrument || '')}" onclick="editStageCell(this, '${collectionName}')">${escapeHtml(item.instrument || '')}</td>
+                <td data-field="mics" data-original="${escapeHtml(item.mics || '')}" onclick="editStageCell(this, '${collectionName}')">${escapeHtml(item.mics || '')}</td>
+                <td data-field="stands" data-original="${escapeHtml(item.stands || '')}" onclick="editStageCell(this, '${collectionName}')">${escapeHtml(item.stands || '')}</td>
+                <td data-field="notes" data-original="${escapeHtml(item.notes || '')}" onclick="editStageCell(this, '${collectionName}')">${escapeHtml(item.notes || '')}</td>
+                <td data-field="symbol" data-original="${escapeHtml(item.symbol || '')}" onclick="editStageCell(this, '${collectionName}')">${escapeHtml(item.symbol || '')}</td>
+                <td class="stage-actions-cell no-print">
+                    <div class="actions-row">
+                        <button class="action-icon action-icon-danger" onclick="deleteStageInput('${item.id}', '${collectionName}')" title="Delete">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                        </button>
+                    </div>
+                </td>
             </tr>
         `;
     }).join('');
+
+    // Phantom row for inline adding
+    const phantomRow = `
+        <tr class="stage-phantom-row" data-phantom="true" data-collection="${collectionName}">
+            <td class="drag-handle" style="cursor: default; color: transparent;">⠿</td>
+            <td data-field="channel" onclick="editStageCell(this, '${collectionName}')"><span class="phantom-placeholder">+ ${nextChannel}</span></td>
+            <td data-field="subsnake" onclick="editStageCell(this, '${collectionName}')"><span class="phantom-placeholder">+ subsnake</span></td>
+            <td data-field="instrument" onclick="editStageCell(this, '${collectionName}')"><span class="phantom-placeholder">+ instrument</span></td>
+            <td data-field="mics" onclick="editStageCell(this, '${collectionName}')"><span class="phantom-placeholder">+ mics</span></td>
+            <td data-field="stands" onclick="editStageCell(this, '${collectionName}')"><span class="phantom-placeholder">+ stands</span></td>
+            <td data-field="notes" onclick="editStageCell(this, '${collectionName}')"><span class="phantom-placeholder">+ notes</span></td>
+            <td data-field="symbol" onclick="editStageCell(this, '${collectionName}')"><span class="phantom-placeholder">+ symbol</span></td>
+            <td class="stage-actions-cell no-print"></td>
+        </tr>
+    `;
+
+    tbody.innerHTML = rowsHtml + phantomRow;
+    state.pendingNewStageRow = {};
 }
 
-// Inline Editing for Stage Inputs
-function makeStageRowEditable(row, collectionName) {
-    if (row.classList.contains('editing')) return;
+// Single-click cell editing for Stage Inputs
+function editStageCell(cell, collectionName) {
+    // Already has an input? Just focus it
+    if (cell.querySelector('.inline-edit-input')) return;
+
+    const row = cell.closest('tr');
+    const field = cell.dataset.field;
+    if (!field) return;
+
+    const isPhantom = row.dataset.phantom === 'true';
+    const rowId = row.dataset.id;
+
+    // Set editing guard
+    state.stageEditingRowId = isPhantom ? 'phantom' : rowId;
 
     row.classList.add('editing');
 
-    const cells = row.querySelectorAll('td[data-field]');
-
-    cells.forEach(cell => {
-        const field = cell.dataset.field;
-        const original = cell.dataset.original;
-
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.value = original;
-        input.className = 'inline-edit-input';
-        input.dataset.field = field;
-
-        cell.textContent = '';
-        cell.appendChild(input);
-
-        if (field === 'channel') {
-            input.focus();
-            input.select();
-        }
-
-        input.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                saveStageRowChanges(row, collectionName);
-            } else if (e.key === 'Escape') {
-                cancelStageRowEdit(collectionName);
-            }
-        });
-    });
-}
-
-function saveStageRowChanges(row, collectionName) {
-    const id = row.dataset.id;
-    const inputs = row.querySelectorAll('.inline-edit-input');
-
-    const updates = {};
-    inputs.forEach(input => {
-        const field = input.dataset.field;
-        updates[field] = input.value;
-    });
-
-    collections[collectionName].doc(id).update(updates)
-        .then(() => {
-            showToast('Input list updated');
-        })
-        .catch((error) => {
-            console.error('Error updating stage input:', error);
-            showToast('Error saving changes. Please try again.', 'error');
-            cancelStageRowEdit(collectionName);
-        });
-}
-
-function cancelStageRowEdit(collectionName) {
-    if (collectionName === 'mainStageInputs') {
-        renderMainStage();
+    // Determine the original value
+    let original = '';
+    if (isPhantom) {
+        original = state.pendingNewStageRow[field] || '';
     } else {
-        renderCocktailStage();
+        original = cell.dataset.original || '';
+    }
+
+    // Create input
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = original;
+    input.className = 'inline-edit-input';
+    input.dataset.field = field;
+
+    cell.textContent = '';
+    cell.appendChild(input);
+    input.focus();
+    input.select();
+
+    // Keyboard navigation
+    input.addEventListener('keydown', (e) => handleStageCellKeydown(e, cell, row, collectionName));
+
+    // Blur handler: auto-save if focus leaves the row entirely
+    input.addEventListener('blur', () => {
+        setTimeout(() => {
+            const activeEl = document.activeElement;
+            if (row.contains(activeEl) && activeEl.classList.contains('inline-edit-input')) return;
+            if (cell.querySelector('.inline-edit-input')) {
+                if (isPhantom) {
+                    const val = input.value.trim();
+                    if (val) state.pendingNewStageRow[field] = val;
+                    restoreStageCellDisplay(cell, isPhantom);
+                    if (!row.querySelector('.inline-edit-input')) {
+                        row.classList.remove('editing');
+                        clearStageEditingFlag();
+                    }
+                } else {
+                    saveSingleStageCell(cell, row, collectionName);
+                }
+            }
+        }, 50);
+    });
+}
+
+function handleStageCellKeydown(e, cell, row, collectionName) {
+    const field = cell.dataset.field;
+    const isPhantom = row.dataset.phantom === 'true';
+
+    if (e.key === 'Tab') {
+        e.preventDefault();
+        const direction = e.shiftKey ? -1 : 1;
+        if (isPhantom) {
+            const input = cell.querySelector('.inline-edit-input');
+            const val = input ? input.value.trim() : '';
+            if (val) state.pendingNewStageRow[field] = val;
+            restoreStageCellDisplay(cell, true);
+        } else {
+            saveSingleStageCell(cell, row, collectionName);
+        }
+        navigateStageCell(row, field, direction, collectionName);
+    } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (isPhantom) {
+            const input = cell.querySelector('.inline-edit-input');
+            const val = input ? input.value.trim() : '';
+            if (val) state.pendingNewStageRow[field] = val;
+            restoreStageCellDisplay(cell, true);
+            commitNewStageRow(collectionName);
+        } else {
+            saveSingleStageCell(cell, row, collectionName);
+            navigateStageNextRowSameColumn(row, field, collectionName);
+        }
+    } else if (e.key === 'Escape') {
+        e.preventDefault();
+        restoreStageCellDisplay(cell, isPhantom);
+        row.classList.remove('editing');
+        clearStageEditingFlag();
     }
 }
+
+function saveSingleStageCell(cell, row, collectionName) {
+    const input = cell.querySelector('.inline-edit-input');
+    if (!input) return;
+
+    const field = cell.dataset.field;
+    const id = row.dataset.id;
+    const newValue = input.value.trim();
+
+    // Restore cell to display mode
+    cell.dataset.original = newValue;
+    cell.textContent = newValue;
+
+    // If no other cells are being edited in this row, clear editing state
+    if (!row.querySelector('.inline-edit-input')) {
+        row.classList.remove('editing');
+        clearStageEditingFlag();
+    }
+
+    // Only save if value changed
+    const stageData = collectionName === 'mainStageInputs' ? state.mainStageInputs : state.cocktailStageInputs;
+    const item = stageData.find(i => i.id === id);
+    const oldValue = item ? (item[field] || '') : '';
+    if (newValue === oldValue) return;
+
+    // Save to Firestore
+    const updates = { [field]: newValue, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+    collections[collectionName].doc(id).update(updates)
+        .then(() => showToast('Updated'))
+        .catch(err => {
+            console.error('Error saving cell:', err);
+            showToast('Error saving', 'error');
+        });
+}
+
+function restoreStageCellDisplay(cell, isPhantom) {
+    const field = cell.dataset.field;
+    if (isPhantom) {
+        const val = state.pendingNewStageRow[field] || '';
+        if (val) {
+            cell.textContent = val;
+        } else {
+            cell.innerHTML = `<span class="phantom-placeholder">+ ${field}</span>`;
+        }
+    } else {
+        cell.textContent = cell.dataset.original || '';
+    }
+}
+
+function clearStageEditingFlag() {
+    state.stageEditingRowId = null;
+    if (state.stageRenderPending) {
+        state.stageRenderPending = false;
+        renderStageInputs();
+    }
+}
+
+function navigateStageCell(row, currentField, direction, collectionName) {
+    const idx = STAGE_FIELD_ORDER.indexOf(currentField);
+    const nextIdx = idx + direction;
+
+    if (nextIdx >= 0 && nextIdx < STAGE_FIELD_ORDER.length) {
+        const nextField = STAGE_FIELD_ORDER[nextIdx];
+        const nextCell = row.querySelector(`td[data-field="${nextField}"]`);
+        if (nextCell) editStageCell(nextCell, collectionName);
+    } else if (direction > 0) {
+        const isPhantom = row.dataset.phantom === 'true';
+        if (isPhantom) {
+            commitNewStageRow(collectionName);
+            return;
+        }
+        const nextRow = row.nextElementSibling;
+        if (nextRow && nextRow.querySelector('td[data-field]')) {
+            const firstField = STAGE_FIELD_ORDER[0];
+            const nextCell = nextRow.querySelector(`td[data-field="${firstField}"]`);
+            if (nextCell) editStageCell(nextCell, collectionName);
+        }
+    } else if (direction < 0) {
+        const prevRow = row.previousElementSibling;
+        if (prevRow && prevRow.querySelector('td[data-field]')) {
+            const lastField = STAGE_FIELD_ORDER[STAGE_FIELD_ORDER.length - 1];
+            const prevCell = prevRow.querySelector(`td[data-field="${lastField}"]`);
+            if (prevCell) editStageCell(prevCell, collectionName);
+        }
+    }
+}
+
+function navigateStageNextRowSameColumn(row, field, collectionName) {
+    const nextRow = row.nextElementSibling;
+    if (nextRow && nextRow.querySelector('td[data-field]')) {
+        const nextCell = nextRow.querySelector(`td[data-field="${field}"]`);
+        if (nextCell) editStageCell(nextCell, collectionName);
+    }
+}
+
+async function commitNewStageRow(collectionName) {
+    const data = { ...state.pendingNewStageRow };
+
+    // Need at least channel or instrument
+    if (!data.channel && !data.instrument) {
+        state.pendingNewStageRow = {};
+        clearStageEditingFlag();
+        renderStageInputs();
+        return;
+    }
+
+    // Auto-assign channel if not provided
+    if (!data.channel) {
+        const stageData = collectionName === 'mainStageInputs' ? state.mainStageInputs : state.cocktailStageInputs;
+        const nextChannel = stageData.length > 0
+            ? Math.max(...stageData.map(i => parseInt(i.channel) || 0)) + 1
+            : 1;
+        data.channel = String(nextChannel);
+    }
+
+    // Fill missing fields with empty strings
+    STAGE_FIELD_ORDER.forEach(f => { if (!data[f]) data[f] = ''; });
+
+    const stageData = collectionName === 'mainStageInputs' ? state.mainStageInputs : state.cocktailStageInputs;
+    data.order = stageData.length;
+
+    state.pendingNewStageRow = {};
+    clearStageEditingFlag();
+
+    try {
+        await collections[collectionName].add(data);
+        showToast('Input added');
+    } catch (error) {
+        console.error('Error adding stage input:', error);
+        showToast('Error adding input', 'error');
+    }
+}
+
+// Delete a stage input row
+async function deleteStageInput(id, collectionName) {
+    if (!confirm('Delete this input?')) return;
+    try {
+        await collections[collectionName].doc(id).delete();
+        showToast('Input deleted');
+    } catch (error) {
+        console.error('Error deleting stage input:', error);
+        showToast('Error deleting input', 'error');
+    }
+}
+window.deleteStageInput = deleteStageInput;
 
 // Drag and Drop for Stage Input rows
 let draggedRow = null;
@@ -4466,13 +4937,11 @@ function printPlot() {
 
 // Make functions globally accessible
 window.toggleCategorySection = toggleCategorySection;
-window.makeBudgetRowEditable = makeBudgetRowEditable;
-window.saveBudgetRowChanges = saveBudgetRowChanges;
-window.cancelBudgetRowEdit = cancelBudgetRowEdit;
+window.editBudgetCell = editBudgetCell;
 window.makeRowEditable = makeRowEditable;
 window.saveRowChanges = saveRowChanges;
 window.cancelRowEdit = cancelRowEdit;
 window.editTimelineCell = editTimelineCell;
 window.commitNewRow = commitNewRow;
-window.makeStageRowEditable = makeStageRowEditable;
+window.editStageCell = editStageCell;
 

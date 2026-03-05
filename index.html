@@ -144,38 +144,10 @@
 
             <!-- Filter Tabs -->
             <div class="vendor-filters">
-                <button class="vendor-filter-btn active" data-filter="all">All</button>
-                <button class="vendor-filter-btn" data-filter="confirmed">Confirmed</button>
-                <button class="vendor-filter-btn" data-filter="pending">Pending</button>
+                <button class="vendor-filter-btn active" data-filter="all">All <span class="vendor-filter-count" id="vendor-filter-all-count"></span></button>
+                <button class="vendor-filter-btn" data-filter="confirmed">Confirmed <span class="vendor-filter-count" id="vendor-filter-confirmed-count"></span></button>
+                <button class="vendor-filter-btn" data-filter="pending">Pending <span class="vendor-filter-count" id="vendor-filter-pending-count"></span></button>
                 <button class="vendor-filter-btn" data-filter="issues">Issues <span class="vendor-filter-count" id="vendor-filter-issue-count"></span></button>
-            </div>
-
-            <!-- Vendor Stats -->
-            <div class="stats-grid vendor-stats-grid">
-                <div class="stat-card">
-                    <div class="stat-content">
-                        <div class="stat-label">Total Vendors</div>
-                        <div class="stat-value" id="vendor-page-total">0</div>
-                    </div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-content">
-                        <div class="stat-label">Confirmed</div>
-                        <div class="stat-value" id="vendor-page-confirmed">0</div>
-                    </div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-content">
-                        <div class="stat-label">Pending</div>
-                        <div class="stat-value" id="vendor-page-pending">0</div>
-                    </div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-content">
-                        <div class="stat-label">Issues</div>
-                        <div class="stat-value" style="color: #e74c3c;" id="vendor-page-issues">0</div>
-                    </div>
-                </div>
             </div>
 
             <!-- Vendor Cards -->
@@ -189,8 +161,10 @@
             <div class="page-header">
                 <h1>Budget</h1>
                 <div class="header-actions">
-                    <button class="btn btn-secondary" id="export-budget-btn">📊 Export to Excel</button>
-                    <button class="btn btn-primary" id="add-budget-item-btn">+ Add Item</button>
+                    <button class="btn btn-icon" id="export-budget-btn" title="Export to Excel">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                    </button>
+                    <button class="btn btn-primary-gold" id="add-budget-item-btn">+ Add Item</button>
                 </div>
             </div>
 
@@ -338,7 +312,10 @@
             <div class="page-header">
                 <h1>Input Lists</h1>
                 <div class="header-actions">
-                    <button class="btn btn-secondary" id="export-stage-btn">📊 Export to Excel</button>
+                    <button class="btn btn-icon" id="export-stage-btn" title="Export to Excel">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                    </button>
+                    <button class="btn btn-primary-gold" id="add-stage-input-btn">+ Add Input</button>
                 </div>
             </div>
 
@@ -365,11 +342,12 @@
                                 <th>Stands</th>
                                 <th>Notes</th>
                                 <th>Symbol</th>
+                                <th class="actions-col no-print">Actions</th>
                             </tr>
                         </thead>
                         <tbody id="stage-tbody">
                             <tr>
-                                <td colspan="8" class="empty-state">No inputs</td>
+                                <td colspan="9" class="empty-state">No inputs</td>
                             </tr>
                         </tbody>
                     </table>
