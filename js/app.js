@@ -32,7 +32,8 @@ const state = {
     isUndoRedoing: false,  // Flag to prevent history recording during undo/redo
     isInteracting: false,  // Flag to prevent canvas resize during user interaction
     dimensionsVisible: true,  // Whether stage dimension labels are shown
-    timelineUndoStack: []  // Undo history for timeline actions
+    timelineUndoStack: [],  // Undo history for timeline actions
+    timelineFilter: 'all'  // Current timeline filter: 'all', 'production', 'run-of-show'
 };
 
 // Toast notification system
@@ -726,7 +727,17 @@ function renderTimeline() {
     const tbody = document.getElementById('timeline-tbody');
 
     // Filter by current day
-    const filteredTimeline = state.timeline.filter(item => item.day === state.currentDay);
+    let filteredTimeline = state.timeline.filter(item => item.day === state.currentDay);
+
+    // Apply tag/time filter
+    if (state.timelineFilter === 'production') {
+        filteredTimeline = filteredTimeline.filter(item => item.tag === 'production');
+    } else if (state.timelineFilter === 'run-of-show') {
+        filteredTimeline = filteredTimeline.filter(item => {
+            if (!item.time) return false;
+            return item.time >= '18:20' && item.time <= '23:00';
+        });
+    }
 
     // Update day title and subtitle
     const dayTitle = document.getElementById('timeline-day-title');
@@ -738,15 +749,16 @@ function renderTimeline() {
         'Sunday': 'April 26, 2026'
     };
 
+    const filterLabels = { 'all': '', 'production': ' — Production', 'run-of-show': ' — Run of Show' };
     if (dayTitle) {
-        dayTitle.textContent = `${state.currentDay} Timeline`;
+        dayTitle.textContent = `${state.currentDay} Timeline${filterLabels[state.timelineFilter] || ''}`;
     }
     if (dateSubtitle) {
         dateSubtitle.textContent = dateMap[state.currentDay] || '';
     }
 
     if (filteredTimeline.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No tasks for this day</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No tasks for this day</td></tr>';
         return;
     }
 
@@ -757,42 +769,58 @@ function renderTimeline() {
         return a.time.localeCompare(b.time);
     });
 
-    tbody.innerHTML = sorted.map(item => {
+    tbody.innerHTML = sorted.map((item, idx) => {
         const isComplete = item.completed === true || item.status === 'complete';
 
         const rowColor = item.highlightColor || '';
-        const rowStyle = rowColor ? `background-color: ${rowColor};` : '';
+        const borderColor = (rowColor && rowColor !== '#ffffff') ? rowColor : 'transparent';
+        const animDelay = `animation-delay: ${idx * 30}ms;`;
 
         return `
-            <tr class="${isComplete ? 'task-completed' : ''}"
+            <tr class="tl-row ${isComplete ? 'task-completed' : ''}"
                 data-id="${item.id}"
-                style="${rowStyle}"
+                style="--row-accent: ${borderColor}; ${animDelay}"
                 ondblclick="makeRowEditable(this)">
                 <td class="checkbox-col">
-                    <input type="checkbox"
+                    <input type="checkbox" class="tl-checkbox"
                            ${isComplete ? 'checked' : ''}
                            onchange="toggleTaskComplete('${item.id}', this.checked)">
                 </td>
-                <td class="time-col" data-field="time" data-original="${escapeHtml(item.time || '')}">${formatTime12Hour(item.time)}</td>
+                <td class="time-col" data-field="time" data-original="${escapeHtml(item.time || '')}"><span class="tl-time">${formatTime12Hour(item.time)}</span></td>
                 <td class="event-col" data-field="event" data-original="${escapeHtml(item.event || '')}">${escapeHtml(item.event || '')}</td>
+                <td class="tag-col">
+                    <select class="inline-tag-select" onchange="setTimelineTag('${item.id}', this.value)">
+                        <option value=""${!item.tag ? ' selected' : ''}>—</option>
+                        <option value="production"${item.tag === 'production' ? ' selected' : ''}>Prod</option>
+                    </select>
+                </td>
                 <td class="responsible-col" data-field="responsible" data-original="${escapeHtml(item.responsible || '')}">${escapeHtml(item.responsible || '')}</td>
                 <td class="staff-col" data-field="staff" data-original="${escapeHtml(item.staff || '')}">${escapeHtml(item.staff || '')}</td>
                 <td class="actions-col no-print">
-                    <div class="color-swatch-wrapper">
-                        <button class="color-swatch-btn" style="background-color: ${rowColor || '#ffffff'}; ${rowColor ? '' : 'border: 2px dashed #ccc;'}" onclick="toggleColorPicker('${item.id}')" title="Highlight color"></button>
-                        <div class="color-swatch-dropdown" id="color-picker-${item.id}">
-                            <button class="color-swatch" style="background:#ffffff; border: 1px dashed #ccc;" onclick="setTimelineColor('${item.id}','#ffffff')" title="None"></button>
-                            <button class="color-swatch" style="background:#fff3cd;" onclick="setTimelineColor('${item.id}','#fff3cd')" title="Yellow"></button>
-                            <button class="color-swatch" style="background:#d4edda;" onclick="setTimelineColor('${item.id}','#d4edda')" title="Green"></button>
-                            <button class="color-swatch" style="background:#cce5ff;" onclick="setTimelineColor('${item.id}','#cce5ff')" title="Blue"></button>
-                            <button class="color-swatch" style="background:#f8d7da;" onclick="setTimelineColor('${item.id}','#f8d7da')" title="Red"></button>
-                            <button class="color-swatch" style="background:#e2d6f3;" onclick="setTimelineColor('${item.id}','#e2d6f3')" title="Purple"></button>
-                            <button class="color-swatch" style="background:#fde0c8;" onclick="setTimelineColor('${item.id}','#fde0c8')" title="Orange"></button>
-                            <button class="color-swatch" style="background:#d6d6d6;" onclick="setTimelineColor('${item.id}','#d6d6d6')" title="Gray"></button>
+                    <div class="actions-row">
+                        <div class="color-swatch-wrapper">
+                            <button class="color-swatch-btn" style="background-color: ${rowColor || '#ffffff'}; ${rowColor && rowColor !== '#ffffff' ? '' : 'border: 2px dashed #ccc;'}" onclick="toggleColorPicker('${item.id}')" title="Highlight color"></button>
+                            <div class="color-swatch-dropdown" id="color-picker-${item.id}">
+                                <button class="color-swatch" style="background:#ffffff; border: 1px dashed #ccc;" onclick="setTimelineColor('${item.id}','#ffffff')" title="None"></button>
+                                <button class="color-swatch" style="background:#fff3cd;" onclick="setTimelineColor('${item.id}','#fff3cd')" title="Yellow"></button>
+                                <button class="color-swatch" style="background:#d4edda;" onclick="setTimelineColor('${item.id}','#d4edda')" title="Green"></button>
+                                <button class="color-swatch" style="background:#cce5ff;" onclick="setTimelineColor('${item.id}','#cce5ff')" title="Blue"></button>
+                                <button class="color-swatch" style="background:#f8d7da;" onclick="setTimelineColor('${item.id}','#f8d7da')" title="Red"></button>
+                                <button class="color-swatch" style="background:#e2d6f3;" onclick="setTimelineColor('${item.id}','#e2d6f3')" title="Purple"></button>
+                                <button class="color-swatch" style="background:#fde0c8;" onclick="setTimelineColor('${item.id}','#fde0c8')" title="Orange"></button>
+                                <button class="color-swatch" style="background:#d6d6d6;" onclick="setTimelineColor('${item.id}','#d6d6d6')" title="Gray"></button>
+                            </div>
                         </div>
+                        <button class="action-icon" onclick="editTimelineItem('${item.id}')" title="Edit">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                        </button>
+                        <button class="action-icon" onclick="duplicateTimelineItem('${item.id}')" title="Duplicate">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        </button>
+                        <button class="action-icon action-icon-danger" onclick="deleteTimelineItem('${item.id}')" title="Delete">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                        </button>
                     </div>
-                    <button class="btn btn-secondary btn-sm" onclick="duplicateTimelineItem('${item.id}')">Dup</button>
-                    <button class="btn btn-danger" onclick="deleteTimelineItem('${item.id}')">Delete</button>
                 </td>
             </tr>
         `;
@@ -924,6 +952,7 @@ function openTimelineModal(itemId = null) {
             'timeline-event': 'event',
             'timeline-responsible': 'responsible',
             'timeline-staff': 'staff',
+            'timeline-tag': 'tag',
             'timeline-notes': 'notes'
         },
         defaultValues: {
@@ -1031,6 +1060,7 @@ async function handleTimelineSubmit(e) {
             'timeline-event': 'event',
             'timeline-responsible': 'responsible',
             'timeline-staff': 'staff',
+            'timeline-tag': 'tag',
             'timeline-notes': 'notes'
         },
         numericFields: []
@@ -1147,6 +1177,49 @@ window.undoTimelineAction = async () => {
         console.error('Error undoing:', error);
         showToast('Error undoing action', 'error');
     }
+};
+
+window.toggleTimelineCol = (col, visible) => {
+    const table = document.getElementById('timeline-table');
+    if (!table) return;
+    table.classList.toggle(`hide-${col}`, !visible);
+};
+
+window.toggleColumnsDropdown = () => {
+    const dropdown = document.getElementById('columns-dropdown');
+    if (dropdown) dropdown.classList.toggle('open');
+};
+
+// Close columns dropdown when clicking outside
+document.addEventListener('click', (e) => {
+    const dropdown = document.getElementById('columns-dropdown');
+    const btn = document.getElementById('columns-toggle-btn');
+    if (dropdown && btn && !dropdown.contains(e.target) && !btn.contains(e.target)) {
+        dropdown.classList.remove('open');
+    }
+});
+
+window.setTimelineTag = async (id, tag) => {
+    const item = state.timeline.find(i => i.id === id);
+    if (item) pushTimelineUndo({ type: 'update', id, previousData: { tag: item.tag || '' } });
+
+    try {
+        await collections.timeline.doc(id).update({
+            tag: tag,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+    } catch (error) {
+        console.error('Error setting tag:', error);
+        showToast('Error setting tag', 'error');
+    }
+};
+
+window.setTimelineFilter = (filter) => {
+    state.timelineFilter = filter;
+    document.querySelectorAll('.timeline-filters .filter-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.filter === filter);
+    });
+    renderTimeline();
 };
 
 window.toggleColorPicker = (id) => {
@@ -1500,15 +1573,30 @@ function makeRowEditable(row) {
         });
     });
 
-    // Add save/cancel buttons to actions column
-    const actionsCell = row.querySelector('.actions-col');
-    actionsCell.innerHTML = `
-        <button class="btn btn-primary" onclick="saveRowChanges(this.closest('tr'))">Save</button>
-        <button class="btn btn-secondary" onclick="cancelRowEdit(this.closest('tr'))">Cancel</button>
-    `;
+    // Click outside to auto-save
+    setTimeout(() => {
+        const clickOutside = (e) => {
+            if (!row.contains(e.target) && !e.target.closest('.color-swatch-dropdown')) {
+                document.removeEventListener('mousedown', clickOutside);
+                if (row.classList.contains('editing')) {
+                    saveRowChanges(row);
+                }
+            }
+        };
+        document.addEventListener('mousedown', clickOutside);
+        row._clickOutsideHandler = clickOutside;
+    }, 0);
+}
+
+function cleanupRowClickOutside(row) {
+    if (row._clickOutsideHandler) {
+        document.removeEventListener('mousedown', row._clickOutsideHandler);
+        row._clickOutsideHandler = null;
+    }
 }
 
 function saveRowChanges(row) {
+    cleanupRowClickOutside(row);
     const id = row.dataset.id;
     const inputs = row.querySelectorAll('.inline-edit-input');
 
@@ -1530,6 +1618,10 @@ function saveRowChanges(row) {
 
     if (item) pushTimelineUndo({ type: 'update', id, previousData });
 
+    // Exit edit mode immediately
+    row.classList.remove('editing');
+    renderTimeline();
+
     // Update Firebase
     collections.timeline.doc(id).update(updates)
         .then(() => {
@@ -1543,7 +1635,7 @@ function saveRowChanges(row) {
 }
 
 function cancelRowEdit(row) {
-    // Simply re-render the timeline to restore original state
+    cleanupRowClickOutside(row);
     renderTimeline();
 }
 
@@ -1655,9 +1747,24 @@ function makeBudgetRowEditable(row) {
         <button class="btn btn-primary" onclick="saveBudgetRowChanges(this.closest('tr'))">Save</button>
         <button class="btn btn-secondary" onclick="cancelBudgetRowEdit(this.closest('tr'))">Cancel</button>
     `;
+
+    // Click outside to auto-save
+    setTimeout(() => {
+        const clickOutside = (e) => {
+            if (!row.contains(e.target)) {
+                document.removeEventListener('mousedown', clickOutside);
+                if (row.classList.contains('editing')) {
+                    saveBudgetRowChanges(row);
+                }
+            }
+        };
+        document.addEventListener('mousedown', clickOutside);
+        row._clickOutsideHandler = clickOutside;
+    }, 0);
 }
 
 function saveBudgetRowChanges(row) {
+    cleanupRowClickOutside(row);
     const id = row.dataset.id;
     const inputs = row.querySelectorAll('.inline-edit-input');
 
@@ -1670,6 +1777,10 @@ function saveBudgetRowChanges(row) {
     // Convert number fields
     if (updates.budgeted) updates.budgeted = parseFloat(updates.budgeted) || 0;
     if (updates.actual) updates.actual = parseFloat(updates.actual) || 0;
+
+    // Exit edit mode immediately
+    row.classList.remove('editing');
+    renderBudget();
 
     // Update Firebase
     collections.budget.doc(id).update(updates)
@@ -1684,7 +1795,7 @@ function saveBudgetRowChanges(row) {
 }
 
 function cancelBudgetRowEdit(row) {
-    // Re-render budget to restore original state
+    cleanupRowClickOutside(row);
     renderBudget();
 }
 

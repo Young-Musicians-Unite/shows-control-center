@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>YMU Gala 2026 Management</title>
     <link rel="stylesheet" href="css/styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=Cormorant+Garamond:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
     <!-- Navigation -->
@@ -236,26 +239,68 @@
             <div class="page-header">
                 <h1>Timeline</h1>
                 <div class="header-actions">
-                    <button class="btn btn-secondary" id="timeline-undo-btn" disabled>↶ Undo</button>
-                    <button class="btn btn-secondary" id="print-timeline-btn">🖨️ Print</button>
-                    <button class="btn btn-secondary" id="export-timeline-btn">📊 Export to Excel</button>
-                    <button class="btn btn-primary" id="add-timeline-item-btn">+ Add Task</button>
+                    <button class="btn btn-icon" id="timeline-undo-btn" disabled title="Undo">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
+                    </button>
+                    <button class="btn btn-icon" id="print-timeline-btn" title="Print">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+                    </button>
+                    <button class="btn btn-icon" id="export-timeline-btn" title="Export to Excel">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                    </button>
+                    <button class="btn btn-primary-gold" id="add-timeline-item-btn">+ Add Task</button>
                 </div>
             </div>
 
             <!-- Day Tabs -->
             <div class="day-tabs">
-                <button class="day-tab active" data-day="Thursday">Thursday (Apr 23)</button>
-                <button class="day-tab" data-day="Friday">Friday (Apr 24)</button>
-                <button class="day-tab" data-day="Saturday">Saturday (Apr 25)</button>
-                <button class="day-tab" data-day="Sunday">Sunday (Apr 26)</button>
+                <button class="day-tab active" data-day="Thursday">
+                    <span class="day-tab-name">Thursday</span>
+                    <span class="day-tab-date">Apr 23</span>
+                </button>
+                <button class="day-tab" data-day="Friday">
+                    <span class="day-tab-name">Friday</span>
+                    <span class="day-tab-date">Apr 24</span>
+                </button>
+                <button class="day-tab" data-day="Saturday">
+                    <span class="day-tab-name">Saturday</span>
+                    <span class="day-tab-date">Apr 25</span>
+                </button>
+                <button class="day-tab" data-day="Sunday">
+                    <span class="day-tab-name">Sunday</span>
+                    <span class="day-tab-date">Apr 26</span>
+                </button>
+            </div>
+
+            <!-- Timeline Filters & Column Toggles -->
+            <div class="timeline-toolbar">
+                <div class="timeline-filters">
+                    <button class="filter-btn active" data-filter="all" onclick="setTimelineFilter('all')">All</button>
+                    <button class="filter-btn" data-filter="production" onclick="setTimelineFilter('production')">Production</button>
+                    <button class="filter-btn" data-filter="run-of-show" onclick="setTimelineFilter('run-of-show')">Run of Show</button>
+                </div>
+                <div class="timeline-columns-wrapper">
+                    <button class="btn btn-columns-toggle" onclick="toggleColumnsDropdown()" id="columns-toggle-btn">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect></svg>
+                        Columns
+                    </button>
+                    <div class="timeline-columns-dropdown" id="columns-dropdown">
+                        <label class="col-toggle"><input type="checkbox" checked onchange="toggleTimelineCol('time', this.checked)"> Time</label>
+                        <label class="col-toggle"><input type="checkbox" checked onchange="toggleTimelineCol('event', this.checked)"> Event</label>
+                        <label class="col-toggle"><input type="checkbox" checked onchange="toggleTimelineCol('tag', this.checked)"> Tag</label>
+                        <label class="col-toggle"><input type="checkbox" checked onchange="toggleTimelineCol('responsible', this.checked)"> Responsible</label>
+                        <label class="col-toggle"><input type="checkbox" checked onchange="toggleTimelineCol('staff', this.checked)"> Staff</label>
+                    </div>
+                </div>
             </div>
 
             <!-- Timeline Items -->
-            <div class="card">
-                <div class="card-header">
-                    <h2 id="timeline-day-title">Thursday Timeline</h2>
-                    <div class="timeline-date" id="timeline-date-subtitle">April 23, 2026</div>
+            <div class="card timeline-card">
+                <div class="card-header timeline-card-header">
+                    <div class="timeline-header-left">
+                        <h2 id="timeline-day-title">Thursday Timeline</h2>
+                        <span class="timeline-date" id="timeline-date-subtitle">April 23, 2026</span>
+                    </div>
                 </div>
                 <div class="table-container">
                     <table class="data-table timeline-table" id="timeline-table">
@@ -264,6 +309,7 @@
                                 <th class="checkbox-col">✓</th>
                                 <th class="time-col">Time</th>
                                 <th class="event-col">Event</th>
+                                <th class="tag-col">Tag</th>
                                 <th class="responsible-col">Responsible</th>
                                 <th class="staff-col">Staff</th>
                                 <th class="actions-col no-print">Actions</th>
@@ -271,7 +317,7 @@
                         </thead>
                         <tbody id="timeline-tbody">
                             <tr>
-                                <td colspan="6" class="empty-state">No tasks for this day</td>
+                                <td colspan="7" class="empty-state">No tasks for this day</td>
                             </tr>
                         </tbody>
                     </table>
@@ -621,9 +667,18 @@
                             <input type="text" id="timeline-staff">
                         </div>
                     </div>
-                    <div class="form-group">
-                        <label for="timeline-notes">Notes</label>
-                        <textarea id="timeline-notes" rows="3"></textarea>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="timeline-tag">Tag</label>
+                            <select id="timeline-tag">
+                                <option value="">None</option>
+                                <option value="production">Production</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="timeline-notes">Notes</label>
+                            <textarea id="timeline-notes" rows="3"></textarea>
+                        </div>
                     </div>
                     <div class="form-actions">
                         <button type="button" class="btn btn-secondary cancel-btn">Cancel</button>
