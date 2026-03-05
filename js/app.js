@@ -4971,6 +4971,7 @@ function setupVenueMap() {
 
     // Pre-load the image but defer canvas creation until the page is visible
     state.vmBgImage = new Image();
+    state.vmBgImage.crossOrigin = 'anonymous';
     state.vmBgImage.src = 'venue-map.png';
 
     // Tool buttons
@@ -5071,15 +5072,11 @@ function vmInitCanvas() {
         preserveObjectStacking: true
     });
 
-    state.vmCanvas.setBackgroundImage(
-        new fabric.Image(img, {
-            scaleX: scale,
-            scaleY: scale,
-            originX: 'left',
-            originY: 'top'
-        }),
-        state.vmCanvas.renderAll.bind(state.vmCanvas)
-    );
+    // Use fabric.Image.fromURL to ensure crossOrigin is set properly for toDataURL
+    fabric.Image.fromURL('venue-map.png', (fabricImg) => {
+        fabricImg.set({ scaleX: scale, scaleY: scale, originX: 'left', originY: 'top' });
+        state.vmCanvas.setBackgroundImage(fabricImg, state.vmCanvas.renderAll.bind(state.vmCanvas));
+    }, { crossOrigin: 'anonymous' });
 
     state.vmImageLoaded = true;
     state.vmBaseWidth = canvasWidth;
@@ -5343,32 +5340,53 @@ window.vmDeleteLayer = vmDeleteLayer;
 // --- Print & Export ---
 
 function vmGetExportDataURL() {
-    // Temporarily reset zoom to 1:1 so the export is full resolution
     const c = state.vmCanvas;
-    if (!c) return null;
+    if (!c) {
+        showToast('Canvas not ready — navigate to Venue Map first', 'error');
+        return null;
+    }
 
-    const prevZoom = state.vmZoom;
-    c.setZoom(1);
-    c.setWidth(state.vmBaseWidth);
-    c.setHeight(state.vmBaseHeight);
-    c.renderAll();
+    try {
+        // Temporarily reset zoom to 1:1 so the export is full resolution
+        const prevZoom = state.vmZoom;
+        c.setZoom(1);
+        c.setWidth(state.vmBaseWidth);
+        c.setHeight(state.vmBaseHeight);
+        c.renderAll();
 
-    const dataURL = c.toDataURL({ format: 'png', quality: 1, multiplier: 2 });
+        let dataURL;
+        try {
+            dataURL = c.toDataURL({ format: 'png', quality: 1 });
+        } catch (taintErr) {
+            // Canvas tainted — re-render background from a clean source
+            console.warn('Canvas tainted, falling back to non-background export:', taintErr);
+            // Try without background
+            const bg = c.backgroundImage;
+            c.backgroundImage = null;
+            c.renderAll();
+            dataURL = c.toDataURL({ format: 'png', quality: 1 });
+            c.backgroundImage = bg;
+            c.renderAll();
+        }
 
-    // Restore zoom
-    c.setZoom(prevZoom);
-    c.setWidth(Math.round(state.vmBaseWidth * prevZoom));
-    c.setHeight(Math.round(state.vmBaseHeight * prevZoom));
-    c.renderAll();
+        // Restore zoom
+        c.setZoom(prevZoom);
+        c.setWidth(Math.round(state.vmBaseWidth * prevZoom));
+        c.setHeight(Math.round(state.vmBaseHeight * prevZoom));
+        c.renderAll();
 
-    return dataURL;
+        return dataURL;
+    } catch (err) {
+        console.error('Export error:', err);
+        showToast('Error exporting map: ' + err.message, 'error');
+        return null;
+    }
 }
 
 function vmExportPNG() {
     const dataURL = vmGetExportDataURL();
     if (!dataURL) return;
 
-    // Build a label from visible layer names
     const visibleNames = state.vmLayers.filter(l => l.visible).map(l => l.name);
     const suffix = visibleNames.length > 0 ? ' (' + visibleNames.join(', ') + ')' : '';
 
@@ -5389,35 +5407,40 @@ function vmPrintMap() {
     const layerLabel = visibleNames.length > 0 ? visibleNames.join(', ') : 'No annotation layers';
 
     const printWindow = window.open('', '_blank');
-    printWindow.document.write(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Venue Map - YMU Gala 2026</title>
-            <style>
-                * { margin: 0; padding: 0; box-sizing: border-box; }
-                body { font-family: 'DM Sans', sans-serif; }
-                .header { text-align: center; padding: 12px 0 8px; }
-                .header h1 { font-size: 18px; color: #1a3a35; }
-                .header p { font-size: 12px; color: #718096; margin-top: 2px; }
-                .map { text-align: center; padding: 0 10px; }
-                .map img { max-width: 100%; height: auto; }
-                @media print {
-                    @page { size: landscape; margin: 0.4in; }
-                }
-            </style>
-        </head>
-        <body>
-            <div class="header">
-                <h1>YMU Gala 2026 - Venue Map</h1>
-                <p>Layers: ${layerLabel}</p>
-            </div>
-            <div class="map">
-                <img src="${dataURL}" />
-            </div>
-        </body>
-        </html>
-    `);
+    if (!printWindow) {
+        showToast('Popup blocked — please allow popups for this site', 'error');
+        return;
+    }
+
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+    <title>Venue Map - YMU Gala 2026</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'DM Sans', sans-serif; }
+        .header { text-align: center; padding: 12px 0 8px; }
+        .header h1 { font-size: 18px; color: #1a3a35; }
+        .header p { font-size: 12px; color: #718096; margin-top: 2px; }
+        .map { text-align: center; padding: 0 10px; }
+        .map img { max-width: 100%; height: auto; }
+        @media print {
+            @page { size: landscape; margin: 0.4in; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>YMU Gala 2026 - Venue Map</h1>
+        <p>Layers: ${layerLabel}</p>
+    </div>
+    <div class="map">
+        <img src="${dataURL}" />
+    </div>
+</body>
+</html>`;
+
+    printWindow.document.write(html);
     printWindow.document.close();
     printWindow.onload = () => {
         setTimeout(() => printWindow.print(), 250);
