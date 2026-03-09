@@ -1857,14 +1857,13 @@ function editTimelineCell(cell) {
             // Otherwise, save this cell
             if (cell.querySelector('.inline-edit-input')) {
                 if (isPhantom) {
-                    // Accumulate phantom value but don't commit yet
                     const val = input.value.trim();
                     if (val) state.pendingNewRow[field] = val;
                     restoreCellDisplay(cell, isPhantom);
-                    // Clear editing flag if no other inputs active in the row
+                    // If no other inputs active, commit the new row
                     if (!row.querySelector('.inline-edit-input')) {
                         row.classList.remove('editing');
-                        clearTimelineEditingFlag();
+                        commitNewRow();
                     }
                 } else {
                     saveSingleCell(cell, row);
@@ -1877,61 +1876,89 @@ function editTimelineCell(cell) {
 function handleCellKeydown(e, cell, row) {
     const field = cell.dataset.field;
     const isPhantom = row.dataset.phantom === 'true';
+    const input = cell.querySelector('.inline-edit-input');
 
     if (e.key === 'Tab') {
         e.preventDefault();
         const direction = e.shiftKey ? -1 : 1;
         if (isPhantom) {
-            // Accumulate value
-            const input = cell.querySelector('.inline-edit-input');
             const val = input ? input.value.trim() : '';
             if (val) state.pendingNewRow[field] = val;
             restoreCellDisplay(cell, true);
         } else {
-            saveSingleCell(cell, row);
+            saveSingleCell(cell, row, true);
         }
         navigateToAdjacentCell(row, field, direction);
     } else if (e.key === 'Enter') {
         e.preventDefault();
         if (isPhantom) {
-            // Accumulate value then commit the row
-            const input = cell.querySelector('.inline-edit-input');
             const val = input ? input.value.trim() : '';
             if (val) state.pendingNewRow[field] = val;
             restoreCellDisplay(cell, true);
             commitNewRow();
         } else {
-            saveSingleCell(cell, row);
-            // Move to same column in next row
+            saveSingleCell(cell, row, true);
             navigateToNextRowSameColumn(row, field);
         }
     } else if (e.key === 'Escape') {
         e.preventDefault();
-        // Cancel: restore original
         restoreCellDisplay(cell, isPhantom);
         row.classList.remove('editing');
         clearTimelineEditingFlag();
+    } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (isPhantom) {
+            const val = input ? input.value.trim() : '';
+            if (val) state.pendingNewRow[field] = val;
+            restoreCellDisplay(cell, true);
+        } else {
+            saveSingleCell(cell, row, true);
+        }
+        if (e.key === 'ArrowUp') {
+            navigateToPrevRowSameColumn(row, field);
+        } else {
+            navigateToNextRowSameColumn(row, field);
+        }
+    } else if (e.key === 'ArrowLeft' && input && input.selectionStart === 0 && input.selectionEnd === 0) {
+        e.preventDefault();
+        if (isPhantom) {
+            const val = input.value.trim();
+            if (val) state.pendingNewRow[field] = val;
+            restoreCellDisplay(cell, true);
+        } else {
+            saveSingleCell(cell, row, true);
+        }
+        navigateToAdjacentCell(row, field, -1);
+    } else if (e.key === 'ArrowRight' && input && input.selectionStart === input.value.length && input.selectionEnd === input.value.length) {
+        e.preventDefault();
+        if (isPhantom) {
+            const val = input.value.trim();
+            if (val) state.pendingNewRow[field] = val;
+            restoreCellDisplay(cell, true);
+        } else {
+            saveSingleCell(cell, row, true);
+        }
+        navigateToAdjacentCell(row, field, 1);
     }
 }
 
-function saveSingleCell(cell, row) {
+function saveSingleCell(cell, row, keepEditing = false) {
     const input = cell.querySelector('.inline-edit-input');
-    if (!input) return;
+    if (!input) return; // Already saved by keydown (blur fired after)
 
+    // Grab values before removing input
     const field = cell.dataset.field;
     const id = row.dataset.id;
-    const item = state.timeline.find(i => i.id === id);
-    if (!item) { restoreCellDisplay(cell, false); return; }
-
     let newValue = input.value.trim();
-    const oldValue = item[field] || '';
+    const item = state.timeline.find(i => i.id === id);
+    const oldValue = item ? (item[field] || '') : '';
 
     // Convert time if needed
     if (field === 'time' && newValue) {
         newValue = convertTo24Hour(newValue);
     }
 
-    // Restore cell to display mode
+    // Restore cell to display mode immediately (remove input so blur handler won't double-fire)
     cell.dataset.original = newValue;
     if (field === 'time') {
         cell.innerHTML = `<span class="tl-time">${formatTime12Hour(newValue)}</span>`;
@@ -1939,20 +1966,25 @@ function saveSingleCell(cell, row) {
         cell.textContent = newValue;
     }
 
-    // If no other cells are being edited in this row, clear editing state
-    if (!row.querySelector('.inline-edit-input')) {
+    // Only clear editing guard if not navigating to another cell
+    if (!keepEditing && !row.querySelector('.inline-edit-input')) {
         row.classList.remove('editing');
         clearTimelineEditingFlag();
     }
 
+    // Guard: item may have been deleted by another user
+    if (!item) return;
+
     // Only save if value changed
     if (newValue === oldValue) return;
+
+    // Optimistic local update so deferred renders show correct value
+    item[field] = newValue;
 
     // Undo batching: merge if same row within 2 seconds
     const now = Date.now();
     const lastUndo = state.timelineUndoStack[state.timelineUndoStack.length - 1];
     if (lastUndo && lastUndo.type === 'update' && lastUndo.id === id && (now - (lastUndo._ts || 0)) < 2000) {
-        // Merge: keep the earliest previousData for each field
         if (!(field in lastUndo.previousData)) {
             lastUndo.previousData[field] = oldValue;
         }
@@ -1965,9 +1997,11 @@ function saveSingleCell(cell, row) {
     // Save to Firestore
     const updates = { [field]: newValue, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
     collections.timeline.doc(id).update(updates)
-        .then(() => showToast('Updated'))
         .catch(err => {
             console.error('Error saving cell:', err);
+            // Revert optimistic update
+            if (item) item[field] = oldValue;
+            cell.dataset.original = oldValue;
             showToast('Error saving', 'error');
         });
 }
@@ -2003,24 +2037,32 @@ function clearTimelineEditingFlag() {
     }
 }
 
+// Re-query row from live DOM in case a render happened
+function getLiveRow(row) {
+    if (row.dataset.phantom === 'true') return document.querySelector('#timeline-tbody tr[data-phantom="true"]') || row;
+    if (row.dataset.id) return document.querySelector(`#timeline-tbody tr[data-id="${row.dataset.id}"]`) || row;
+    return row;
+}
+
 function navigateToAdjacentCell(row, currentField, direction) {
     const idx = TIMELINE_FIELD_ORDER.indexOf(currentField);
     const nextIdx = idx + direction;
 
     if (nextIdx >= 0 && nextIdx < TIMELINE_FIELD_ORDER.length) {
         // Same row, next/prev cell
+        const liveRow = getLiveRow(row);
         const nextField = TIMELINE_FIELD_ORDER[nextIdx];
-        const nextCell = row.querySelector(`td[data-field="${nextField}"]`);
+        const nextCell = liveRow.querySelector(`td[data-field="${nextField}"]`);
         if (nextCell) editTimelineCell(nextCell);
     } else if (direction > 0) {
         // Tab past last field: wrap to next row's first field
         const isPhantom = row.dataset.phantom === 'true';
         if (isPhantom) {
-            // Tab past last cell in phantom row = commit
             commitNewRow();
             return;
         }
-        const nextRow = row.nextElementSibling;
+        const liveRow = getLiveRow(row);
+        const nextRow = liveRow.nextElementSibling;
         if (nextRow && nextRow.querySelector('td[data-field]')) {
             const firstField = TIMELINE_FIELD_ORDER[0];
             const nextCell = nextRow.querySelector(`td[data-field="${firstField}"]`);
@@ -2028,7 +2070,8 @@ function navigateToAdjacentCell(row, currentField, direction) {
         }
     } else if (direction < 0) {
         // Shift+Tab past first field: wrap to prev row's last field
-        const prevRow = row.previousElementSibling;
+        const liveRow = getLiveRow(row);
+        const prevRow = liveRow.previousElementSibling;
         if (prevRow && prevRow.querySelector('td[data-field]')) {
             const lastField = TIMELINE_FIELD_ORDER[TIMELINE_FIELD_ORDER.length - 1];
             const prevCell = prevRow.querySelector(`td[data-field="${lastField}"]`);
@@ -2038,10 +2081,20 @@ function navigateToAdjacentCell(row, currentField, direction) {
 }
 
 function navigateToNextRowSameColumn(row, field) {
-    const nextRow = row.nextElementSibling;
+    const liveRow = getLiveRow(row);
+    const nextRow = liveRow.nextElementSibling;
     if (nextRow && nextRow.querySelector('td[data-field]')) {
         const nextCell = nextRow.querySelector(`td[data-field="${field}"]`);
         if (nextCell) editTimelineCell(nextCell);
+    }
+}
+
+function navigateToPrevRowSameColumn(row, field) {
+    const liveRow = getLiveRow(row);
+    const prevRow = liveRow.previousElementSibling;
+    if (prevRow && prevRow.querySelector('td[data-field]')) {
+        const prevCell = prevRow.querySelector(`td[data-field="${field}"]`);
+        if (prevCell) editTimelineCell(prevCell);
     }
 }
 
@@ -2070,7 +2123,6 @@ async function commitNewRow() {
     data.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
 
     state.pendingNewRow = {};
-    clearTimelineEditingFlag();
 
     try {
         const docRef = await collections.timeline.add(data);
@@ -2080,6 +2132,8 @@ async function commitNewRow() {
         console.error('Error adding task:', error);
         showToast('Error adding task', 'error');
     }
+
+    clearTimelineEditingFlag();
 }
 
 // Backward compat: makeRowEditable now just clicks the first cell
