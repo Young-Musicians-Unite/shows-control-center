@@ -1751,6 +1751,8 @@ tr.task-completed td:not(.checkbox-col):not(.actions-col) {
     .day-tabs,
     .stats-grid,
     .budget-search-bar,
+    .page-search-bar,
+    .vendor-filters,
     .timeline-toolbar {
         display: none !important;
     }
@@ -2063,6 +2065,62 @@ tr.editing td {
 }
 
 .budget-search-count {
+    font-size: 0.85rem;
+    color: #8a8778;
+    white-space: nowrap;
+    background: rgba(201, 169, 97, 0.1);
+    padding: 0.4rem 0.85rem;
+    border-radius: 20px;
+    border: 1px solid #f0ece3;
+}
+
+/* Shared Page Search Bar (Vendors, Staff) */
+.page-search-bar {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.page-search-wrapper {
+    position: relative;
+    flex: 1;
+    display: flex;
+    align-items: center;
+}
+
+.page-search-icon {
+    position: absolute;
+    left: 0.85rem;
+    color: #95a5a6;
+    pointer-events: none;
+}
+
+.page-search-bar .search-input {
+    padding-left: 2.5rem;
+    padding-right: 2.25rem;
+}
+
+.page-search-clear {
+    position: absolute;
+    right: 0.5rem;
+    background: none;
+    border: none;
+    font-size: 1.3rem;
+    color: #95a5a6;
+    cursor: pointer;
+    padding: 0.25rem 0.5rem;
+    line-height: 1;
+    border-radius: 50%;
+    transition: color 0.15s, background-color 0.15s;
+}
+
+.page-search-clear:hover {
+    color: #2c3e50;
+    background-color: #ecf0f1;
+}
+
+.page-search-count {
     font-size: 0.85rem;
     color: #8a8778;
     white-space: nowrap;
@@ -3330,20 +3388,28 @@ body.menu-open {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
     gap: 1.5rem;
-    margin-top: 2rem;
+    margin-top: 0.5rem;
+}
+
+@keyframes staff-card-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 
 .staff-card {
-    background: white;
-    border-radius: 8px;
+    background: #faf8f3;
+    border-radius: 12px;
     padding: 1.5rem;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    border: 1px solid #f0ece3;
+    border-left: 4px solid #c9a961;
     transition: transform 0.2s ease, box-shadow 0.2s ease;
+    animation: staff-card-in 0.35s ease both;
 }
 
 .staff-card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    box-shadow: 0 6px 20px rgba(201, 169, 97, 0.15);
 }
 
 .staff-card-header {
@@ -3353,9 +3419,10 @@ body.menu-open {
 }
 
 .staff-name {
+    font-family: 'Cormorant Garamond', Georgia, serif;
     font-size: 1.3rem;
-    font-weight: 600;
-    color: #2c3e50;
+    font-weight: 700;
+    color: #1a3a35;
     margin-bottom: 0.25rem;
 }
 
@@ -3388,13 +3455,13 @@ body.menu-open {
 }
 
 .staff-contact-item a {
-    color: #3498db;
+    color: #1a3a35;
     text-decoration: none;
     transition: color 0.2s ease;
 }
 
 .staff-contact-item a:hover {
-    color: #2980b9;
+    color: #c9a961;
     text-decoration: underline;
 }
 
@@ -3409,13 +3476,30 @@ body.menu-open {
     gap: 0.5rem;
     margin-top: 1rem;
     padding-top: 1rem;
-    border-top: 1px solid #e0e0e0;
+    border-top: 1px solid #f0ece3;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.staff-card:hover .staff-actions {
+    opacity: 1;
 }
 
 .staff-actions .btn {
     flex: 1;
     font-size: 0.85rem;
     padding: 0.5rem 1rem;
+}
+
+/* Staff empty state */
+.staff-empty-state {
+    text-align: center;
+    padding: 3rem 1.5rem;
+    background: #faf8f3;
+    border: 1px solid #f0ece3;
+    border-radius: 12px;
+    color: #8a8778;
+    font-size: 1rem;
 }
 
 /* Mobile optimization */
@@ -3434,59 +3518,12 @@ body.menu-open {
     }
 
     .staff-actions {
+        opacity: 1;
         flex-direction: column;
     }
 
     .staff-actions .btn {
         width: 100%;
-    }
-}
-
-/* Dark mode */
-@media (prefers-color-scheme: dark) {
-    .staff-card {
-        background: #1a1a1a;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-    }
-
-    .staff-card:hover {
-        box-shadow: 0 4px 12px rgba(0,0,0,0.6);
-    }
-
-    .staff-card-header {
-        border-bottom-color: #c9a961;
-    }
-
-    .staff-name {
-        color: #e0e0e0;
-    }
-
-    .staff-role {
-        color: #d4b896;
-    }
-
-    .staff-responsibilities {
-        color: #b0b0b0;
-    }
-
-    .staff-contact-item {
-        color: #e0e0e0;
-    }
-
-    .staff-contact-item a {
-        color: #5dade2;
-    }
-
-    .staff-contact-item a:hover {
-        color: #7fc8f8;
-    }
-
-    .staff-contact-icon {
-        color: #c9a961;
-    }
-
-    .staff-actions {
-        border-top-color: #333;
     }
 }
 
@@ -3564,22 +3601,67 @@ body.menu-open {
     color: #f0d8c0;
 }
 
+/* Vendor Category Section (collapsible groups) */
+.vendor-category-section {
+    margin-bottom: 1.5rem;
+}
+
+.vendor-category-header {
+    cursor: pointer;
+    user-select: none;
+    padding: 1rem 1.5rem;
+    background: #faf8f3;
+    border: 1px solid #f0ece3;
+    border-radius: 12px 12px 0 0;
+    border-bottom: 2px solid #f0ece3;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.vendor-category-header:hover {
+    background: #f5f1ea;
+}
+
+.vendor-category-header h3 {
+    font-family: 'Cormorant Garamond', Georgia, serif;
+    color: #1a3a35;
+    font-size: 1.15rem;
+    font-weight: 700;
+    margin: 0;
+    flex: 1;
+}
+
+.vendor-category-content {
+    overflow: hidden;
+    transition: all 0.3s ease-out;
+}
+
 /* Vendor Grid */
 .vendor-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
     gap: 1.5rem;
+    padding: 1.5rem 0;
+}
+
+@keyframes vendor-card-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 
 /* Vendor Card */
 .vendor-card {
     background: #faf8f3;
-    border-radius: 12px;
+    border-radius: 14px;
     padding: 1.5rem;
     box-shadow: 0 2px 8px rgba(0,0,0,0.06);
     border: 1px solid #f0ece3;
     border-left: 4px solid #8a8778;
     transition: transform 0.2s ease, box-shadow 0.2s ease, border-left-color 0.2s ease;
+    animation: vendor-card-in 0.35s ease both;
 }
 
 .vendor-card:hover {
@@ -3811,84 +3893,12 @@ body.menu-open {
         font-size: 0.9rem;
     }
 
-}
-
-/* Vendor page dark mode */
-@media (prefers-color-scheme: dark) {
-    .vendor-filters {
-        background: #1a1a1a;
+    .vendor-category-header {
+        padding: 0.85rem 1rem;
     }
 
-    .vendor-filter-btn {
-        background: #1a1a1a;
-        color: #b0b0b0;
-        border-right-color: #333;
-    }
-
-    .vendor-filter-btn:hover {
-        background: #252525;
-        color: #5dade2;
-    }
-
-    .vendor-filter-btn.active {
-        background: #3498db;
-        color: white;
-    }
-
-    .vendor-filter-btn[data-filter="issues"].active {
-        background: #e74c3c;
-    }
-
-    .vendor-filter-count {
-        background: rgba(255, 255, 255, 0.1);
-    }
-
-    .vendor-filter-btn[data-filter="issues"] .vendor-filter-count {
-        background: rgba(231, 76, 60, 0.25);
-    }
-
-    .vendor-card {
-        background: #1a1a1a;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-    }
-
-    .vendor-card:hover {
-        box-shadow: 0 4px 12px rgba(0,0,0,0.6);
-    }
-
-    .vendor-card-title {
-        color: #e0e0e0;
-    }
-
-    .vendor-card-description {
-        color: #999;
-    }
-
-    .vendor-card-category {
-        color: #888;
-    }
-
-    .vendor-detail {
-        color: #e0e0e0;
-    }
-
-    .vendor-detail a {
-        color: #5dade2;
-    }
-
-    .vendor-card-budget {
-        color: #b0b0b0;
-        border-top-color: #333;
-    }
-
-    .vendor-card-actions {
-        border-top-color: #333;
-    }
-
-    .vendor-issue-pill {
-        background: rgba(231, 76, 60, 0.15);
-        color: #e74c3c;
-        border-color: rgba(231, 76, 60, 0.3);
+    .vendor-card-actions .vendor-action-icons {
+        opacity: 1;
     }
 }
 

@@ -11,6 +11,8 @@ const state = {
     currentPage: 'dashboard',
     currentDay: 'Thursday',  // For timeline filtering
     vendorFilter: 'all',  // For vendor page filtering (all/confirmed/pending/issues)
+    vendorSearch: '',
+    staffSearch: '',
     currentStage: 'main',  // For stage input filtering
     currentStagePlotType: 'main',  // For stage plot tabs
     currentPlotId: null,  // Currently selected plot
@@ -210,9 +212,18 @@ function switchPage(pageName) {
         if (pageName === 'dashboard') updateDashboard();
         if (pageName === 'vendors') {
             state.vendorFilter = 'all';
+            state.vendorSearch = '';
+            const vendorSearchInput = document.getElementById('vendor-search-input');
+            if (vendorSearchInput) vendorSearchInput.value = '';
             const vendorFilterBtns = document.querySelectorAll('.vendor-filter-btn');
             vendorFilterBtns.forEach(b => b.classList.toggle('active', b.dataset.filter === 'all'));
             renderVendors();
+        }
+        if (pageName === 'staff') {
+            state.staffSearch = '';
+            const staffSearchInput = document.getElementById('staff-search-input');
+            if (staffSearchInput) staffSearchInput.value = '';
+            renderStaff();
         }
         if (pageName === 'budget') renderBudget();
         if (pageName === 'timeline') {
@@ -339,6 +350,7 @@ function updateVendorStats() {
     setCount('vendor-filter-confirmed-count', confirmed);
     setCount('vendor-filter-pending-count', pending);
     setCount('vendor-filter-issue-count', issueCount);
+
 }
 
 // Vendor Issues
@@ -352,13 +364,56 @@ function getVendorIssues(item) {
     return issues;
 }
 
+function vendorItemMatchesSearch(item, query) {
+    if (!query) return true;
+    const tokens = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    if (tokens.length === 0) return true;
+    const fields = [
+        item.vendor || '', item.description || '', item.category || '',
+        item.contact || '', item.email || '', item.phone || '', item.notes || ''
+    ];
+    const text = fields.join(' ').toLowerCase();
+    return tokens.every(t => text.includes(t));
+}
+
+function handleVendorSearch(value) {
+    clearTimeout(vendorSearchDebounce);
+    vendorSearchDebounce = setTimeout(() => {
+        state.vendorSearch = value;
+        renderVendors();
+    }, 150);
+}
+
+function clearVendorSearch() {
+    const input = document.getElementById('vendor-search-input');
+    if (input) input.value = '';
+    state.vendorSearch = '';
+    renderVendors();
+}
+
+window.handleVendorSearch = handleVendorSearch;
+window.clearVendorSearch = clearVendorSearch;
+
+function toggleVendorCategorySection(categoryId) {
+    const content = document.getElementById(`vendor-content-${categoryId}`);
+    const arrow = document.getElementById(`vendor-arrow-${categoryId}`);
+    if (content.style.display === 'none') {
+        content.style.display = 'block';
+        arrow.textContent = '▼';
+    } else {
+        content.style.display = 'none';
+        arrow.textContent = '▶';
+    }
+}
+window.toggleVendorCategorySection = toggleVendorCategorySection;
+
 function renderVendors() {
-    const grid = document.getElementById('vendor-grid');
-    if (!grid) return;
+    const container = document.getElementById('vendor-grid');
+    if (!container) return;
 
     let items = [...state.budget];
 
-    // Apply filter
+    // Apply status filter
     if (state.vendorFilter === 'confirmed') {
         items = items.filter(b => b.confirmed);
     } else if (state.vendorFilter === 'pending') {
@@ -367,60 +422,117 @@ function renderVendors() {
         items = items.filter(b => getVendorIssues(b).length > 0);
     }
 
+    // Apply search
+    const searchQuery = state.vendorSearch;
+    const isSearching = searchQuery && searchQuery.trim().length > 0;
+    if (isSearching) {
+        items = items.filter(item => vendorItemMatchesSearch(item, searchQuery));
+    }
+
+    // Update search count
+    const countEl = document.getElementById('vendor-search-count');
+    if (countEl) {
+        const totalFiltered = state.budget.length;
+        countEl.textContent = isSearching
+            ? `${items.length} of ${totalFiltered} vendors`
+            : `${totalFiltered} vendors`;
+        countEl.style.display = totalFiltered > 0 ? '' : 'none';
+    }
+    const clearBtn = document.getElementById('vendor-search-clear');
+    if (clearBtn) clearBtn.style.display = isSearching ? '' : 'none';
+
     if (items.length === 0) {
         if (state.vendorFilter === 'issues') {
-            grid.innerHTML = '<p class="empty-state">All clear — no missing vendor information!</p>';
+            container.innerHTML = '<div class="staff-empty-state">All clear — no missing vendor information!</div>';
+        } else if (isSearching) {
+            container.innerHTML = `<div class="staff-empty-state">No vendors match "${escapeHtml(searchQuery)}"</div>`;
         } else {
-            grid.innerHTML = '<p class="empty-state">No vendors found</p>';
+            container.innerHTML = '<div class="staff-empty-state">No vendors found</div>';
         }
         return;
     }
 
-    grid.innerHTML = items.map(item => {
-        const issues = getVendorIssues(item);
-        const hasIssues = issues.length > 0;
-        const isConfirmed = item.confirmed;
-        const category = (item.category || '').replace(/^6811[a-g] - /, '');
+    // Group by category
+    const categorized = {};
+    items.forEach(item => {
+        const cat = item.category || 'Uncategorized';
+        if (!categorized[cat]) categorized[cat] = [];
+        categorized[cat].push(item);
+    });
 
-        let statusClass = isConfirmed ? 'vendor-confirmed' : 'vendor-pending';
-        if (hasIssues) statusClass = 'vendor-has-issues';
+    const sortedCategories = Object.entries(categorized).sort((a, b) => a[0].localeCompare(b[0]));
 
-        const issuePills = hasIssues ? `
-            <div class="vendor-issues">
-                <span class="vendor-issues-label">Missing:</span>
-                ${issues.map(i => `<span class="vendor-issue-pill">${escapeHtml(i)}</span>`).join('')}
-            </div>
-        ` : '';
+    let cardIdx = 0;
+    container.innerHTML = sortedCategories.map(([category, catItems]) => {
+        const categoryId = category.replace(/[^a-zA-Z0-9]/g, '_');
+        const displayName = category.replace(/^6811[a-g] - /, '');
+        const budgetTotal = catItems.reduce((sum, item) => sum + (parseFloat(item.budgeted) || 0), 0);
+
+        const cardsHtml = catItems.map(item => {
+            const issues = getVendorIssues(item);
+            const hasIssues = issues.length > 0;
+            const isConfirmed = item.confirmed;
+            const itemCategory = (item.category || '').replace(/^6811[a-g] - /, '');
+
+            let statusClass = isConfirmed ? 'vendor-confirmed' : 'vendor-pending';
+            if (hasIssues) statusClass = 'vendor-has-issues';
+
+            const issuePills = hasIssues ? `
+                <div class="vendor-issues">
+                    <span class="vendor-issues-label">Missing:</span>
+                    ${issues.map(i => `<span class="vendor-issue-pill">${escapeHtml(i)}</span>`).join('')}
+                </div>
+            ` : '';
+
+            const delay = cardIdx * 40;
+            cardIdx++;
+
+            return `
+                <div class="vendor-card ${statusClass}" style="animation-delay: ${delay}ms">
+                    <div class="vendor-card-header">
+                        <div class="vendor-card-title">${escapeHtml(item.vendor || 'Unnamed')}</div>
+                        <span class="status-badge ${isConfirmed ? 'confirmed' : 'pending'}">${isConfirmed ? 'Confirmed' : 'Pending'}</span>
+                    </div>
+                    ${item.description ? `<div class="vendor-card-description">${escapeHtml(item.description)}</div>` : ''}
+                    <div class="vendor-card-category">${escapeHtml(itemCategory)}</div>
+                    <div class="vendor-card-details">
+                        ${item.contact ? `<div class="vendor-detail"><span class="vendor-detail-icon">👤</span> ${escapeHtml(item.contact)}</div>` : ''}
+                        ${item.phone ? `<div class="vendor-detail"><span class="vendor-detail-icon">📞</span> <a href="tel:${escapeHtml(item.phone)}">${escapeHtml(item.phone)}</a></div>` : ''}
+                        ${item.email ? `<div class="vendor-detail"><span class="vendor-detail-icon">✉</span> <a href="mailto:${escapeHtml(item.email)}">${escapeHtml(item.email)}</a></div>` : ''}
+                    </div>
+                    <div class="vendor-card-budget">
+                        <span>Budgeted: <strong>${formatCurrency(item.budgeted)}</strong></span>
+                        ${item.actual ? `<span>Actual: <strong>${formatCurrency(item.actual)}</strong></span>` : ''}
+                    </div>
+                    ${issuePills}
+                    <div class="vendor-card-actions">
+                        ${hasIssues
+                            ? `<button class="btn btn-fix-issues" onclick="editBudgetItem('${item.id}')">Fix Issues</button>`
+                            : `<button class="btn btn-edit" onclick="editBudgetItem('${item.id}')">Edit</button>`}
+                        <div class="vendor-action-icons">
+                            <button class="action-icon" onclick="editBudgetItem('${item.id}')" title="Edit">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                            </button>
+                            <button class="action-icon action-icon-danger" onclick="deleteBudgetItem('${item.id}')" title="Delete">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
 
         return `
-            <div class="vendor-card ${statusClass}">
-                <div class="vendor-card-header">
-                    <div class="vendor-card-title">${escapeHtml(item.vendor || 'Unnamed')}</div>
-                    <span class="status-badge ${isConfirmed ? 'confirmed' : 'pending'}">${isConfirmed ? 'Confirmed' : 'Pending'}</span>
+            <div class="vendor-category-section">
+                <div class="vendor-category-header" onclick="toggleVendorCategorySection('${categoryId}')">
+                    <span class="category-arrow" id="vendor-arrow-${categoryId}">${isSearching ? '▼' : '▶'}</span>
+                    <h3>${escapeHtml(displayName)}</h3>
+                    <span class="category-count">${catItems.length} vendors</span>
+                    <span style="font-size: 0.9rem; color: #8a8778; margin-left: auto;"><strong>Budget:</strong> ${formatCurrency(budgetTotal)}</span>
                 </div>
-                ${item.description ? `<div class="vendor-card-description">${escapeHtml(item.description)}</div>` : ''}
-                <div class="vendor-card-category">${escapeHtml(category)}</div>
-                <div class="vendor-card-details">
-                    ${item.contact ? `<div class="vendor-detail"><span class="vendor-detail-icon">👤</span> ${escapeHtml(item.contact)}</div>` : ''}
-                    ${item.phone ? `<div class="vendor-detail"><span class="vendor-detail-icon">📞</span> <a href="tel:${escapeHtml(item.phone)}">${escapeHtml(item.phone)}</a></div>` : ''}
-                    ${item.email ? `<div class="vendor-detail"><span class="vendor-detail-icon">✉</span> <a href="mailto:${escapeHtml(item.email)}">${escapeHtml(item.email)}</a></div>` : ''}
-                </div>
-                <div class="vendor-card-budget">
-                    <span>Budgeted: <strong>${formatCurrency(item.budgeted)}</strong></span>
-                    ${item.actual ? `<span>Actual: <strong>${formatCurrency(item.actual)}</strong></span>` : ''}
-                </div>
-                ${issuePills}
-                <div class="vendor-card-actions">
-                    ${hasIssues
-                        ? `<button class="btn btn-fix-issues" onclick="editBudgetItem('${item.id}')">Fix Issues</button>`
-                        : `<button class="btn btn-edit" onclick="editBudgetItem('${item.id}')">Edit</button>`}
-                    <div class="vendor-action-icons">
-                        <button class="action-icon" onclick="editBudgetItem('${item.id}')" title="Edit">
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                        </button>
-                        <button class="action-icon action-icon-danger" onclick="deleteBudgetItem('${item.id}')" title="Delete">
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                        </button>
+                <div class="vendor-category-content" id="vendor-content-${categoryId}" style="display: ${isSearching ? 'block' : 'none'};">
+                    <div class="vendor-grid">
+                        ${cardsHtml}
                     </div>
                 </div>
             </div>
@@ -602,6 +714,8 @@ function budgetItemMatchesSearch(item, query) {
 
 // Budget search handler
 let budgetSearchDebounce = null;
+let vendorSearchDebounce = null;
+let staffSearchDebounce = null;
 function handleBudgetSearch(value) {
     clearTimeout(budgetSearchDebounce);
     budgetSearchDebounce = setTimeout(() => {
@@ -1564,6 +1678,11 @@ function setupExportAndPrint() {
     }
     if (exportStaffBtn) {
         exportStaffBtn.addEventListener('click', exportStaffToExcel);
+    }
+
+    const exportVendorsBtn = document.getElementById('export-vendors-btn');
+    if (exportVendorsBtn) {
+        exportVendorsBtn.addEventListener('click', exportBudgetToExcel);
     }
 }
 
@@ -2855,16 +2974,82 @@ function exportStageInputsToExcel() {
 // =============================================
 
 
-function renderStaff() {
-    const grid = document.getElementById('staff-grid');
+function staffItemMatchesSearch(member, query) {
+    if (!query) return true;
+    const tokens = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    if (tokens.length === 0) return true;
+    const fields = [
+        member.name || '', member.role || '', member.responsibilities || '',
+        member.email || '', member.phone || ''
+    ];
+    const text = fields.join(' ').toLowerCase();
+    return tokens.every(t => text.includes(t));
+}
 
-    if (state.staff.length === 0) {
-        grid.innerHTML = '<p class="empty-state">No staff members added yet. Click "Add Staff Member" to get started.</p>';
+function handleStaffSearch(value) {
+    clearTimeout(staffSearchDebounce);
+    staffSearchDebounce = setTimeout(() => {
+        state.staffSearch = value;
+        renderStaff();
+    }, 150);
+}
+
+function clearStaffSearch() {
+    const input = document.getElementById('staff-search-input');
+    if (input) input.value = '';
+    state.staffSearch = '';
+    renderStaff();
+}
+
+window.handleStaffSearch = handleStaffSearch;
+window.clearStaffSearch = clearStaffSearch;
+
+function renderStaff() {
+    const container = document.getElementById('staff-grid');
+
+    // Update stat cards
+    const total = state.staff.length;
+    const uniqueRoles = new Set(state.staff.map(m => m.role || 'Unassigned')).size;
+    const withContact = state.staff.filter(m => m.phone || m.email).length;
+    const missingContact = total - withContact;
+
+    const setStat = (id, val) => { const e = document.getElementById(id); if (e) e.textContent = val; };
+    setStat('staff-stat-total', total);
+    setStat('staff-stat-roles', uniqueRoles);
+    setStat('staff-stat-contact', withContact);
+    setStat('staff-stat-missing', missingContact);
+
+    // Apply search
+    const searchQuery = state.staffSearch;
+    const isSearching = searchQuery && searchQuery.trim().length > 0;
+    let members = [...state.staff];
+    if (isSearching) {
+        members = members.filter(m => staffItemMatchesSearch(m, searchQuery));
+    }
+
+    // Update search count
+    const countEl = document.getElementById('staff-search-count');
+    if (countEl) {
+        countEl.textContent = isSearching
+            ? `${members.length} of ${total} staff`
+            : `${total} staff`;
+        countEl.style.display = total > 0 ? '' : 'none';
+    }
+    const clearBtn = document.getElementById('staff-search-clear');
+    if (clearBtn) clearBtn.style.display = isSearching ? '' : 'none';
+
+    if (total === 0) {
+        container.innerHTML = '<div class="staff-empty-state">No staff members added yet. Click "+ Add Staff Member" to get started.</div>';
         return;
     }
 
-    grid.innerHTML = state.staff.map(member => `
-        <div class="staff-card">
+    if (members.length === 0) {
+        container.innerHTML = `<div class="staff-empty-state">No staff match "${escapeHtml(searchQuery)}"</div>`;
+        return;
+    }
+
+    container.innerHTML = '<div class="staff-grid">' + members.map((member, idx) => `
+        <div class="staff-card" style="animation-delay: ${idx * 40}ms">
             <div class="staff-card-header">
                 <div class="staff-name">${escapeHtml(member.name || '')}</div>
                 <div class="staff-role">${escapeHtml(member.role || '')}</div>
@@ -2891,7 +3076,7 @@ function renderStaff() {
                 <button class="btn btn-danger" onclick="deleteStaff('${member.id}')">Delete</button>
             </div>
         </div>
-    `).join('');
+    `).join('') + '</div>';
 }
 
 function openStaffModal(memberId = null) {
@@ -2951,6 +3136,7 @@ async function handleStaffSubmit(e) {
 }
 
 window.deleteStaff = createDeleteHandler('staff', 'staff member');
+window.openStaffModal = openStaffModal;
 
 // Export Staff to Excel
 function exportStaffToExcel() {

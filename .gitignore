@@ -39,6 +39,9 @@ documents/invoices/*
 # Screenshots
 screenshots/
 
+# Source data (Excel spreadsheets, PDFs)
+source-data/
+
 # Deploy script
 deploy.sh
 

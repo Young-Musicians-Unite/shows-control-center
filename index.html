@@ -141,6 +141,26 @@
         <div id="vendors" class="page">
             <div class="page-header">
                 <h1>Vendors</h1>
+                <div class="header-actions">
+                    <button class="btn btn-icon" id="export-vendors-btn" title="Export to Excel">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                    </button>
+                    <button class="btn btn-icon" id="print-vendors-btn" title="Print" onclick="window.print()">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Vendor Search -->
+            <div class="page-search-bar">
+                <div class="page-search-wrapper">
+                    <svg class="page-search-icon" viewBox="0 0 20 20" fill="currentColor" width="18" height="18">
+                        <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"/>
+                    </svg>
+                    <input type="text" id="vendor-search-input" class="search-input" placeholder="Search vendors, categories, contacts..." oninput="handleVendorSearch(this.value)">
+                    <button type="button" id="vendor-search-clear" class="page-search-clear" onclick="clearVendorSearch()" style="display: none;">&times;</button>
+                </div>
+                <span id="vendor-search-count" class="page-search-count"></span>
             </div>
 
             <!-- Filter Tabs -->
@@ -151,8 +171,8 @@
                 <button class="vendor-filter-btn" data-filter="issues">Issues <span class="vendor-filter-count" id="vendor-filter-issue-count"></span></button>
             </div>
 
-            <!-- Vendor Cards -->
-            <div class="vendor-grid" id="vendor-grid">
+            <!-- Vendor Cards (grouped by category) -->
+            <div id="vendor-grid">
                 <p class="empty-state">No vendors found</p>
             </div>
         </div>
@@ -361,14 +381,58 @@
             <div class="page-header">
                 <h1>Staff Roles</h1>
                 <div class="header-actions">
-                    <button class="btn btn-secondary" id="print-staff-btn">🖨️ Print</button>
-                    <button class="btn btn-secondary" id="export-staff-btn">📊 Export to Excel</button>
-                    <button class="btn btn-primary" id="add-staff-btn">+ Add Staff Member</button>
+                    <button class="btn btn-icon" id="print-staff-btn" title="Print" onclick="window.print()">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+                    </button>
+                    <button class="btn btn-icon" id="export-staff-btn" title="Export to Excel">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                    </button>
+                    <button class="btn btn-primary-gold" id="add-staff-btn">+ Add Staff Member</button>
                 </div>
             </div>
 
-            <!-- Staff Grid -->
-            <div class="staff-grid" id="staff-grid">
+            <!-- Staff Search -->
+            <div class="page-search-bar">
+                <div class="page-search-wrapper">
+                    <svg class="page-search-icon" viewBox="0 0 20 20" fill="currentColor" width="18" height="18">
+                        <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"/>
+                    </svg>
+                    <input type="text" id="staff-search-input" class="search-input" placeholder="Search staff names, roles, responsibilities..." oninput="handleStaffSearch(this.value)">
+                    <button type="button" id="staff-search-clear" class="page-search-clear" onclick="clearStaffSearch()" style="display: none;">&times;</button>
+                </div>
+                <span id="staff-search-count" class="page-search-count"></span>
+            </div>
+
+            <!-- Staff Summary Stats -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-content">
+                        <div class="stat-label">Total Staff</div>
+                        <div class="stat-value" id="staff-stat-total">0</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-content">
+                        <div class="stat-label">Roles</div>
+                        <div class="stat-value" id="staff-stat-roles">0</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-content">
+                        <div class="stat-label">Contact Info</div>
+                        <div class="stat-value" id="staff-stat-contact">0</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-content">
+                        <div class="stat-label">Missing Contact</div>
+                        <div class="stat-value" id="staff-stat-missing">0</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Staff Grid (grouped by role) -->
+            <div id="staff-grid">
                 <p class="empty-state">No staff members added</p>
             </div>
         </div>
