@@ -1593,7 +1593,8 @@ body {
 /* Column hide classes */
 .timeline-table.hide-time .time-col { display: none; }
 .timeline-table.hide-event .event-col { display: none; }
-.timeline-table.hide-tag .tag-col { display: none; }
+.timeline-table.hide-prod .prod-col { display: none; }
+.timeline-table.hide-andi .andi-col { display: none; }
 .timeline-table.hide-responsible .responsible-col { display: none; }
 .timeline-table.hide-staff .staff-col { display: none; }
 
@@ -1620,53 +1621,11 @@ body {
     color: #c9a961;
 }
 
-/* Tag badges */
-.tag-col {
-    width: 70px;
+/* Prod & Andi checkbox columns */
+.prod-col,
+.andi-col {
+    width: 50px;
     text-align: center;
-}
-
-.tag-badge {
-    display: inline-block;
-    padding: 3px 10px;
-    border-radius: 6px;
-    font-size: 0.72rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.6px;
-    font-family: 'DM Sans', sans-serif;
-}
-
-.tag-badge.tag-production {
-    background: rgba(26, 58, 53, 0.1);
-    color: #1a3a35;
-}
-
-.tag-badge.tag-run-of-show {
-    background: rgba(201, 169, 97, 0.15);
-    color: #8a7234;
-}
-
-.inline-tag-select {
-    padding: 3px 6px;
-    border: 1px solid #e0e6ed;
-    border-radius: 6px;
-    font-size: 0.8rem;
-    background: transparent;
-    cursor: pointer;
-    width: 62px;
-    color: #7a8a9b;
-    font-family: 'DM Sans', sans-serif;
-    transition: border-color 0.2s ease;
-}
-
-.inline-tag-select:hover {
-    border-color: #c9a961;
-}
-
-.inline-tag-select:focus {
-    outline: none;
-    border-color: #1a3a35;
 }
 
 .color-swatch-wrapper {

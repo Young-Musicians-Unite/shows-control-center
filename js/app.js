@@ -926,7 +926,9 @@ function renderTimeline() {
 
     // Apply tag/time filter
     if (state.timelineFilter === 'production') {
-        filteredTimeline = filteredTimeline.filter(item => item.tag === 'production');
+        filteredTimeline = filteredTimeline.filter(item => item.production === true || item.tag === 'production');
+    } else if (state.timelineFilter === 'andi') {
+        filteredTimeline = filteredTimeline.filter(item => item.andi === true);
     } else if (state.timelineFilter === 'run-of-show') {
         filteredTimeline = filteredTimeline.filter(item => {
             if (!item.time) return false;
@@ -944,7 +946,7 @@ function renderTimeline() {
         'Sunday': 'April 26, 2026'
     };
 
-    const filterLabels = { 'all': '', 'production': ' — Production', 'run-of-show': ' — Run of Show' };
+    const filterLabels = { 'all': '', 'production': ' — Production', 'run-of-show': ' — Run of Show', 'andi': ' — Andi' };
     if (dayTitle) {
         dayTitle.textContent = `${state.currentDay} Timeline${filterLabels[state.timelineFilter] || ''}`;
     }
@@ -958,7 +960,8 @@ function renderTimeline() {
                 <td class="checkbox-col"></td>
                 <td class="time-col" data-field="time" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ time</span></td>
                 <td class="event-col" data-field="event" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ event</span></td>
-                <td class="tag-col"></td>
+                <td class="prod-col"></td>
+                <td class="andi-col"></td>
                 <td class="responsible-col" data-field="responsible" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ responsible</span></td>
                 <td class="staff-col" data-field="staff" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ staff</span></td>
                 <td class="actions-col no-print"></td>
@@ -996,12 +999,8 @@ function renderTimeline() {
                 </td>
                 <td class="time-col" data-field="time" data-original="${escapeHtml(item.time || '')}" onclick="editTimelineCell(this)"><span class="tl-time">${formatTime12Hour(item.time)}</span></td>
                 <td class="event-col" data-field="event" data-original="${escapeHtml(item.event || '')}" onclick="editTimelineCell(this)">${escapeHtml(item.event || '')}</td>
-                <td class="tag-col">
-                    <select class="inline-tag-select" onchange="setTimelineTag('${item.id}', this.value)">
-                        <option value=""${!item.tag ? ' selected' : ''}>—</option>
-                        <option value="production"${item.tag === 'production' ? ' selected' : ''}>Prod</option>
-                    </select>
-                </td>
+                <td class="prod-col"><input type="checkbox" class="tl-checkbox" ${item.production === true || item.tag === 'production' ? 'checked' : ''} onchange="toggleTimelineField('${item.id}', 'production', this.checked)"></td>
+                <td class="andi-col"><input type="checkbox" class="tl-checkbox" ${item.andi === true ? 'checked' : ''} onchange="toggleTimelineField('${item.id}', 'andi', this.checked)"></td>
                 <td class="responsible-col" data-field="responsible" data-original="${escapeHtml(item.responsible || '')}" onclick="editTimelineCell(this)">${escapeHtml(item.responsible || '')}</td>
                 <td class="staff-col" data-field="staff" data-original="${escapeHtml(item.staff || '')}" onclick="editTimelineCell(this)">${escapeHtml(item.staff || '')}</td>
                 <td class="actions-col no-print">
@@ -1040,7 +1039,8 @@ function renderTimeline() {
             <td class="checkbox-col"></td>
             <td class="time-col" data-field="time" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ time</span></td>
             <td class="event-col" data-field="event" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ event</span></td>
-            <td class="tag-col"></td>
+            <td class="prod-col"></td>
+            <td class="andi-col"></td>
             <td class="responsible-col" data-field="responsible" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ responsible</span></td>
             <td class="staff-col" data-field="staff" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ staff</span></td>
             <td class="actions-col no-print"></td>
@@ -1196,7 +1196,8 @@ function openTimelineModal(itemId = null) {
             'timeline-event': 'event',
             'timeline-responsible': 'responsible',
             'timeline-staff': 'staff',
-            'timeline-tag': 'tag',
+            'timeline-production': 'production',
+            'timeline-andi': 'andi',
             'timeline-notes': 'notes'
         },
         defaultValues: {
@@ -1304,7 +1305,8 @@ async function handleTimelineSubmit(e) {
             'timeline-event': 'event',
             'timeline-responsible': 'responsible',
             'timeline-staff': 'staff',
-            'timeline-tag': 'tag',
+            'timeline-production': 'production',
+            'timeline-andi': 'andi',
             'timeline-notes': 'notes'
         },
         numericFields: []
@@ -1442,18 +1444,18 @@ document.addEventListener('click', (e) => {
     }
 });
 
-window.setTimelineTag = async (id, tag) => {
+window.toggleTimelineField = async (id, field, checked) => {
     const item = state.timeline.find(i => i.id === id);
-    if (item) pushTimelineUndo({ type: 'update', id, previousData: { tag: item.tag || '' } });
+    if (item) pushTimelineUndo({ type: 'update', id, previousData: { [field]: item[field] || false } });
 
     try {
         await collections.timeline.doc(id).update({
-            tag: tag,
+            [field]: checked,
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         });
     } catch (error) {
-        console.error('Error setting tag:', error);
-        showToast('Error setting tag', 'error');
+        console.error(`Error setting ${field}:`, error);
+        showToast(`Error updating ${field}`, 'error');
     }
 };
 

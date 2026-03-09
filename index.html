@@ -273,6 +273,7 @@
                     <button class="filter-btn active" data-filter="all" onclick="setTimelineFilter('all')">All</button>
                     <button class="filter-btn" data-filter="production" onclick="setTimelineFilter('production')">Production</button>
                     <button class="filter-btn" data-filter="run-of-show" onclick="setTimelineFilter('run-of-show')">Run of Show</button>
+                    <button class="filter-btn" data-filter="andi" onclick="setTimelineFilter('andi')">Andi</button>
                 </div>
                 <div class="timeline-columns-wrapper">
                     <button class="btn btn-columns-toggle" onclick="toggleColumnsDropdown()" id="columns-toggle-btn">
@@ -282,7 +283,8 @@
                     <div class="timeline-columns-dropdown" id="columns-dropdown">
                         <label class="col-toggle"><input type="checkbox" checked onchange="toggleTimelineCol('time', this.checked)"> Time</label>
                         <label class="col-toggle"><input type="checkbox" checked onchange="toggleTimelineCol('event', this.checked)"> Event</label>
-                        <label class="col-toggle"><input type="checkbox" checked onchange="toggleTimelineCol('tag', this.checked)"> Tag</label>
+                        <label class="col-toggle"><input type="checkbox" checked onchange="toggleTimelineCol('prod', this.checked)"> Prod</label>
+                        <label class="col-toggle"><input type="checkbox" checked onchange="toggleTimelineCol('andi', this.checked)"> Andi</label>
                         <label class="col-toggle"><input type="checkbox" checked onchange="toggleTimelineCol('responsible', this.checked)"> Responsible</label>
                         <label class="col-toggle"><input type="checkbox" checked onchange="toggleTimelineCol('staff', this.checked)"> Staff</label>
                     </div>
@@ -304,7 +306,8 @@
                                 <th class="checkbox-col">✓</th>
                                 <th class="time-col">Time</th>
                                 <th class="event-col">Event</th>
-                                <th class="tag-col">Tag</th>
+                                <th class="prod-col">Prod</th>
+                                <th class="andi-col">Andi</th>
                                 <th class="responsible-col">Responsible</th>
                                 <th class="staff-col">Staff</th>
                                 <th class="actions-col no-print">Actions</th>
@@ -830,11 +833,8 @@
                     </div>
                     <div class="form-row">
                         <div class="form-group">
-                            <label for="timeline-tag">Tag</label>
-                            <select id="timeline-tag">
-                                <option value="">None</option>
-                                <option value="production">Production</option>
-                            </select>
+                            <label class="checkbox-label"><input type="checkbox" id="timeline-production"> Production</label>
+                            <label class="checkbox-label"><input type="checkbox" id="timeline-andi"> Andi</label>
                         </div>
                         <div class="form-group">
                             <label for="timeline-notes">Notes</label>
