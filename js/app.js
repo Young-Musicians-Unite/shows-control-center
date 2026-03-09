@@ -5304,16 +5304,25 @@ function vmSetupDrawingEvents() {
     // When freehand path is created, tag it with the active layer
     c.on('path:created', (e) => {
         const path = e.path;
+        if (!state.vmActiveLayerId) {
+            c.remove(path);
+            showToast('Create a layer first', 'warning');
+            return;
+        }
         path._vmLayerId = state.vmActiveLayerId;
         vmTriggerSave();
     });
 
     c.on('mouse:down', (opt) => {
-        if (state.vmCurrentTool === 'select' || state.vmCurrentTool === 'pen') return;
+        if (state.vmCurrentTool === 'select') return;
         if (!state.vmActiveLayerId) {
+            if (state.vmCurrentTool === 'pen') {
+                c.isDrawingMode = false;
+            }
             showToast('Create a layer first', 'warning');
             return;
         }
+        if (state.vmCurrentTool === 'pen') return;
 
         const pointer = c.getPointer(opt.e);
         state.vmDrawStart = { x: pointer.x, y: pointer.y };
@@ -5450,6 +5459,9 @@ function vmSelectLayer(layerId) {
     if (state.vmRenamingLayer) return;
     state.vmActiveLayerId = layerId;
     vmRenderLayers();
+    if (state.vmCurrentTool === 'pen' && state.vmCanvas) {
+        state.vmCanvas.isDrawingMode = true;
+    }
 }
 window.vmSelectLayer = vmSelectLayer;
 
