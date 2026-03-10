@@ -364,6 +364,8 @@ function updateDashboard() {
 function updateSetListDashboard() {
     const el = document.getElementById('dashboard-setlist-count');
     if (el) el.textContent = state.setLists.length;
+    const label = document.getElementById('dashboard-setlist-label');
+    if (label) label.textContent = state.setLists.length === 1 ? 'Performance' : 'Performances';
 }
 
 function updateBudgetStats() {
