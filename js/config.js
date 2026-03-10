@@ -34,5 +34,6 @@ const collections = {
     eventInfo: db.collection('event-info'),
     stagePlots: db.collection('stagePlots'),
     venueMapLayers: db.collection('venueMapLayers'),
-    setLists: db.collection('setLists')
+    setLists: db.collection('setLists'),
+    packingList: db.collection('packingList')
 };

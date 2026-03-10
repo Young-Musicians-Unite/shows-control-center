@@ -73,6 +73,10 @@
                             <svg class="nav-icon" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="5" r="4"/><path d="M1 17c0-4 3.6-7 8-7s8 3 8 7"/></svg>
                             <span class="nav-label">Staff</span>
                         </a>
+                        <a href="#" class="nav-link" data-page="packing-list">
+                            <svg class="nav-icon" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="1" width="14" height="16" rx="1.5"/><path d="M6 1v2h6V1"/><path d="M6 7h1.5m2 0h2.5"/><path d="M6 10.5h1.5m2 0h2.5"/><path d="M6 14h1.5m2 0h2.5"/></svg>
+                            <span class="nav-label">Packing List</span>
+                        </a>
                     </div>
                 </div>
 
@@ -504,6 +508,94 @@
             </div>
         </div>
 
+        <!-- Packing List Page -->
+        <div id="packing-list" class="page">
+            <div class="page-header">
+                <h1>Packing List</h1>
+                <div class="header-actions">
+                    <button class="btn btn-primary-gold" id="add-packing-item-btn">+ Add Item</button>
+                </div>
+            </div>
+
+            <!-- Search & Filters -->
+            <div class="page-search-bar">
+                <div class="page-search-wrapper">
+                    <svg class="page-search-icon" viewBox="0 0 20 20" fill="currentColor" width="18" height="18">
+                        <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"/>
+                    </svg>
+                    <input type="text" id="packing-search-input" class="search-input" placeholder="Search items..." oninput="handlePackingSearch(this.value)">
+                    <button type="button" id="packing-search-clear" class="page-search-clear" onclick="clearPackingSearch()" style="display: none;">&times;</button>
+                </div>
+                <select id="packing-category-filter" class="filter-select" onchange="handlePackingCategoryFilter(this.value)">
+                    <option value="all">All Categories</option>
+                    <option value="Audio">Audio</option>
+                    <option value="Lighting">Lighting</option>
+                    <option value="Decor">Decor</option>
+                    <option value="Signage">Signage</option>
+                    <option value="Catering">Catering</option>
+                    <option value="Printed Materials">Printed Materials</option>
+                    <option value="Misc">Misc</option>
+                </select>
+                <select id="packing-status-filter" class="filter-select" onchange="handlePackingStatusFilter(this.value)">
+                    <option value="all">All Statuses</option>
+                    <option value="to-pack">To Pack</option>
+                    <option value="packed">Packed</option>
+                    <option value="loaded">Loaded</option>
+                    <option value="at-venue">At Venue</option>
+                </select>
+                <span id="packing-search-count" class="page-search-count"></span>
+            </div>
+
+            <!-- Progress Bar -->
+            <div class="packing-progress-bar-container">
+                <div class="packing-progress-bar" id="packing-progress-bar">
+                    <div class="packing-progress-segment segment-to-pack" id="progress-to-pack" style="width: 0%"></div>
+                    <div class="packing-progress-segment segment-packed" id="progress-packed" style="width: 0%"></div>
+                    <div class="packing-progress-segment segment-loaded" id="progress-loaded" style="width: 0%"></div>
+                    <div class="packing-progress-segment segment-at-venue" id="progress-at-venue" style="width: 0%"></div>
+                </div>
+                <div class="packing-progress-legend">
+                    <span class="legend-item"><span class="legend-dot dot-to-pack"></span> To Pack</span>
+                    <span class="legend-item"><span class="legend-dot dot-packed"></span> Packed</span>
+                    <span class="legend-item"><span class="legend-dot dot-loaded"></span> Loaded</span>
+                    <span class="legend-item"><span class="legend-dot dot-at-venue"></span> At Venue</span>
+                </div>
+            </div>
+
+            <!-- Stats -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-content">
+                        <div class="stat-label">Total Items</div>
+                        <div class="stat-value" id="packing-stat-total">0</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-content">
+                        <div class="stat-label">To Pack</div>
+                        <div class="stat-value" id="packing-stat-topack">0</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-content">
+                        <div class="stat-label">Packed / Loaded</div>
+                        <div class="stat-value" id="packing-stat-inprogress">0</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-content">
+                        <div class="stat-label">At Venue</div>
+                        <div class="stat-value" id="packing-stat-atvenue">0</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Category Accordion Container -->
+            <div id="packing-list-container">
+                <p class="empty-state">No packing items added</p>
+            </div>
+        </div>
+
         <!-- Venue Map Page -->
         <div id="venue-map" class="page">
             <div class="page-header">
@@ -873,6 +965,67 @@
                     <div class="form-actions">
                         <button type="button" class="btn btn-secondary cancel-btn">Cancel</button>
                         <button type="submit" class="btn btn-primary">Save Staff Member</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Packing List Modal -->
+    <div id="packing-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="packing-modal-title">Add Packing Item</h2>
+                <button class="close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="packing-form">
+                    <input type="hidden" id="packing-id">
+                    <div class="form-group">
+                        <label for="packing-name">Item Name *</label>
+                        <input type="text" id="packing-name" required>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="packing-category">Category *</label>
+                            <select id="packing-category" required>
+                                <option value="">Select category...</option>
+                                <option value="Audio">Audio</option>
+                                <option value="Lighting">Lighting</option>
+                                <option value="Decor">Decor</option>
+                                <option value="Signage">Signage</option>
+                                <option value="Catering">Catering</option>
+                                <option value="Printed Materials">Printed Materials</option>
+                                <option value="Misc">Misc</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="packing-quantity">Quantity *</label>
+                            <input type="number" id="packing-quantity" min="1" value="1" required>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="packing-status">Status</label>
+                            <select id="packing-status">
+                                <option value="to-pack">To Pack</option>
+                                <option value="packed">Packed</option>
+                                <option value="loaded">Loaded</option>
+                                <option value="at-venue">At Venue</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="packing-assignee">Assignee</label>
+                            <input type="text" id="packing-assignee" placeholder="Who's responsible">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="packing-notes">Notes</label>
+                        <textarea id="packing-notes" rows="2" placeholder="Special instructions, location, etc."></textarea>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-secondary cancel-btn">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Save Item</button>
                     </div>
                 </form>
             </div>

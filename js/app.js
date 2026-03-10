@@ -62,7 +62,12 @@ const state = {
     vmImageLoaded: false,
     vmZoom: 1.0,
     vmBaseWidth: 0,
-    vmBaseHeight: 0
+    vmBaseHeight: 0,
+    // Packing list state
+    packingList: [],
+    packingSearch: '',
+    packingCategoryFilter: 'all',
+    packingStatusFilter: 'all'
 };
 
 // Toast notification system
@@ -345,6 +350,7 @@ function loadAllData() {
     setupCollectionListener('staff', 'staff', [renderStaff]);
     setupCollectionListener('stagePlots', 'stagePlots', [updatePlotSelector, renderTimeline]);
     setupCollectionListener('setLists', 'setLists', [renderSetLists, updateDashboard, renderTimeline]);
+    setupCollectionListener('packingList', 'packingList', [renderPackingList]);
 }
 
 // Dashboard
@@ -1162,6 +1168,7 @@ function setupModals() {
     });
     document.getElementById('add-timeline-item-btn').addEventListener('click', () => openTimelineModal());
     document.getElementById('add-staff-btn').addEventListener('click', () => openStaffModal());
+    document.getElementById('add-packing-item-btn').addEventListener('click', () => openPackingModal());
 }
 
 function closeAllModals() {
@@ -1322,6 +1329,7 @@ function setupFormHandlers() {
     document.getElementById('timeline-form').addEventListener('submit', handleTimelineSubmit);
     document.getElementById('staff-form').addEventListener('submit', handleStaffSubmit);
     document.getElementById('setlist-form').addEventListener('submit', handleSetListSubmit);
+    document.getElementById('packing-form').addEventListener('submit', handlePackingSubmit);
 }
 
 // Generic form submission handler
@@ -3367,6 +3375,287 @@ async function handleStaffSubmit(e) {
 
 window.deleteStaff = createDeleteHandler('staff', 'staff member');
 window.openStaffModal = openStaffModal;
+
+// ==========================================
+// PACKING LIST
+// ==========================================
+
+const PACKING_CATEGORIES = ['Audio', 'Lighting', 'Decor', 'Signage', 'Catering', 'Printed Materials', 'Misc'];
+
+const PACKING_STATUSES = [
+    { value: 'to-pack', label: 'To Pack', next: 'packed' },
+    { value: 'packed', label: 'Packed', next: 'loaded' },
+    { value: 'loaded', label: 'Loaded', next: 'at-venue' },
+    { value: 'at-venue', label: 'At Venue', next: null }
+];
+
+function getStatusInfo(statusValue) {
+    return PACKING_STATUSES.find(s => s.value === statusValue) || PACKING_STATUSES[0];
+}
+
+function renderPackingList() {
+    const container = document.getElementById('packing-list-container');
+    if (!container) return;
+
+    const items = state.packingList;
+    const total = items.length;
+    const toPack = items.filter(i => i.status === 'to-pack').length;
+    const packed = items.filter(i => i.status === 'packed').length;
+    const loaded = items.filter(i => i.status === 'loaded').length;
+    const atVenue = items.filter(i => i.status === 'at-venue').length;
+
+    // Update stat cards
+    const statTotal = document.getElementById('packing-stat-total');
+    const statToPack = document.getElementById('packing-stat-topack');
+    const statInProgress = document.getElementById('packing-stat-inprogress');
+    const statAtVenue = document.getElementById('packing-stat-atvenue');
+    if (statTotal) statTotal.textContent = total;
+    if (statToPack) statToPack.textContent = toPack;
+    if (statInProgress) statInProgress.textContent = packed + loaded;
+    if (statAtVenue) statAtVenue.textContent = atVenue;
+
+    // Update progress bar
+    if (total > 0) {
+        document.getElementById('progress-to-pack').style.width = ((toPack / total) * 100) + '%';
+        document.getElementById('progress-packed').style.width = ((packed / total) * 100) + '%';
+        document.getElementById('progress-loaded').style.width = ((loaded / total) * 100) + '%';
+        document.getElementById('progress-at-venue').style.width = ((atVenue / total) * 100) + '%';
+    } else {
+        document.getElementById('progress-to-pack').style.width = '0%';
+        document.getElementById('progress-packed').style.width = '0%';
+        document.getElementById('progress-loaded').style.width = '0%';
+        document.getElementById('progress-at-venue').style.width = '0%';
+    }
+
+    // Apply filters
+    let filtered = [...items];
+    if (state.packingSearch) {
+        const q = state.packingSearch.toLowerCase();
+        filtered = filtered.filter(i =>
+            (i.name || '').toLowerCase().includes(q) ||
+            (i.assignee || '').toLowerCase().includes(q) ||
+            (i.notes || '').toLowerCase().includes(q)
+        );
+    }
+    if (state.packingCategoryFilter !== 'all') {
+        filtered = filtered.filter(i => i.category === state.packingCategoryFilter);
+    }
+    if (state.packingStatusFilter !== 'all') {
+        filtered = filtered.filter(i => i.status === state.packingStatusFilter);
+    }
+
+    // Update search count
+    const searchCount = document.getElementById('packing-search-count');
+    if (searchCount) {
+        if (state.packingSearch || state.packingCategoryFilter !== 'all' || state.packingStatusFilter !== 'all') {
+            searchCount.textContent = `${filtered.length} of ${total} items`;
+        } else {
+            searchCount.textContent = '';
+        }
+    }
+
+    if (filtered.length === 0) {
+        container.innerHTML = `<p class="empty-state">${total === 0 ? 'No packing items added' : 'No items match your filters'}</p>`;
+        return;
+    }
+
+    // Group by category
+    const grouped = {};
+    filtered.forEach(item => {
+        const cat = item.category || 'Misc';
+        if (!grouped[cat]) grouped[cat] = [];
+        grouped[cat].push(item);
+    });
+
+    // Sort categories by PACKING_CATEGORIES order
+    const sortedCats = Object.keys(grouped).sort((a, b) => {
+        const ai = PACKING_CATEGORIES.indexOf(a);
+        const bi = PACKING_CATEGORIES.indexOf(b);
+        return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+    });
+
+    let html = '';
+    sortedCats.forEach(cat => {
+        const catItems = grouped[cat];
+        const catAtVenue = catItems.filter(i => i.status === 'at-venue').length;
+        const catTotal = catItems.length;
+        const catPct = catTotal > 0 ? Math.round((catAtVenue / catTotal) * 100) : 0;
+        const allDone = catAtVenue === catTotal;
+        const hasAdvanceable = catItems.some(i => getStatusInfo(i.status).next !== null);
+
+        html += `
+        <div class="packing-category-section" data-category="${cat}">
+            <div class="packing-category-header" onclick="togglePackingCategory('${cat}')">
+                <div class="packing-category-header-left">
+                    <svg class="packing-chevron" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="2 4 6 8 10 4"/></svg>
+                    <span class="packing-category-name">${cat}</span>
+                    <span class="packing-category-count">${catAtVenue}/${catTotal}</span>
+                </div>
+                <div class="packing-category-header-right">
+                    <div class="packing-mini-progress">
+                        <div class="packing-mini-progress-fill${allDone ? ' complete' : ''}" style="width: ${catPct}%"></div>
+                    </div>
+                    ${hasAdvanceable ? `<button class="btn btn-sm btn-advance-all" onclick="event.stopPropagation(); bulkAdvanceCategory('${cat}')" title="Advance all items in ${cat}">Advance All</button>` : ''}
+                </div>
+            </div>
+            <div class="packing-category-body open">
+                ${catItems.map(item => {
+                    const si = getStatusInfo(item.status);
+                    const isLast = si.next === null;
+                    return `
+                    <div class="packing-item-row${isLast ? ' done' : ''}">
+                        <button class="packing-status-badge status-${item.status}${isLast ? '' : ' advanceable'}" onclick="cyclePackingStatus('${item.id}')" title="${isLast ? 'At Venue' : 'Click to advance to ' + getStatusInfo(item.status).next}">
+                            ${si.label}${isLast ? '' : ' ›'}
+                        </button>
+                        <div class="packing-item-info">
+                            <span class="packing-item-name">${item.name || 'Unnamed'}</span>
+                            ${item.quantity > 1 ? `<span class="packing-item-qty">×${item.quantity}</span>` : ''}
+                        </div>
+                        ${item.assignee ? `<span class="packing-item-assignee">${item.assignee}</span>` : ''}
+                        ${item.notes ? `<span class="packing-item-notes" title="${item.notes.replace(/"/g, '&quot;')}">📋</span>` : ''}
+                        <div class="packing-item-actions">
+                            <button class="btn-icon-sm" onclick="openPackingModal('${item.id}')" title="Edit">✎</button>
+                            <button class="btn-icon-sm delete" onclick="deletePackingItem('${item.id}')" title="Delete">✕</button>
+                        </div>
+                    </div>`;
+                }).join('')}
+            </div>
+        </div>`;
+    });
+
+    container.innerHTML = html;
+}
+
+async function cyclePackingStatus(itemId) {
+    const item = state.packingList.find(i => i.id === itemId);
+    if (!item) return;
+
+    const si = getStatusInfo(item.status);
+    if (!si.next) {
+        showToast('Already at venue', 'info');
+        return;
+    }
+
+    try {
+        await collections.packingList.doc(itemId).update({
+            status: si.next,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        const nextLabel = getStatusInfo(si.next).label;
+        showToast(`${item.name} → ${nextLabel}`);
+    } catch (error) {
+        console.error('Error updating packing status:', error);
+        showToast('Error updating status', 'error');
+    }
+}
+
+async function bulkAdvanceCategory(category) {
+    const items = state.packingList.filter(i => i.category === category);
+    const advanceable = items.filter(i => getStatusInfo(i.status).next !== null);
+
+    if (advanceable.length === 0) {
+        showToast('All items already at venue', 'info');
+        return;
+    }
+
+    if (!confirm(`Advance ${advanceable.length} item(s) in ${category} to next status?`)) return;
+
+    try {
+        const batch = db.batch();
+        advanceable.forEach(item => {
+            const si = getStatusInfo(item.status);
+            batch.update(collections.packingList.doc(item.id), {
+                status: si.next,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+        });
+        await batch.commit();
+        showToast(`Advanced ${advanceable.length} items in ${category}`);
+    } catch (error) {
+        console.error('Error bulk advancing:', error);
+        showToast('Error advancing items', 'error');
+    }
+}
+
+const PACKING_FIELD_MAP = {
+    'packing-name': 'name',
+    'packing-category': 'category',
+    'packing-quantity': 'quantity',
+    'packing-status': 'status',
+    'packing-assignee': 'assignee',
+    'packing-notes': 'notes'
+};
+
+function openPackingModal(itemId = null) {
+    openModal({
+        modalId: 'packing-modal',
+        formId: 'packing-form',
+        title: 'Packing Item',
+        stateKey: 'packingList',
+        itemId: itemId,
+        idFieldId: 'packing-id',
+        fieldMap: PACKING_FIELD_MAP,
+        defaultValues: {
+            'packing-status': 'to-pack',
+            'packing-quantity': '1'
+        }
+    });
+}
+
+async function handlePackingSubmit(e) {
+    await handleFormSubmit(e, {
+        collection: 'packingList',
+        fieldMap: PACKING_FIELD_MAP,
+        idFieldId: 'packing-id',
+        itemName: 'packing item',
+        numericFields: ['quantity']
+    });
+}
+
+function handlePackingSearch(value) {
+    state.packingSearch = value;
+    const clearBtn = document.getElementById('packing-search-clear');
+    if (clearBtn) clearBtn.style.display = value ? 'block' : 'none';
+    renderPackingList();
+}
+
+function clearPackingSearch() {
+    state.packingSearch = '';
+    const input = document.getElementById('packing-search-input');
+    if (input) input.value = '';
+    const clearBtn = document.getElementById('packing-search-clear');
+    if (clearBtn) clearBtn.style.display = 'none';
+    renderPackingList();
+}
+
+function handlePackingCategoryFilter(value) {
+    state.packingCategoryFilter = value;
+    renderPackingList();
+}
+
+function handlePackingStatusFilter(value) {
+    state.packingStatusFilter = value;
+    renderPackingList();
+}
+
+function togglePackingCategory(category) {
+    const section = document.querySelector(`.packing-category-section[data-category="${category}"]`);
+    if (!section) return;
+    const body = section.querySelector('.packing-category-body');
+    const chevron = section.querySelector('.packing-chevron');
+    if (body) body.classList.toggle('open');
+    if (chevron) chevron.classList.toggle('collapsed');
+}
+
+window.deletePackingItem = createDeleteHandler('packingList', 'packing item');
+window.openPackingModal = openPackingModal;
+window.cyclePackingStatus = cyclePackingStatus;
+window.bulkAdvanceCategory = bulkAdvanceCategory;
+window.handlePackingSearch = handlePackingSearch;
+window.clearPackingSearch = clearPackingSearch;
+window.handlePackingCategoryFilter = handlePackingCategoryFilter;
+window.handlePackingStatusFilter = handlePackingStatusFilter;
+window.togglePackingCategory = togglePackingCategory;
 
 // Export Staff to Excel
 function exportStaffToExcel() {
