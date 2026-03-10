@@ -6,6 +6,9 @@ const state = {
     cocktailStageInputs: [],
     staff: [],
     stagePlots: [],
+    setLists: [],
+    setListSearch: '',
+    setListStageFilter: 'all',
     budgetSort: { field: null, direction: 'asc' },
     budgetSearch: '',
     currentPage: 'dashboard',
@@ -118,6 +121,7 @@ function initializeApp() {
     setupKeyboardShortcuts();
     setupPlotNameInput();
     setupVenueMap();
+    setupSetListPage();
 }
 
 // Venue Map - setup is at end of file (setupVenueMap)
@@ -135,10 +139,34 @@ function setupNavigation() {
             // Update active state
             navLinks.forEach(l => l.classList.remove('active'));
             link.classList.add('active');
+            updateNavGroupIndicators();
 
             // Close mobile menu when clicking a link
             closeHamburgerMenu();
+            // Close any open nav groups
+            document.querySelectorAll('.nav-group.open').forEach(g => g.classList.remove('open'));
         });
+    });
+
+    // Mobile accordion toggles for nav groups
+    document.querySelectorAll('.nav-group-toggle').forEach(toggle => {
+        toggle.addEventListener('click', () => {
+            const group = toggle.closest('.nav-group');
+            // Close other groups
+            document.querySelectorAll('.nav-group.open').forEach(g => {
+                if (g !== group) g.classList.remove('open');
+            });
+            group.classList.toggle('open');
+        });
+    });
+
+    // Set initial group indicators
+    updateNavGroupIndicators();
+}
+
+function updateNavGroupIndicators() {
+    document.querySelectorAll('.nav-group').forEach(g => {
+        g.classList.toggle('has-active', g.querySelector('.nav-link.active') !== null);
     });
 }
 
@@ -185,6 +213,8 @@ function closeHamburgerMenu() {
         hamburger.classList.remove('active');
         navMenu.classList.remove('active');
         document.body.classList.remove('menu-open');
+        // Close any open accordion groups
+        document.querySelectorAll('.nav-group.open').forEach(g => g.classList.remove('open'));
     }
 }
 
@@ -244,6 +274,15 @@ function switchPage(pageName) {
             renderStageInputs();
         }
         if (pageName === 'staff') renderStaff();
+        if (pageName === 'set-lists') {
+            state.setListSearch = '';
+            state.setListStageFilter = 'all';
+            const slSearchInput = document.getElementById('setlist-search-input');
+            if (slSearchInput) slSearchInput.value = '';
+            const slTabs = document.querySelectorAll('#setlist-stage-tabs .day-tab');
+            slTabs.forEach(t => t.classList.toggle('active', t.dataset.setlistStage === 'all'));
+            renderSetLists();
+        }
         if (pageName === 'stage-plots') initializeStagePlots();
         if (pageName === 'venue-map') {
             if (state.vmCanvas) {
@@ -305,6 +344,7 @@ function loadAllData() {
     setupCollectionListener('cocktailStageInputs', 'cocktailStageInputs', [renderStageInputs]);
     setupCollectionListener('staff', 'staff', [renderStaff]);
     setupCollectionListener('stagePlots', 'stagePlots', [updatePlotSelector]);
+    setupCollectionListener('setLists', 'setLists', [renderSetLists, updateDashboard]);
 }
 
 // Dashboard
@@ -312,6 +352,12 @@ function updateDashboard() {
     updateBudgetStats();
     updateVendorStats();
     updateTimelineStats();
+    updateSetListDashboard();
+}
+
+function updateSetListDashboard() {
+    const el = document.getElementById('dashboard-setlist-count');
+    if (el) el.textContent = state.setLists.length;
 }
 
 function updateBudgetStats() {
@@ -568,6 +614,7 @@ function navigateToVendorFilter(filter) {
     document.querySelectorAll('.nav-link').forEach(link => {
         link.classList.toggle('active', link.dataset.page === 'vendors');
     });
+    updateNavGroupIndicators();
 
     // Update filter button active state
     document.querySelectorAll('.vendor-filter-btn').forEach(btn => {
@@ -1214,6 +1261,7 @@ function setupFormHandlers() {
     document.getElementById('budget-form').addEventListener('submit', handleBudgetSubmit);
     document.getElementById('timeline-form').addEventListener('submit', handleTimelineSubmit);
     document.getElementById('staff-form').addEventListener('submit', handleStaffSubmit);
+    document.getElementById('setlist-form').addEventListener('submit', handleSetListSubmit);
 }
 
 // Generic form submission handler
@@ -1685,6 +1733,15 @@ function setupExportAndPrint() {
     const exportVendorsBtn = document.getElementById('export-vendors-btn');
     if (exportVendorsBtn) {
         exportVendorsBtn.addEventListener('click', exportBudgetToExcel);
+    }
+
+    const printSetListBtn = document.getElementById('print-setlist-btn');
+    if (printSetListBtn) {
+        printSetListBtn.addEventListener('click', () => window.print());
+    }
+    const exportSetListBtn = document.getElementById('export-setlist-btn');
+    if (exportSetListBtn) {
+        exportSetListBtn.addEventListener('click', exportSetListToExcel);
     }
 }
 
@@ -5927,6 +5984,290 @@ async function vmLoadLayers() {
         vmRenderLayers();
     }
 }
+
+// =============================================
+// SET LISTS
+// =============================================
+
+function setupSetListPage() {
+    document.getElementById('add-setlist-btn')?.addEventListener('click', () => openSetListModal());
+
+    document.querySelectorAll('#setlist-stage-tabs .day-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('#setlist-stage-tabs .day-tab').forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            state.setListStageFilter = tab.dataset.setlistStage;
+            renderSetLists();
+        });
+    });
+}
+
+function renderSetLists() {
+    const container = document.getElementById('setlist-grid');
+    if (!container) return;
+
+    const total = state.setLists.length;
+    const totalSongs = state.setLists.reduce((sum, sl) => sum + (sl.songs || []).length, 0);
+
+    const setStat = (id, val) => { const e = document.getElementById(id); if (e) e.textContent = val; };
+    setStat('setlist-stat-total', total);
+    setStat('setlist-stat-songs', totalSongs);
+
+    let items = [...state.setLists];
+    if (state.setListStageFilter !== 'all') {
+        items = items.filter(sl => sl.stage === state.setListStageFilter);
+    }
+
+    const isSearching = state.setListSearch && state.setListSearch.trim().length > 0;
+    if (isSearching) {
+        const q = state.setListSearch.toLowerCase();
+        items = items.filter(sl =>
+            (sl.performer || '').toLowerCase().includes(q) ||
+            (sl.songs || []).some(s => (s.title || '').toLowerCase().includes(q))
+        );
+    }
+
+    // Update search count
+    const countEl = document.getElementById('setlist-search-count');
+    if (countEl) {
+        countEl.textContent = isSearching ? `${items.length} of ${total} set lists` : `${total} set lists`;
+        countEl.style.display = total > 0 ? '' : 'none';
+    }
+    const clearBtn = document.getElementById('setlist-search-clear');
+    if (clearBtn) clearBtn.style.display = isSearching ? '' : 'none';
+
+    items.sort((a, b) => (a.performer || '').localeCompare(b.performer || ''));
+
+    if (total === 0) {
+        container.innerHTML = '<div class="staff-empty-state">No set lists added yet. Click "+ Add Set List" to get started.</div>';
+        return;
+    }
+
+    if (items.length === 0) {
+        container.innerHTML = `<div class="staff-empty-state">No set lists match "${escapeHtml(state.setListSearch)}"</div>`;
+        return;
+    }
+
+    container.innerHTML = '<div class="setlist-grid">' + items.map((sl, idx) => {
+        const songs = sl.songs || [];
+        const stageLabel = sl.stage === 'main' ? 'Main Stage' : 'Cocktail Stage';
+        const songListHtml = songs.map((s, i) =>
+            `<div class="setlist-song-row">
+                <span class="song-number">${i + 1}.</span>
+                <span class="song-title">${escapeHtml(s.title)}</span>
+                ${s.duration ? `<span class="song-duration">${escapeHtml(s.duration)}</span>` : ''}
+                ${s.notes ? `<span class="song-notes">${escapeHtml(s.notes)}</span>` : ''}
+            </div>`
+        ).join('');
+
+        return `
+        <div class="setlist-card" style="animation-delay: ${idx * 40}ms">
+            <div class="setlist-card-header">
+                <div class="setlist-performer">${escapeHtml(sl.performer || '')}</div>
+                <span class="setlist-stage-badge stage-${sl.stage}">${stageLabel}</span>
+            </div>
+            <div class="setlist-summary">
+                <span>${songs.length} song${songs.length !== 1 ? 's' : ''}</span>
+                ${sl.estimatedDuration ? `<span> &middot; ${escapeHtml(sl.estimatedDuration)}</span>` : ''}
+            </div>
+            ${songs.length > 0 ? `
+                <div class="setlist-songs-toggle" onclick="toggleSetListSongs('${sl.id}')">
+                    <span id="setlist-toggle-icon-${sl.id}">&#9654;</span> View Songs
+                </div>
+                <div class="setlist-songs-list" id="setlist-songs-${sl.id}" style="display:none">
+                    ${songListHtml}
+                </div>
+            ` : ''}
+            ${sl.generalNotes ? `
+                <div class="setlist-notes">${escapeHtml(sl.generalNotes)}</div>
+            ` : ''}
+            <div class="staff-actions">
+                <button class="btn btn-edit" onclick="openSetListModal('${sl.id}')">Edit</button>
+                <button class="btn btn-danger" onclick="deleteSetList('${sl.id}')">Delete</button>
+            </div>
+        </div>`;
+    }).join('') + '</div>';
+}
+
+function openSetListModal(itemId = null) {
+    const modal = document.getElementById('setlist-modal');
+    const form = document.getElementById('setlist-form');
+    const title = document.getElementById('setlist-modal-title');
+
+    form.reset();
+    document.getElementById('setlist-id').value = '';
+
+    let data = null;
+    if (itemId) {
+        data = state.setLists.find(s => s.id === itemId);
+    }
+
+    title.textContent = data ? 'Edit Set List' : 'Add Set List';
+
+    if (data) {
+        document.getElementById('setlist-id').value = itemId;
+        document.getElementById('setlist-performer').value = data.performer || '';
+        document.getElementById('setlist-stage').value = data.stage || 'main';
+        document.getElementById('setlist-duration').value = data.estimatedDuration || '';
+        document.getElementById('setlist-notes').value = data.generalNotes || '';
+        renderSongRows(data.songs || []);
+    } else {
+        renderSongRows([{ title: '', duration: '', notes: '' }]);
+    }
+
+    modal.classList.add('active');
+}
+
+function renderSongRows(songs) {
+    const container = document.getElementById('setlist-songs-container');
+    container.innerHTML = songs.map((song, i) => `
+        <div class="song-edit-row" data-song-index="${i}">
+            <input type="text" class="song-title-input" value="${escapeHtml(song.title || '')}" placeholder="Song title">
+            <input type="text" class="song-duration-input" value="${escapeHtml(song.duration || '')}" placeholder="mm:ss" style="width:70px">
+            <input type="text" class="song-notes-input" value="${escapeHtml(song.notes || '')}" placeholder="Notes">
+            <button type="button" class="btn btn-danger btn-sm" onclick="removeSongRow(this)">×</button>
+        </div>
+    `).join('');
+}
+
+function addSongRow() {
+    const container = document.getElementById('setlist-songs-container');
+    const row = document.createElement('div');
+    row.className = 'song-edit-row';
+    row.innerHTML = `
+        <input type="text" class="song-title-input" placeholder="Song title">
+        <input type="text" class="song-duration-input" placeholder="mm:ss" style="width:70px">
+        <input type="text" class="song-notes-input" placeholder="Notes">
+        <button type="button" class="btn btn-danger btn-sm" onclick="removeSongRow(this)">×</button>
+    `;
+    container.appendChild(row);
+    row.querySelector('.song-title-input').focus();
+}
+
+function removeSongRow(btn) {
+    const container = document.getElementById('setlist-songs-container');
+    if (container.querySelectorAll('.song-edit-row').length <= 1) return;
+    btn.closest('.song-edit-row').remove();
+}
+
+async function handleSetListSubmit(e) {
+    e.preventDefault();
+
+    const songRows = document.querySelectorAll('#setlist-songs-container .song-edit-row');
+    const songs = Array.from(songRows)
+        .map(row => ({
+            title: row.querySelector('.song-title-input').value.trim(),
+            duration: row.querySelector('.song-duration-input').value.trim(),
+            notes: row.querySelector('.song-notes-input').value.trim()
+        }))
+        .filter(s => s.title);
+
+    const data = {
+        performer: document.getElementById('setlist-performer').value,
+        stage: document.getElementById('setlist-stage').value,
+        songs: songs,
+        estimatedDuration: document.getElementById('setlist-duration').value,
+        generalNotes: document.getElementById('setlist-notes').value,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    };
+
+    const id = document.getElementById('setlist-id').value;
+
+    try {
+        if (id) {
+            await collections.setLists.doc(id).update(data);
+            showToast('Set list updated');
+        } else {
+            data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+            await collections.setLists.add(data);
+            showToast('Set list added');
+        }
+        closeAllModals();
+    } catch (error) {
+        console.error('Error saving set list:', error);
+        showToast('Error saving set list', 'error');
+    }
+}
+
+function toggleSetListSongs(id) {
+    const el = document.getElementById('setlist-songs-' + id);
+    const icon = document.getElementById('setlist-toggle-icon-' + id);
+    if (el.style.display === 'none') {
+        el.style.display = '';
+        icon.innerHTML = '&#9660;';
+    } else {
+        el.style.display = 'none';
+        icon.innerHTML = '&#9654;';
+    }
+}
+
+function handleSetListSearch(value) {
+    state.setListSearch = value;
+    renderSetLists();
+}
+
+function clearSetListSearch() {
+    state.setListSearch = '';
+    document.getElementById('setlist-search-input').value = '';
+    renderSetLists();
+}
+
+function exportSetListToExcel() {
+    const rows = [];
+    state.setLists
+        .sort((a, b) => (a.performer || '').localeCompare(b.performer || ''))
+        .forEach(sl => {
+            const songs = sl.songs || [];
+            if (songs.length === 0) {
+                rows.push({
+                    'Performer': sl.performer || '',
+                    'Stage': sl.stage === 'main' ? 'Main Stage' : 'Cocktail Stage',
+                    '#': '',
+                    'Song': '',
+                    'Duration': sl.estimatedDuration || '',
+                    'Song Notes': '',
+                    'Crew Notes': sl.generalNotes || ''
+                });
+            } else {
+                songs.forEach((song, i) => {
+                    rows.push({
+                        'Performer': i === 0 ? (sl.performer || '') : '',
+                        'Stage': i === 0 ? (sl.stage === 'main' ? 'Main Stage' : 'Cocktail Stage') : '',
+                        '#': i + 1,
+                        'Song': song.title || '',
+                        'Duration': song.duration || '',
+                        'Song Notes': song.notes || '',
+                        'Crew Notes': i === 0 ? (sl.generalNotes || '') : ''
+                    });
+                });
+            }
+        });
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [
+        { wch: 25 },  // Performer
+        { wch: 15 },  // Stage
+        { wch: 4 },   // #
+        { wch: 30 },  // Song
+        { wch: 8 },   // Duration
+        { wch: 30 },  // Song Notes
+        { wch: 35 }   // Crew Notes
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Set Lists');
+
+    const today = new Date().toISOString().split('T')[0];
+    XLSX.writeFile(wb, `Set_Lists_${today}.xlsx`);
+}
+
+window.openSetListModal = openSetListModal;
+window.deleteSetList = createDeleteHandler('setLists', 'set list');
+window.addSongRow = addSongRow;
+window.removeSongRow = removeSongRow;
+window.toggleSetListSongs = toggleSetListSongs;
+window.handleSetListSearch = handleSetListSearch;
+window.clearSetListSearch = clearSetListSearch;
 
 // Make functions globally accessible
 window.toggleCategorySection = toggleCategorySection;

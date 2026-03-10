@@ -33,5 +33,6 @@ const collections = {
     staff: db.collection('staff'),
     eventInfo: db.collection('event-info'),
     stagePlots: db.collection('stagePlots'),
-    venueMapLayers: db.collection('venueMapLayers')
+    venueMapLayers: db.collection('venueMapLayers'),
+    setLists: db.collection('setLists')
 };

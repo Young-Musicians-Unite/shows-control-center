@@ -20,14 +20,67 @@
                 <span></span>
             </button>
             <div class="nav-menu" id="nav-menu">
-                <a href="#" class="nav-link active" data-page="dashboard">Dashboard</a>
-                <a href="#" class="nav-link" data-page="vendors">Vendors</a>
-                <a href="#" class="nav-link" data-page="budget">Budget</a>
-                <a href="#" class="nav-link" data-page="timeline">Timeline</a>
-                <a href="#" class="nav-link" data-page="input-lists">Input Lists</a>
-                <a href="#" class="nav-link" data-page="staff">Staff</a>
-                <a href="#" class="nav-link" data-page="stage-plots">Stage Plots</a>
-                <a href="#" class="nav-link" data-page="venue-map">Venue Map</a>
+                <!-- Dashboard - direct link -->
+                <a href="#" class="nav-link active" data-page="dashboard">
+                    <svg class="nav-icon" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="1" width="7" height="7" rx="1"/><rect x="10" y="1" width="7" height="7" rx="1"/><rect x="1" y="10" width="7" height="7" rx="1"/><rect x="10" y="10" width="7" height="7" rx="1"/></svg>
+                    <span class="nav-label">Dashboard</span>
+                </a>
+
+                <!-- Production group -->
+                <div class="nav-group">
+                    <button class="nav-group-toggle" type="button">
+                        <svg class="nav-icon" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="9" r="8"/><polyline points="9 4 9 9 13 11"/></svg>
+                        <span class="nav-label">Production</span>
+                        <svg class="nav-chevron" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="2 4 6 8 10 4"/></svg>
+                    </button>
+                    <div class="nav-dropdown">
+                        <a href="#" class="nav-link" data-page="timeline">
+                            <svg class="nav-icon" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="1" y1="5" x2="17" y2="5"/><line x1="1" y1="9" x2="13" y2="9"/><line x1="1" y1="13" x2="15" y2="13"/><circle cx="17" cy="9" r="0.5" fill="currentColor"/><circle cx="15" cy="13" r="0.5" fill="currentColor"/></svg>
+                            <span class="nav-label">Timeline</span>
+                        </a>
+                        <a href="#" class="nav-link" data-page="input-lists">
+                            <svg class="nav-icon" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="2 5 4 7 8 3"/><line x1="10" y1="5" x2="17" y2="5"/><polyline points="2 11 4 13 8 9"/><line x1="10" y1="11" x2="17" y2="11"/></svg>
+                            <span class="nav-label">Input Lists</span>
+                        </a>
+                        <a href="#" class="nav-link" data-page="stage-plots">
+                            <svg class="nav-icon" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="1" width="16" height="16" rx="2"/><line x1="1" y1="7" x2="17" y2="7"/><line x1="7" y1="7" x2="7" y2="17"/></svg>
+                            <span class="nav-label">Stage Plots</span>
+                        </a>
+                        <a href="#" class="nav-link" data-page="set-lists">
+                            <svg class="nav-icon" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="13" r="3"/><line x1="8" y1="13" x2="8" y2="2"/><path d="M8 2 C10 2 15 1 15 4 C15 7 10 6 8 6"/></svg>
+                            <span class="nav-label">Set Lists</span>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Operations group -->
+                <div class="nav-group">
+                    <button class="nav-group-toggle" type="button">
+                        <svg class="nav-icon" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="5" width="16" height="12" rx="2"/><path d="M5 5V3a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                        <span class="nav-label">Operations</span>
+                        <svg class="nav-chevron" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="2 4 6 8 10 4"/></svg>
+                    </button>
+                    <div class="nav-dropdown">
+                        <a href="#" class="nav-link" data-page="vendors">
+                            <svg class="nav-icon" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 7l2-6h12l2 6"/><path d="M1 7v9a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V7"/><path d="M7 17V11h4v6"/></svg>
+                            <span class="nav-label">Vendors</span>
+                        </a>
+                        <a href="#" class="nav-link" data-page="budget">
+                            <svg class="nav-icon" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="9" r="8"/><path d="M9 4v10"/><path d="M6 7c0-1.5 1.3-2 3-2s3 .5 3 2-1.3 2-3 2-3 .5-3 2 1.3 2 3 2 3-.5 3-2"/></svg>
+                            <span class="nav-label">Budget</span>
+                        </a>
+                        <a href="#" class="nav-link" data-page="staff">
+                            <svg class="nav-icon" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="5" r="4"/><path d="M1 17c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+                            <span class="nav-label">Staff</span>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Venue Map - direct link -->
+                <a href="#" class="nav-link" data-page="venue-map">
+                    <svg class="nav-icon" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 1C6 1 4 3.5 4 6.5S9 17 9 17s5-7.5 5-10.5S12 1 9 1z"/><circle cx="9" cy="6.5" r="2"/></svg>
+                    <span class="nav-label">Venue Map</span>
+                </a>
             </div>
         </div>
     </nav>
@@ -90,6 +143,13 @@
                     <div class="stat-content">
                         <div class="stat-label">Vendors Confirmed</div>
                         <div class="stat-value" id="vendors-confirmed">0</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: linear-gradient(135deg, #c9a961, #e8d5a3); color: #1a3a35;">♫</div>
+                    <div class="stat-content">
+                        <div class="stat-label">Performers</div>
+                        <div class="stat-value" id="dashboard-setlist-count">0</div>
                     </div>
                 </div>
             </div>
@@ -669,6 +729,107 @@
                         <p class="canvas-help">Click elements to add • Drag to move • Rotate handles to rotate • Double-click to label</p>
                     </div>
                 </div>
+            </div>
+        </div>
+
+        <!-- Set Lists Page -->
+        <div id="set-lists" class="page">
+            <div class="page-header">
+                <h1>Set Lists</h1>
+                <div class="header-actions">
+                    <button class="btn btn-icon" id="print-setlist-btn" title="Print">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+                    </button>
+                    <button class="btn btn-icon" id="export-setlist-btn" title="Export to Excel">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                    </button>
+                    <button class="btn btn-primary-gold" id="add-setlist-btn">+ Add Set List</button>
+                </div>
+            </div>
+
+            <!-- Search -->
+            <div class="page-search-bar">
+                <div class="page-search-wrapper">
+                    <svg class="page-search-icon" viewBox="0 0 20 20" fill="currentColor" width="18" height="18">
+                        <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"/>
+                    </svg>
+                    <input type="text" id="setlist-search-input" class="search-input" placeholder="Search performers, songs..." oninput="handleSetListSearch(this.value)">
+                    <button type="button" id="setlist-search-clear" class="page-search-clear" onclick="clearSetListSearch()" style="display: none;">&times;</button>
+                </div>
+                <span id="setlist-search-count" class="page-search-count"></span>
+            </div>
+
+            <!-- Stage filter tabs -->
+            <div class="day-tabs" id="setlist-stage-tabs">
+                <button class="day-tab active" data-setlist-stage="all">All</button>
+                <button class="day-tab" data-setlist-stage="main">Main Stage</button>
+                <button class="day-tab" data-setlist-stage="cocktail">Cocktail Stage</button>
+            </div>
+
+            <!-- Stats -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-content">
+                        <div class="stat-label">Total Set Lists</div>
+                        <div class="stat-value" id="setlist-stat-total">0</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-content">
+                        <div class="stat-label">Total Songs</div>
+                        <div class="stat-value" id="setlist-stat-songs">0</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Card grid -->
+            <div id="setlist-grid">
+                <p class="empty-state">No set lists added</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Set List Modal -->
+    <div id="setlist-modal" class="modal">
+        <div class="modal-content modal-lg">
+            <div class="modal-header">
+                <h2 id="setlist-modal-title">Add Set List</h2>
+                <button class="close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="setlist-form">
+                    <input type="hidden" id="setlist-id">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="setlist-performer">Performer / Band *</label>
+                            <input type="text" id="setlist-performer" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="setlist-stage">Stage *</label>
+                            <select id="setlist-stage" required>
+                                <option value="main">Main Stage</option>
+                                <option value="cocktail">Cocktail Stage</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Songs</label>
+                        <div id="setlist-songs-container"></div>
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="addSongRow()">+ Add Song</button>
+                    </div>
+                    <div class="form-group">
+                        <label for="setlist-duration">Estimated Total Duration</label>
+                        <input type="text" id="setlist-duration" placeholder="e.g., 45:00">
+                    </div>
+                    <div class="form-group">
+                        <label for="setlist-notes">Notes for Crew</label>
+                        <textarea id="setlist-notes" rows="3" placeholder="Changeover needs, special requests..."></textarea>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-secondary cancel-btn">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Save Set List</button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
