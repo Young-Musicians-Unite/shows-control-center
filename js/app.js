@@ -366,6 +366,10 @@ function updateCountdown() {
 
 // Generic utility functions for data loading
 function setupCollectionListener(collectionKey, stateKey, renderCallbacks = []) {
+    if (!collections[collectionKey]) {
+        console.warn(`Collection '${collectionKey}' not configured — skipping listener`);
+        return;
+    }
     collections[collectionKey].onSnapshot((snapshot) => {
         state[stateKey] = snapshot.docs.map(doc => ({
             id: doc.id,
