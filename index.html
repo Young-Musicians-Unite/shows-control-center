@@ -80,6 +80,12 @@
                     </div>
                 </div>
 
+                <!-- Menu - direct link -->
+                <a href="#" class="nav-link" data-page="menu">
+                    <svg class="nav-icon" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2v14c0 1 1 1 1 1h1c1 0 1-1 1-1V2"/><path d="M3 8h3"/><line x1="12" y1="2" x2="12" y2="7"/><path d="M10 7c0 2 2 3 2 3s2-1 2-3V2"/><line x1="12" y1="10" x2="12" y2="17"/></svg>
+                    <span class="nav-label">Menu</span>
+                </a>
+
                 <!-- Venue Map - direct link -->
                 <a href="#" class="nav-link" data-page="venue-map">
                     <svg class="nav-icon" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 1C6 1 4 3.5 4 6.5S9 17 9 17s5-7.5 5-10.5S12 1 9 1z"/><circle cx="9" cy="6.5" r="2"/></svg>
@@ -154,6 +160,13 @@
                     <div class="stat-content">
                         <div class="stat-label" id="dashboard-setlist-label">Performances</div>
                         <div class="stat-value" id="dashboard-setlist-count">0</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: linear-gradient(135deg, #2d6a5a, #3d8b75); color: #fff;">🍽</div>
+                    <div class="stat-content">
+                        <div class="stat-label" id="dashboard-menu-label">Menu Items</div>
+                        <div class="stat-value" id="dashboard-menu-count">0</div>
                     </div>
                 </div>
             </div>
@@ -596,6 +609,92 @@
             </div>
         </div>
 
+        <!-- Menu Page -->
+        <div id="menu" class="page">
+            <div class="page-header">
+                <h1>Menu</h1>
+                <div class="header-actions">
+                    <button class="btn btn-secondary" id="menu-print-btn" onclick="toggleMenuPrintMode()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                        Presentation
+                    </button>
+                    <button class="btn btn-primary-gold" id="add-menu-item-btn">+ Add Item</button>
+                </div>
+            </div>
+
+            <!-- Search & Filters -->
+            <div class="page-search-bar">
+                <div class="page-search-wrapper">
+                    <svg class="page-search-icon" viewBox="0 0 20 20" fill="currentColor" width="18" height="18">
+                        <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"/>
+                    </svg>
+                    <input type="text" id="menu-search-input" class="search-input" placeholder="Search menu items..." oninput="handleMenuSearch(this.value)">
+                    <button type="button" id="menu-search-clear" class="page-search-clear" onclick="clearMenuSearch()" style="display: none;">&times;</button>
+                </div>
+                <select id="menu-status-filter" class="filter-select" onchange="handleMenuStatusFilter(this.value)">
+                    <option value="all">All Statuses</option>
+                    <option value="confirmed">Confirmed</option>
+                    <option value="pending">Pending</option>
+                </select>
+                <span id="menu-search-count" class="page-search-count"></span>
+            </div>
+
+            <!-- View Controls -->
+            <div class="menu-view-bar">
+                <div class="menu-view-toggle">
+                    <button class="menu-view-btn active" data-view="category" onclick="setMenuView('category')">By Category</button>
+                    <button class="menu-view-btn" data-view="full" onclick="setMenuView('full')">Full Menu</button>
+                </div>
+                <div class="menu-category-tabs">
+                    <button class="menu-cat-tab active" data-cat="all" onclick="filterMenuCategory(this.dataset.cat)">All</button>
+                    <button class="menu-cat-tab" data-cat="Passed Hors d'Oeuvres" onclick="filterMenuCategory(this.dataset.cat)">Hors d'Oeuvres</button>
+                    <button class="menu-cat-tab" data-cat="Seated Dinner" onclick="filterMenuCategory(this.dataset.cat)">Dinner</button>
+                    <button class="menu-cat-tab" data-cat="Late Night Bites" onclick="filterMenuCategory(this.dataset.cat)">Late Night</button>
+                    <button class="menu-cat-tab" data-cat="Coffee &amp; Tea Station" onclick="filterMenuCategory(this.dataset.cat)">Coffee &amp; Tea</button>
+                    <button class="menu-cat-tab" data-cat="Bar" onclick="filterMenuCategory(this.dataset.cat)">Bar</button>
+                </div>
+            </div>
+
+            <!-- Stats -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-content">
+                        <div class="stat-label">Total Items</div>
+                        <div class="stat-value" id="menu-stat-total">0</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-content">
+                        <div class="stat-label">Confirmed</div>
+                        <div class="stat-value" id="menu-stat-confirmed">0</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-content">
+                        <div class="stat-label">Pending</div>
+                        <div class="stat-value" id="menu-stat-pending">0</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-content">
+                        <div class="stat-label">Dietary Options</div>
+                        <div class="stat-value" id="menu-stat-dietary">0</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dietary Summary Bar -->
+            <div class="menu-dietary-summary" id="menu-dietary-summary"></div>
+
+            <!-- Menu Content Container -->
+            <div id="menu-container">
+                <p class="empty-state">No menu items added</p>
+            </div>
+
+            <!-- Print View Overlay -->
+            <div id="menu-print-view" class="menu-print-overlay" style="display: none;"></div>
+        </div>
+
         <!-- Venue Map Page -->
         <div id="venue-map" class="page">
             <div class="page-header">
@@ -763,6 +862,22 @@
                         <span class="status-text"></span>
                     </div>
                 </div>
+            </div>
+
+            <!-- Properties Panel -->
+            <div class="properties-panel" id="properties-panel" style="display: none;">
+                <span class="prop-label">Stroke:</span>
+                <input type="color" id="prop-stroke-color" value="#c9a961" title="Stroke color">
+                <span id="prop-fill-controls">
+                    <span class="prop-label"><input type="checkbox" id="prop-fill-enabled" checked> Fill:</span>
+                    <input type="color" id="prop-fill-color" value="#c9a961" title="Fill color">
+                    <select id="prop-fill-opacity" title="Fill opacity">
+                        <option value="0.2">Light</option>
+                        <option value="0.4">Medium</option>
+                        <option value="0.6">Heavy</option>
+                        <option value="1.0">Solid</option>
+                    </select>
+                </span>
             </div>
 
             <!-- Main Content Area -->
@@ -1022,6 +1137,90 @@
                     <div class="form-group">
                         <label for="packing-notes">Notes</label>
                         <textarea id="packing-notes" rows="2" placeholder="Special instructions, location, etc."></textarea>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-secondary cancel-btn">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Save Item</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Menu Item Modal -->
+    <div id="menu-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="menu-modal-title">Add Menu Item</h2>
+                <button class="close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="menu-form">
+                    <input type="hidden" id="menu-id">
+                    <div class="form-group">
+                        <label for="menu-name">Item Name *</label>
+                        <input type="text" id="menu-name" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="menu-description">Description</label>
+                        <textarea id="menu-description" rows="2" placeholder="Short description of the dish"></textarea>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="menu-category">Category *</label>
+                            <select id="menu-category" required onchange="updateMenuSubcategories()">
+                                <option value="">Select category...</option>
+                                <option value="Passed Hors d'Oeuvres">Passed Hors d'Oeuvres</option>
+                                <option value="Seated Dinner">Seated Dinner</option>
+                                <option value="Late Night Bites">Late Night Bites</option>
+                                <option value="Coffee & Tea Station">Coffee & Tea Station</option>
+                                <option value="Bar">Bar</option>
+                            </select>
+                        </div>
+                        <div class="form-group" id="menu-subcategory-group">
+                            <label for="menu-subcategory">Subcategory</label>
+                            <select id="menu-subcategory">
+                                <option value="">None</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="menu-serving-style">Serving Style</label>
+                            <select id="menu-serving-style">
+                                <option value="">Select...</option>
+                                <option value="plated">Plated</option>
+                                <option value="passed">Passed</option>
+                                <option value="buffet">Buffet</option>
+                                <option value="station">Station</option>
+                                <option value="family-style">Family Style</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="menu-status">Status</label>
+                            <select id="menu-status">
+                                <option value="pending">Pending</option>
+                                <option value="confirmed">Confirmed</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="menu-quantity">Planned Servings</label>
+                        <input type="number" id="menu-quantity" min="0" placeholder="e.g. 150">
+                    </div>
+                    <div class="form-group">
+                        <label>Dietary Tags</label>
+                        <div class="menu-dietary-checkboxes">
+                            <label class="menu-dietary-check"><input type="checkbox" value="V" class="menu-diet-cb"><span class="dietary-pill pill-v">V</span> Vegetarian</label>
+                            <label class="menu-dietary-check"><input type="checkbox" value="VG" class="menu-diet-cb"><span class="dietary-pill pill-vg">VG</span> Vegan</label>
+                            <label class="menu-dietary-check"><input type="checkbox" value="GF" class="menu-diet-cb"><span class="dietary-pill pill-gf">GF</span> Gluten-Free</label>
+                            <label class="menu-dietary-check"><input type="checkbox" value="DF" class="menu-diet-cb"><span class="dietary-pill pill-df">DF</span> Dairy-Free</label>
+                            <label class="menu-dietary-check"><input type="checkbox" value="NF" class="menu-diet-cb"><span class="dietary-pill pill-nf">NF</span> Nut-Free</label>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="menu-notes">Notes</label>
+                        <textarea id="menu-notes" rows="2" placeholder="Allergens, special instructions..."></textarea>
                     </div>
                     <div class="form-actions">
                         <button type="button" class="btn btn-secondary cancel-btn">Cancel</button>

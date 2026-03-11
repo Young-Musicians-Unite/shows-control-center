@@ -1,3 +1,16 @@
+// Custom Fabric.js properties that must be included in toJSON()/toObject() calls
+const CUSTOM_FABRIC_PROPS = [
+    'objectId', 'rectId', 'isRectDimension', 'dimensionType',
+    'isStageElement', 'elementType', 'pixelsPerFoot', 'gridLine',
+    'fillEnabled', 'fillColor', 'fillOpacity'
+];
+
+// Generate a unique client session ID for multi-user collaboration
+if (!sessionStorage.getItem('clientId')) {
+    sessionStorage.setItem('clientId', 'client_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9));
+}
+const CLIENT_ID = sessionStorage.getItem('clientId');
+
 // Global state
 const state = {
     budget: [],
@@ -37,6 +50,11 @@ const state = {
     isUndoRedoing: false,  // Flag to prevent history recording during undo/redo
     isInteracting: false,  // Flag to prevent canvas resize during user interaction
     dimensionsVisible: true,  // Whether stage dimension labels are shown
+    // Real-time collaboration state
+    dirtyObjectIds: new Set(),    // Object IDs that need saving
+    deletedObjectIds: new Set(),  // Object IDs that were deleted
+    isReceivingRemote: false,     // Flag to suppress re-saving during remote updates
+    plotObjectsUnsubscribe: null, // Firestore listener unsubscribe function
     timelineUndoStack: [],  // Undo history for timeline actions
     timelineFilter: 'all',  // Current timeline filter: 'all', 'production', 'run-of-show'
     timelineAnimateRows: true,  // Only animate rows on day/filter switch, not data updates
@@ -67,7 +85,13 @@ const state = {
     packingList: [],
     packingSearch: '',
     packingCategoryFilter: 'all',
-    packingStatusFilter: 'all'
+    packingStatusFilter: 'all',
+    // Menu state
+    menuItems: [],
+    menuSearch: '',
+    menuCategoryFilter: 'all',
+    menuStatusFilter: 'all',
+    menuViewMode: 'category'
 };
 
 // Toast notification system
@@ -125,6 +149,7 @@ function initializeApp() {
     setupUndoRedo();
     setupKeyboardShortcuts();
     setupPlotNameInput();
+    setupPropertiesPanel();
     setupVenueMap();
     setupSetListPage();
 }
@@ -288,6 +313,19 @@ function switchPage(pageName) {
             slTabs.forEach(t => t.classList.toggle('active', t.dataset.setlistStage === 'all'));
             renderSetLists();
         }
+        if (pageName === 'menu') {
+            state.menuSearch = '';
+            state.menuCategoryFilter = 'all';
+            state.menuStatusFilter = 'all';
+            state.menuViewMode = 'category';
+            const menuSearchInput = document.getElementById('menu-search-input');
+            if (menuSearchInput) menuSearchInput.value = '';
+            const menuStatusSelect = document.getElementById('menu-status-filter');
+            if (menuStatusSelect) menuStatusSelect.value = 'all';
+            document.querySelectorAll('.menu-view-btn').forEach(b => b.classList.toggle('active', b.dataset.view === 'category'));
+            document.querySelectorAll('.menu-cat-tab').forEach(b => b.classList.toggle('active', b.dataset.cat === 'all'));
+            renderMenu();
+        }
         if (pageName === 'stage-plots') initializeStagePlots();
         if (pageName === 'venue-map') {
             if (state.vmCanvas) {
@@ -351,6 +389,7 @@ function loadAllData() {
     setupCollectionListener('stagePlots', 'stagePlots', [updatePlotSelector, renderTimeline]);
     setupCollectionListener('setLists', 'setLists', [renderSetLists, updateDashboard, renderTimeline]);
     setupCollectionListener('packingList', 'packingList', [renderPackingList]);
+    setupCollectionListener('menuItems', 'menuItems', [renderMenu, updateDashboard]);
 }
 
 // Dashboard
@@ -359,6 +398,14 @@ function updateDashboard() {
     updateVendorStats();
     updateTimelineStats();
     updateSetListDashboard();
+    updateMenuDashboard();
+}
+
+function updateMenuDashboard() {
+    const el = document.getElementById('dashboard-menu-count');
+    if (el) el.textContent = state.menuItems.length;
+    const label = document.getElementById('dashboard-menu-label');
+    if (label) label.textContent = state.menuItems.length === 1 ? 'Menu Item' : 'Menu Items';
 }
 
 function updateSetListDashboard() {
@@ -1171,6 +1218,7 @@ function setupModals() {
     document.getElementById('add-timeline-item-btn').addEventListener('click', () => openTimelineModal());
     document.getElementById('add-staff-btn').addEventListener('click', () => openStaffModal());
     document.getElementById('add-packing-item-btn').addEventListener('click', () => openPackingModal());
+    document.getElementById('add-menu-item-btn').addEventListener('click', () => openMenuModal());
 }
 
 function closeAllModals() {
@@ -1332,6 +1380,7 @@ function setupFormHandlers() {
     document.getElementById('staff-form').addEventListener('submit', handleStaffSubmit);
     document.getElementById('setlist-form').addEventListener('submit', handleSetListSubmit);
     document.getElementById('packing-form').addEventListener('submit', handlePackingSubmit);
+    document.getElementById('menu-form').addEventListener('submit', handleMenuSubmit);
 }
 
 // Generic form submission handler
@@ -3382,6 +3431,505 @@ window.openStaffModal = openStaffModal;
 // PACKING LIST
 // ==========================================
 
+// ==================== MENU PAGE ====================
+
+const MENU_CATEGORIES = {
+    "Passed Hors d'Oeuvres": [],
+    "Seated Dinner": ["Salad", "Main Course", "Dessert"],
+    "Late Night Bites": [],
+    "Coffee & Tea Station": [],
+    "Bar": ["Signature Cocktails", "Wine", "Beer", "Non-Alcoholic"]
+};
+
+const MENU_CATEGORY_ORDER = [
+    "Passed Hors d'Oeuvres",
+    "Seated Dinner",
+    "Late Night Bites",
+    "Coffee & Tea Station",
+    "Bar"
+];
+
+const DIETARY_TAGS = [
+    { key: 'V', label: 'Vegetarian', color: '#22c55e' },
+    { key: 'VG', label: 'Vegan', color: '#15803d' },
+    { key: 'GF', label: 'Gluten-Free', color: '#f59e0b' },
+    { key: 'DF', label: 'Dairy-Free', color: '#3b82f6' },
+    { key: 'NF', label: 'Nut-Free', color: '#ef4444' }
+];
+
+const MENU_CATEGORY_COLORS = {
+    "Passed Hors d'Oeuvres": '#c9a961',
+    "Seated Dinner": '#2d8b75',
+    "Late Night Bites": '#f07060',
+    "Coffee & Tea Station": '#8b6914',
+    "Bar": '#8b2252'
+};
+
+const MENU_FIELD_MAP = {
+    'menu-name': 'name',
+    'menu-description': 'description',
+    'menu-category': 'category',
+    'menu-subcategory': 'subcategory',
+    'menu-serving-style': 'servingStyle',
+    'menu-status': 'status',
+    'menu-quantity': 'quantity',
+    'menu-notes': 'notes'
+};
+
+function updateMenuSubcategories() {
+    const catSelect = document.getElementById('menu-category');
+    const subGroup = document.getElementById('menu-subcategory-group');
+    const subSelect = document.getElementById('menu-subcategory');
+    if (!catSelect || !subSelect || !subGroup) return;
+
+    const category = catSelect.value;
+    const subs = MENU_CATEGORIES[category] || [];
+
+    if (subs.length === 0) {
+        subGroup.style.display = 'none';
+        subSelect.value = '';
+    } else {
+        subGroup.style.display = '';
+        subSelect.innerHTML = '<option value="">None</option>' +
+            subs.map(s => `<option value="${s}">${s}</option>`).join('');
+    }
+}
+
+function openMenuModal(itemId = null) {
+    openModal({
+        modalId: 'menu-modal',
+        formId: 'menu-form',
+        title: 'Menu Item',
+        stateKey: 'menuItems',
+        itemId: itemId,
+        idFieldId: 'menu-id',
+        fieldMap: MENU_FIELD_MAP,
+        defaultValues: {
+            'menu-status': 'pending'
+        }
+    });
+
+    // Handle dietary tag checkboxes separately
+    const checkboxes = document.querySelectorAll('.menu-diet-cb');
+    checkboxes.forEach(cb => cb.checked = false);
+
+    if (itemId) {
+        const item = state.menuItems.find(i => i.id === itemId);
+        if (item && item.dietaryTags) {
+            checkboxes.forEach(cb => {
+                cb.checked = item.dietaryTags.includes(cb.value);
+            });
+        }
+    }
+
+    updateMenuSubcategories();
+
+    // If editing, restore subcategory after populating options
+    if (itemId) {
+        const item = state.menuItems.find(i => i.id === itemId);
+        if (item && item.subcategory) {
+            const subSelect = document.getElementById('menu-subcategory');
+            if (subSelect) subSelect.value = item.subcategory;
+        }
+    }
+}
+
+async function handleMenuSubmit(e) {
+    e.preventDefault();
+
+    const data = {};
+    Object.entries(MENU_FIELD_MAP).forEach(([fieldId, dataKey]) => {
+        const element = document.getElementById(fieldId);
+        if (element) {
+            data[dataKey] = element.value;
+        }
+    });
+
+    // Parse quantity as number
+    data.quantity = parseInt(data.quantity) || 0;
+
+    // Collect dietary tags from checkboxes
+    const dietaryTags = [];
+    document.querySelectorAll('.menu-diet-cb:checked').forEach(cb => {
+        dietaryTags.push(cb.value);
+    });
+    data.dietaryTags = dietaryTags;
+
+    data.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+
+    const id = document.getElementById('menu-id').value;
+
+    try {
+        if (id) {
+            await collections.menuItems.doc(id).update(data);
+            showToast('Menu item updated');
+        } else {
+            data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+            // Set sortOrder for new items
+            const catItems = state.menuItems.filter(i => i.category === data.category);
+            data.sortOrder = catItems.length;
+            await collections.menuItems.add(data);
+            showToast('Menu item added');
+        }
+        closeAllModals();
+    } catch (error) {
+        console.error('Error saving menu item:', error);
+        showToast('Error saving menu item', 'error');
+    }
+}
+
+const deleteMenuItem = createDeleteHandler('menuItems', 'menu item');
+
+function renderMenu() {
+    const container = document.getElementById('menu-container');
+    if (!container) return;
+
+    const items = state.menuItems;
+    const total = items.length;
+    const confirmed = items.filter(i => i.status === 'confirmed').length;
+    const pending = items.filter(i => i.status === 'pending' || !i.status).length;
+
+    // Count unique dietary tags present
+    const allTags = new Set();
+    items.forEach(i => (i.dietaryTags || []).forEach(t => allTags.add(t)));
+
+    // Update stat cards
+    const setEl = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+    setEl('menu-stat-total', total);
+    setEl('menu-stat-confirmed', confirmed);
+    setEl('menu-stat-pending', pending);
+    setEl('menu-stat-dietary', allTags.size);
+
+    // Update dietary summary bar
+    const summaryBar = document.getElementById('menu-dietary-summary');
+    if (summaryBar) {
+        const tagCounts = {};
+        items.forEach(i => (i.dietaryTags || []).forEach(t => { tagCounts[t] = (tagCounts[t] || 0) + 1; }));
+        if (Object.keys(tagCounts).length > 0) {
+            summaryBar.innerHTML = DIETARY_TAGS
+                .filter(dt => tagCounts[dt.key])
+                .map(dt => `<span class="dietary-summary-pill pill-${dt.key.toLowerCase()}">${dt.key}: ${tagCounts[dt.key]}</span>`)
+                .join('');
+        } else {
+            summaryBar.innerHTML = '';
+        }
+    }
+
+    // Apply search
+    let filtered = [...items];
+    if (state.menuSearch) {
+        const q = state.menuSearch.toLowerCase();
+        filtered = filtered.filter(i =>
+            (i.name || '').toLowerCase().includes(q) ||
+            (i.description || '').toLowerCase().includes(q) ||
+            (i.category || '').toLowerCase().includes(q) ||
+            (i.subcategory || '').toLowerCase().includes(q) ||
+            (i.notes || '').toLowerCase().includes(q) ||
+            (i.dietaryTags || []).some(t => t.toLowerCase().includes(q))
+        );
+    }
+
+    // Apply category filter
+    if (state.menuCategoryFilter !== 'all') {
+        filtered = filtered.filter(i => i.category === state.menuCategoryFilter);
+    }
+
+    // Apply status filter
+    if (state.menuStatusFilter !== 'all') {
+        filtered = filtered.filter(i => (i.status || 'pending') === state.menuStatusFilter);
+    }
+
+    // Update search count
+    const searchCount = document.getElementById('menu-search-count');
+    if (searchCount) {
+        if (state.menuSearch || state.menuCategoryFilter !== 'all' || state.menuStatusFilter !== 'all') {
+            searchCount.textContent = `${filtered.length} of ${total} items`;
+        } else {
+            searchCount.textContent = '';
+        }
+    }
+
+    if (filtered.length === 0) {
+        container.innerHTML = `<p class="empty-state">${total === 0 ? 'No menu items added' : 'No items match your filters'}</p>`;
+        return;
+    }
+
+    // Group by category
+    const grouped = {};
+    filtered.forEach(item => {
+        const cat = item.category || 'Uncategorized';
+        if (!grouped[cat]) grouped[cat] = [];
+        grouped[cat].push(item);
+    });
+
+    // Sort categories
+    const sortedCats = Object.keys(grouped).sort((a, b) => {
+        const ai = MENU_CATEGORY_ORDER.indexOf(a);
+        const bi = MENU_CATEGORY_ORDER.indexOf(b);
+        return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+    });
+
+    const isFullView = state.menuViewMode === 'full';
+
+    let html = '';
+    sortedCats.forEach(cat => {
+        const catItems = grouped[cat];
+        const catConfirmed = catItems.filter(i => i.status === 'confirmed').length;
+        const catColor = MENU_CATEGORY_COLORS[cat] || '#888';
+
+        // Group by subcategory within category
+        const subcatGrouped = {};
+        const noSubcat = [];
+        catItems.forEach(item => {
+            if (item.subcategory) {
+                if (!subcatGrouped[item.subcategory]) subcatGrouped[item.subcategory] = [];
+                subcatGrouped[item.subcategory].push(item);
+            } else {
+                noSubcat.push(item);
+            }
+        });
+
+        // Sort subcategories by defined order
+        const catSubs = MENU_CATEGORIES[cat] || [];
+        const sortedSubcats = Object.keys(subcatGrouped).sort((a, b) => {
+            const ai = catSubs.indexOf(a);
+            const bi = catSubs.indexOf(b);
+            return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+        });
+
+        const escapedCat = cat.replace(/'/g, "\\'");
+
+        if (isFullView) {
+            html += `<div class="menu-category-section menu-full-view" style="border-left-color: ${catColor}">
+                <div class="menu-category-heading" style="color: ${catColor}">
+                    <span class="menu-category-name">${cat}</span>
+                    <span class="menu-category-count">${catConfirmed}/${catItems.length} confirmed</span>
+                </div>`;
+        } else {
+            html += `<div class="menu-category-section" style="border-left-color: ${catColor}">
+                <div class="menu-category-header" onclick="toggleMenuCategory('${escapedCat}')">
+                    <div class="menu-category-header-left">
+                        <svg class="packing-chevron" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="2 4 6 8 10 4"/></svg>
+                        <span class="menu-category-name">${cat}</span>
+                        <span class="packing-category-count">${catConfirmed}/${catItems.length} confirmed</span>
+                    </div>
+                </div>
+                <div class="menu-category-body open">`;
+        }
+
+        // Render items without subcategory first
+        noSubcat.forEach(item => { html += renderMenuItemCard(item, catColor); });
+
+        // Render subcategory groups
+        sortedSubcats.forEach(sub => {
+            html += `<div class="menu-subcategory-heading">${sub}</div>`;
+            subcatGrouped[sub].forEach(item => { html += renderMenuItemCard(item, catColor); });
+        });
+
+        if (isFullView) {
+            html += `</div>`;
+        } else {
+            html += `</div></div>`;
+        }
+    });
+
+    container.innerHTML = html;
+}
+
+function renderMenuItemCard(item, catColor) {
+    const statusClass = item.status === 'confirmed' ? 'menu-status-confirmed' : 'menu-status-pending';
+    const statusLabel = item.status === 'confirmed' ? 'Confirmed' : 'Pending';
+    const dietaryPills = (item.dietaryTags || []).map(t =>
+        `<span class="dietary-pill pill-${t.toLowerCase()}">${t}</span>`
+    ).join('');
+    const servingBadge = item.servingStyle ? `<span class="menu-serving-badge">${item.servingStyle}</span>` : '';
+    const escapedName = (item.name || 'Unnamed').replace(/"/g, '&quot;');
+
+    return `<div class="menu-item-card">
+        <div class="menu-item-main">
+            <div class="menu-item-header">
+                <span class="menu-item-name">${item.name || 'Unnamed'}</span>
+                ${dietaryPills ? `<span class="menu-item-pills">${dietaryPills}</span>` : ''}
+            </div>
+            ${item.description ? `<div class="menu-item-desc">${item.description}</div>` : ''}
+            <div class="menu-item-meta">
+                ${servingBadge}
+                <span class="menu-status-badge ${statusClass}">${statusLabel}</span>
+                ${item.quantity ? `<span class="menu-qty-badge">${item.quantity} servings</span>` : ''}
+            </div>
+        </div>
+        <div class="menu-item-actions">
+            <button class="btn-icon-sm" onclick="openMenuModal('${item.id}')" title="Edit">✎</button>
+            <button class="btn-icon-sm delete" onclick="deleteMenuItem('${item.id}')" title="Delete">✕</button>
+        </div>
+    </div>`;
+}
+
+function handleMenuSearch(value) {
+    state.menuSearch = value;
+    const clearBtn = document.getElementById('menu-search-clear');
+    if (clearBtn) clearBtn.style.display = value ? 'block' : 'none';
+    renderMenu();
+}
+
+function clearMenuSearch() {
+    state.menuSearch = '';
+    const input = document.getElementById('menu-search-input');
+    if (input) input.value = '';
+    const clearBtn = document.getElementById('menu-search-clear');
+    if (clearBtn) clearBtn.style.display = 'none';
+    renderMenu();
+}
+
+function handleMenuStatusFilter(value) {
+    state.menuStatusFilter = value;
+    renderMenu();
+}
+
+function filterMenuCategory(category) {
+    state.menuCategoryFilter = category;
+    document.querySelectorAll('.menu-cat-tab').forEach(b =>
+        b.classList.toggle('active', b.dataset.cat === category)
+    );
+    renderMenu();
+}
+
+function setMenuView(mode) {
+    state.menuViewMode = mode;
+    document.querySelectorAll('.menu-view-btn').forEach(b =>
+        b.classList.toggle('active', b.dataset.view === mode)
+    );
+    renderMenu();
+}
+
+function toggleMenuCategory(category) {
+    const sections = document.querySelectorAll('.menu-category-section');
+    sections.forEach(section => {
+        const name = section.querySelector('.menu-category-name');
+        if (name && name.textContent === category) {
+            const body = section.querySelector('.menu-category-body');
+            const chevron = section.querySelector('.packing-chevron');
+            if (body) body.classList.toggle('open');
+            if (chevron) chevron.classList.toggle('collapsed');
+        }
+    });
+}
+
+function toggleMenuPrintMode() {
+    const page = document.getElementById('menu');
+    const printView = document.getElementById('menu-print-view');
+    if (!page || !printView) return;
+
+    page.querySelectorAll('.page-header, .page-search-bar, .menu-view-bar, .stats-grid, .menu-dietary-summary, #menu-container').forEach(el => el.style.display = 'none');
+    printView.style.display = 'block';
+    renderMenuPrintView();
+}
+
+function exitMenuPrintMode() {
+    const page = document.getElementById('menu');
+    const printView = document.getElementById('menu-print-view');
+    if (!page || !printView) return;
+
+    page.querySelectorAll('.page-header, .page-search-bar, .menu-view-bar, .stats-grid, .menu-dietary-summary, #menu-container').forEach(el => el.style.display = '');
+    printView.style.display = 'none';
+}
+
+function renderMenuPrintView() {
+    const printView = document.getElementById('menu-print-view');
+    if (!printView) return;
+
+    const items = state.menuItems.filter(i => i.status === 'confirmed');
+
+    // Group by category
+    const grouped = {};
+    items.forEach(item => {
+        const cat = item.category || 'Uncategorized';
+        if (!grouped[cat]) grouped[cat] = [];
+        grouped[cat].push(item);
+    });
+
+    const sortedCats = Object.keys(grouped).sort((a, b) => {
+        const ai = MENU_CATEGORY_ORDER.indexOf(a);
+        const bi = MENU_CATEGORY_ORDER.indexOf(b);
+        return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+    });
+
+    let html = `
+        <div class="menu-print-content">
+            <button class="menu-print-close" onclick="exitMenuPrintMode()">&times;</button>
+            <div class="menu-print-header">
+                <h1>YMU 13th Fundraising Gala</h1>
+                <div class="menu-print-date">April 25, 2026</div>
+                <div class="menu-print-divider"></div>
+                <h2>Dinner Menu</h2>
+            </div>`;
+
+    sortedCats.forEach(cat => {
+        const catItems = grouped[cat];
+        html += `<div class="menu-print-category">
+            <h3 class="menu-print-cat-title">${cat}</h3>
+            <div class="menu-print-rule"></div>`;
+
+        // Group by subcategory
+        const subcatGrouped = {};
+        const noSubcat = [];
+        catItems.forEach(item => {
+            if (item.subcategory) {
+                if (!subcatGrouped[item.subcategory]) subcatGrouped[item.subcategory] = [];
+                subcatGrouped[item.subcategory].push(item);
+            } else {
+                noSubcat.push(item);
+            }
+        });
+
+        const catSubs = MENU_CATEGORIES[cat] || [];
+        const sortedSubcats = Object.keys(subcatGrouped).sort((a, b) => {
+            const ai = catSubs.indexOf(a);
+            const bi = catSubs.indexOf(b);
+            return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+        });
+
+        noSubcat.forEach(item => {
+            const pills = (item.dietaryTags || []).map(t => `<span class="dietary-pill-sm pill-${t.toLowerCase()}">${t}</span>`).join('');
+            html += `<div class="menu-print-item">
+                <div class="menu-print-item-name">${item.name}${pills ? ' ' + pills : ''}</div>
+                ${item.description ? `<div class="menu-print-item-desc">${item.description}</div>` : ''}
+            </div>`;
+        });
+
+        sortedSubcats.forEach(sub => {
+            html += `<div class="menu-print-subcat">${sub}</div>`;
+            subcatGrouped[sub].forEach(item => {
+                const pills = (item.dietaryTags || []).map(t => `<span class="dietary-pill-sm pill-${t.toLowerCase()}">${t}</span>`).join('');
+                html += `<div class="menu-print-item">
+                    <div class="menu-print-item-name">${item.name}${pills ? ' ' + pills : ''}</div>
+                    ${item.description ? `<div class="menu-print-item-desc">${item.description}</div>` : ''}
+                </div>`;
+            });
+        });
+
+        html += `</div>`;
+    });
+
+    html += `</div>`;
+    printView.innerHTML = html;
+}
+
+// Menu window exports
+window.openMenuModal = openMenuModal;
+window.deleteMenuItem = deleteMenuItem;
+window.handleMenuSearch = handleMenuSearch;
+window.clearMenuSearch = clearMenuSearch;
+window.handleMenuStatusFilter = handleMenuStatusFilter;
+window.filterMenuCategory = filterMenuCategory;
+window.setMenuView = setMenuView;
+window.updateMenuSubcategories = updateMenuSubcategories;
+window.toggleMenuPrintMode = toggleMenuPrintMode;
+window.exitMenuPrintMode = exitMenuPrintMode;
+window.toggleMenuCategory = toggleMenuCategory;
+
+// ==================== PACKING LIST ====================
+
 const PACKING_CATEGORIES = ['Audio', 'Lighting', 'Decor', 'Signage', 'Catering', 'Printed Materials', 'Misc'];
 
 const PACKING_STATUSES = [
@@ -3747,17 +4295,34 @@ function setupCanvas() {
     // Initialize zoom display
     updateZoomDisplay();
 
-    // Add event listeners for auto-save
-    state.canvas.on('object:modified', () => {
-        triggerAutoSave();
+    // Add event listeners for dirty tracking and auto-save
+    state.canvas.on('object:modified', (e) => {
+        if (state.isReceivingRemote) return;
+        const obj = e.target;
+        if (obj && !obj.gridLine) {
+            trackDirtyObject(obj);
+            triggerAutoSave();
+        }
     });
 
-    state.canvas.on('object:added', () => {
-        triggerAutoSave();
+    state.canvas.on('object:added', (e) => {
+        if (state.isReceivingRemote) return;
+        const obj = e.target;
+        if (obj && !obj.gridLine) {
+            assignObjectId(obj);
+            trackDirtyObject(obj);
+            triggerAutoSave();
+        }
     });
 
-    state.canvas.on('object:removed', () => {
-        triggerAutoSave();
+    state.canvas.on('object:removed', (e) => {
+        if (state.isReceivingRemote) return;
+        const obj = e.target;
+        if (obj && !obj.gridLine && obj.objectId) {
+            state.deletedObjectIds.add(obj.objectId);
+            state.dirtyObjectIds.delete(obj.objectId);
+            triggerAutoSave();
+        }
     });
 
     // Add double-click handler for editing element labels and dimension labels
@@ -3770,15 +4335,20 @@ function setupCanvas() {
     });
 
     // Setup undo/redo canvas event listeners
-    state.canvas.on('object:added', () => {
-        if (!state.isUndoRedoing) saveCanvasState();
+    state.canvas.on('object:added', (e) => {
+        if (!state.isUndoRedoing && !state.isReceivingRemote) saveCanvasState();
     });
-    state.canvas.on('object:modified', () => {
-        if (!state.isUndoRedoing) saveCanvasState();
+    state.canvas.on('object:modified', (e) => {
+        if (!state.isUndoRedoing && !state.isReceivingRemote) saveCanvasState();
     });
-    state.canvas.on('object:removed', () => {
-        if (!state.isUndoRedoing) saveCanvasState();
+    state.canvas.on('object:removed', (e) => {
+        if (!state.isUndoRedoing && !state.isReceivingRemote) saveCanvasState();
     });
+
+    // Properties panel: show/hide on selection
+    state.canvas.on('selection:created', (e) => { showPropertiesPanel(e.selected); });
+    state.canvas.on('selection:updated', (e) => { showPropertiesPanel(e.selected); });
+    state.canvas.on('selection:cleared', () => { hidePropertiesPanel(); });
 
     // Track user interaction to prevent canvas resize during mouse operations
     state.canvas.on('mouse:down', () => {
@@ -3931,8 +4501,16 @@ function setupStagePlotTabs() {
             // Update state
             state.currentStagePlotType = stageType;
 
+            // Detach previous listener
+            if (state.plotObjectsUnsubscribe) {
+                state.plotObjectsUnsubscribe();
+                state.plotObjectsUnsubscribe = null;
+            }
+
             // Reset plot selection and update selector
             state.currentPlotId = null;
+            state.dirtyObjectIds.clear();
+            state.deletedObjectIds.clear();
             updatePlotSelector();
 
             // Clear canvas
@@ -3955,6 +4533,12 @@ function setupStagePlotControls() {
             if (plotId) {
                 loadPlot(plotId);
             } else {
+                // Detach listener
+                if (state.plotObjectsUnsubscribe) {
+                    state.plotObjectsUnsubscribe();
+                    state.plotObjectsUnsubscribe = null;
+                }
+
                 // Clear canvas if no plot selected
                 if (state.canvas) {
                     deleteStage();  // Clean up stage first
@@ -3963,6 +4547,8 @@ function setupStagePlotControls() {
                     drawGrid();
                 }
                 state.currentPlotId = null;
+                state.dirtyObjectIds.clear();
+                state.deletedObjectIds.clear();
 
                 // Clear and disable plot name input
                 const plotNameInput = document.getElementById('plot-name-input');
@@ -4085,7 +4671,7 @@ async function createNewPlot() {
         stageType: state.currentStagePlotType,
         width: width,
         height: height,
-        canvasData: null,
+        schemaVersion: 2,
         createdAt: firebase.firestore.FieldValue.serverTimestamp(),
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
@@ -4125,7 +4711,12 @@ async function createNewPlot() {
         // Clear undo/redo stacks for new plot
         state.undoStack = [];
         state.redoStack = [];
+        state.dirtyObjectIds.clear();
+        state.deletedObjectIds.clear();
         updateUndoRedoButtons();
+
+        // Setup real-time listener for new plot
+        setupPlotObjectsListener(docRef.id);
 
         // Save initial state
         setTimeout(() => {
@@ -4155,6 +4746,18 @@ async function deletePlot() {
     }
 
     try {
+        // Detach listener
+        if (state.plotObjectsUnsubscribe) {
+            state.plotObjectsUnsubscribe();
+            state.plotObjectsUnsubscribe = null;
+        }
+
+        // Delete subcollection objects
+        const objectsSnap = await collections.stagePlots.doc(state.currentPlotId).collection('objects').get();
+        const batch = firebase.firestore().batch();
+        objectsSnap.docs.forEach(doc => batch.delete(doc.ref));
+        await batch.commit();
+
         await collections.stagePlots.doc(state.currentPlotId).delete();
 
         // Clear current plot
@@ -4195,12 +4798,31 @@ async function duplicatePlot() {
             stageType: originalPlot.stageType,
             width: originalPlot.width || 40,
             height: originalPlot.height || 30,
-            canvasData: originalPlot.canvasData, // Copy the canvas data
+            schemaVersion: 2,
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         };
 
         const docRef = await collections.stagePlots.add(duplicatedPlotData);
+
+        // Copy subcollection objects from original to new plot
+        const objectsSnap = await collections.stagePlots.doc(originalPlot.id).collection('objects').get();
+        if (objectsSnap.docs.length > 0) {
+            const batch = firebase.firestore().batch();
+            objectsSnap.docs.forEach(doc => {
+                const newObjRef = collections.stagePlots.doc(docRef.id).collection('objects').doc();
+                const data = doc.data();
+                data.objectId = newObjRef.id;
+                batch.set(newObjRef, data);
+            });
+            await batch.commit();
+        } else if (originalPlot.canvasData) {
+            // Old format: copy canvasData for migration on load
+            await collections.stagePlots.doc(docRef.id).update({
+                canvasData: originalPlot.canvasData,
+                schemaVersion: null
+            });
+        }
 
         // Load the new duplicated plot
         state.currentPlotId = docRef.id;
@@ -4226,15 +4848,23 @@ async function duplicatePlot() {
 }
 
 // Load Plot from Firestore
-function loadPlot(plotId) {
+async function loadPlot(plotId) {
     const plot = state.stagePlots.find(p => p.id === plotId);
     if (!plot) return;
+
+    // Detach previous listener
+    if (state.plotObjectsUnsubscribe) {
+        state.plotObjectsUnsubscribe();
+        state.plotObjectsUnsubscribe = null;
+    }
 
     state.currentPlotId = plotId;
 
     // Clear undo/redo stacks when loading a different plot
     state.undoStack = [];
     state.redoStack = [];
+    state.dirtyObjectIds.clear();
+    state.deletedObjectIds.clear();
     updateUndoRedoButtons();
 
     // Update plot name input
@@ -4246,41 +4876,123 @@ function loadPlot(plotId) {
 
     // Clear canvas and delete existing stage
     if (state.canvas) {
-        deleteStage();  // Clean up old stage first
+        deleteStage();
         state.canvas.clear();
         state.canvas.backgroundColor = '#ffffff';
         drawGrid();
 
-        // Load canvas data if it exists
-        if (plot.canvasData) {
-            state.canvas.loadFromJSON(plot.canvasData, () => {
-                state.canvas.renderAll();
-                // Redraw grid to ensure it's in the background
-                drawGrid();
-
-                rebuildStageRectangles();
-                sendStageRectsToBack();
-
-                // Set to draw tool (tools are always available now)
-                setTool('draw');
-
-                // Save initial state for undo/redo
-                setTimeout(() => {
-                    saveCanvasState();
-                }, 100);
-            });
+        if (plot.schemaVersion === 2) {
+            // New format: load from subcollection
+            await loadPlotFromSubcollection(plotId);
+        } else if (plot.canvasData) {
+            // Old format: migrate to subcollection
+            await migrateOldPlotFormat(plotId, plot.canvasData);
         } else {
-            // No canvas data, just set draw tool
+            // Empty plot
             setTool('draw');
-
-            // Save initial state
-            setTimeout(() => {
-                saveCanvasState();
-            }, 100);
+            setTimeout(() => saveCanvasState(), 100);
         }
+
+        // Setup real-time listener
+        setupPlotObjectsListener(plotId);
     }
 
     updateSaveStatus('Loaded');
+}
+
+// Load plot objects from Firestore subcollection
+async function loadPlotFromSubcollection(plotId) {
+    const objectsSnap = await collections.stagePlots.doc(plotId).collection('objects').get();
+
+    if (objectsSnap.empty) {
+        setTool('draw');
+        setTimeout(() => saveCanvasState(), 100);
+        return;
+    }
+
+    const fabricObjects = [];
+    objectsSnap.docs.forEach(doc => {
+        const data = doc.data();
+        if (data.fabricData) {
+            // Merge custom props back onto the fabric data
+            const objData = { ...data.fabricData };
+            objData.objectId = data.objectId;
+            objData._zIndex = data.zIndex ?? 0;
+            if (data.rectId) objData.rectId = data.rectId;
+            fabricObjects.push(objData);
+        }
+    });
+
+    // Sort by zIndex to preserve layer ordering across clients
+    fabricObjects.sort((a, b) => a._zIndex - b._zIndex);
+
+    if (fabricObjects.length === 0) {
+        setTool('draw');
+        setTimeout(() => saveCanvasState(), 100);
+        return;
+    }
+
+    // Use enlivenObjects to deserialize
+    state.isReceivingRemote = true;
+    fabric.util.enlivenObjects(fabricObjects, (objects) => {
+        objects.forEach(obj => {
+            state.canvas.add(obj);
+        });
+        state.canvas.renderAll();
+        drawGrid();
+        rebuildStageRectangles();
+        sendStageRectsToBack();
+        setTool('draw');
+        state.isReceivingRemote = false;
+        setTimeout(() => saveCanvasState(), 100);
+    });
+}
+
+// Migrate old canvasData blob to per-object subcollection
+async function migrateOldPlotFormat(plotId, canvasData) {
+    return new Promise((resolve) => {
+        state.isReceivingRemote = true;
+        state.canvas.loadFromJSON(canvasData, async () => {
+            state.canvas.renderAll();
+            drawGrid();
+            rebuildStageRectangles();
+            sendStageRectsToBack();
+
+            // Assign objectIds and batch-write to subcollection
+            const objects = state.canvas.getObjects().filter(o => !o.gridLine);
+            const batch = firebase.firestore().batch();
+
+            objects.forEach((obj, index) => {
+                assignObjectId(obj);
+                const objData = obj.toObject(CUSTOM_FABRIC_PROPS);
+                const docRef = collections.stagePlots.doc(plotId).collection('objects').doc(obj.objectId);
+                batch.set(docRef, {
+                    objectId: obj.objectId,
+                    fabricType: obj.type,
+                    fabricData: objData,
+                    rectId: obj.rectId || null,
+                    zIndex: index,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    updatedBy: CLIENT_ID
+                });
+            });
+
+            // Update plot document to mark as migrated
+            const plotRef = collections.stagePlots.doc(plotId);
+            batch.update(plotRef, {
+                schemaVersion: 2,
+                canvasData: firebase.firestore.FieldValue.delete()
+            });
+
+            await batch.commit();
+            console.log(`Migrated plot ${plotId} to schema v2 with ${objects.length} objects`);
+
+            setTool('draw');
+            state.isReceivingRemote = false;
+            setTimeout(() => saveCanvasState(), 100);
+            resolve();
+        });
+    });
 }
 
 // Trigger Auto-Save (debounced)
@@ -4298,28 +5010,63 @@ function triggerAutoSave() {
     updateSaveStatus('Saving...');
 }
 
-// Save Plot to Firestore
+// Save Plot to Firestore (per-object batch write)
 async function savePlot() {
     if (!state.currentPlotId || !state.canvas) return;
 
-    // Use fixed dimensions
-    const width = 40;
-    const height = 30;
+    const dirtyIds = new Set(state.dirtyObjectIds);
+    const deletedIds = new Set(state.deletedObjectIds);
+    state.dirtyObjectIds.clear();
+    state.deletedObjectIds.clear();
 
-    const canvasData = state.canvas.toJSON();
-
-    const plotData = {
-        width: width,
-        height: height,
-        canvasData: canvasData,
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    };
+    if (dirtyIds.size === 0 && deletedIds.size === 0) {
+        updateSaveStatus('Saved');
+        return;
+    }
 
     try {
-        await collections.stagePlots.doc(state.currentPlotId).update(plotData);
+        const batch = firebase.firestore().batch();
+        const plotRef = collections.stagePlots.doc(state.currentPlotId);
+
+        // Save dirty objects
+        const allObjects = state.canvas.getObjects();
+        const nonGridObjects = allObjects.filter(o => !o.gridLine);
+        dirtyIds.forEach(objectId => {
+            const obj = allObjects.find(o => o.objectId === objectId);
+            if (obj && !obj.gridLine) {
+                const objData = obj.toObject(CUSTOM_FABRIC_PROPS);
+                const zIndex = nonGridObjects.indexOf(obj);
+                const docRef = plotRef.collection('objects').doc(objectId);
+                batch.set(docRef, {
+                    objectId: objectId,
+                    fabricType: obj.type,
+                    fabricData: objData,
+                    rectId: obj.rectId || null,
+                    zIndex: zIndex,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    updatedBy: CLIENT_ID
+                });
+            }
+        });
+
+        // Delete removed objects
+        deletedIds.forEach(objectId => {
+            const docRef = plotRef.collection('objects').doc(objectId);
+            batch.delete(docRef);
+        });
+
+        // Update plot timestamp
+        batch.update(plotRef, {
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+
+        await batch.commit();
         updateSaveStatus('Saved');
     } catch (error) {
         console.error('Error saving plot:', error);
+        // Re-add failed items for retry
+        dirtyIds.forEach(id => state.dirtyObjectIds.add(id));
+        deletedIds.forEach(id => state.deletedObjectIds.add(id));
         updateSaveStatus('Error saving');
     }
 }
@@ -4598,9 +5345,9 @@ function updateZoomDisplay() {
 
 // Undo/Redo Functionality
 function saveCanvasState() {
-    if (state.isUndoRedoing || !state.canvas || !state.currentPlotId) return;
+    if (state.isUndoRedoing || state.isReceivingRemote || !state.canvas || !state.currentPlotId) return;
 
-    const canvasState = state.canvas.toJSON();
+    const canvasState = state.canvas.toJSON(CUSTOM_FABRIC_PROPS);
     state.undoStack.push(JSON.stringify(canvasState));
 
     // Limit history to 30 states
@@ -4617,7 +5364,7 @@ function undo() {
     if (state.undoStack.length === 0 || !state.canvas) return;
 
     // Save current state to redo stack
-    const currentState = state.canvas.toJSON();
+    const currentState = state.canvas.toJSON(CUSTOM_FABRIC_PROPS);
     state.redoStack.push(JSON.stringify(currentState));
 
     // Restore previous state
@@ -4630,7 +5377,7 @@ function undo() {
         rebuildStageRectangles();
         state.isUndoRedoing = false;
         updateUndoRedoButtons();
-        triggerAutoSave();
+        syncAfterUndoRedo();
     });
 }
 
@@ -4638,7 +5385,7 @@ function redo() {
     if (state.redoStack.length === 0 || !state.canvas) return;
 
     // Save current state to undo stack
-    const currentState = state.canvas.toJSON();
+    const currentState = state.canvas.toJSON(CUSTOM_FABRIC_PROPS);
     state.undoStack.push(JSON.stringify(currentState));
 
     // Restore next state
@@ -4651,7 +5398,7 @@ function redo() {
         rebuildStageRectangles();
         state.isUndoRedoing = false;
         updateUndoRedoButtons();
-        triggerAutoSave();
+        syncAfterUndoRedo();
     });
 }
 
@@ -4940,6 +5687,14 @@ function sendStageRectsToBack() {
         if (obj.gridLine) state.canvas.sendToBack(obj);
     });
     state.canvas.renderAll();
+    // Mark all non-grid objects dirty so updated zIndex gets saved
+    if (!state.isReceivingRemote) {
+        state.canvas.getObjects().forEach(obj => {
+            if (!obj.gridLine && obj.objectId) {
+                state.dirtyObjectIds.add(obj.objectId);
+            }
+        });
+    }
 }
 
 // Start Drawing a Rectangle
@@ -4958,18 +5713,26 @@ function startDrawingRectangle(e) {
     const canvasHeight = state.canvas.height;
     const pixelsPerFoot = Math.min(canvasWidth / width, canvasHeight / height);
 
-    // Create temporary rectangle
+    // Create temporary rectangle with fill properties
+    const defaultStroke = state.defaultRectStroke || '#c9a961';
+    const defaultFillColor = state.defaultFillColor || '#c9a961';
+    const defaultFillOpacity = state.defaultFillOpacity || 0.2;
+    const rgb = hexToRgb(defaultFillColor);
+
     state.currentDrawingRect = new fabric.Rect({
         left: pointer.x,
         top: pointer.y,
         width: 0,
         height: 0,
-        fill: 'rgba(201, 169, 97, 0.2)',
-        stroke: '#c9a961',
+        fill: `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${defaultFillOpacity})`,
+        stroke: defaultStroke,
         strokeWidth: 3,
         selectable: false,
         evented: false,
-        pixelsPerFoot: pixelsPerFoot
+        pixelsPerFoot: pixelsPerFoot,
+        fillEnabled: true,
+        fillColor: defaultFillColor,
+        fillOpacity: defaultFillOpacity
     });
 
     state.canvas.add(state.currentDrawingRect);
@@ -5024,14 +5787,16 @@ function finishDrawingRectangle(e) {
     const widthFeet = rect.width / pixelsPerFoot;
     const heightFeet = rect.height / pixelsPerFoot;
 
-    // Create dimension labels
+    // Create dimension labels using rect's stroke color
+    const labelColor = rect.stroke || '#c9a961';
+
     const widthLabel = new fabric.Text(feetToFeetInches(widthFeet), {
         left: rect.left + rect.width / 2,
         top: rect.top - 15,
         fontSize: 12,
         fontFamily: 'Arial, sans-serif',
         fontWeight: 'bold',
-        fill: '#c9a961',
+        fill: labelColor,
         backgroundColor: 'rgba(255, 255, 255, 0.8)',
         padding: 3,
         originX: 'center',
@@ -5049,7 +5814,7 @@ function finishDrawingRectangle(e) {
         fontSize: 12,
         fontFamily: 'Arial, sans-serif',
         fontWeight: 'bold',
-        fill: '#c9a961',
+        fill: labelColor,
         backgroundColor: 'rgba(255, 255, 255, 0.8)',
         padding: 3,
         originX: 'center',
@@ -5666,6 +6431,336 @@ function printPlot() {
             printWindow.print();
         }, 250);
     };
+}
+
+// =============================================
+// REAL-TIME COLLABORATION HELPERS
+// =============================================
+
+// Assign a unique objectId to a Fabric object if it doesn't have one
+function assignObjectId(obj) {
+    if (!obj.objectId && !obj.gridLine) {
+        obj.objectId = 'obj_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    }
+}
+
+// Mark an object (and related rect labels) as dirty
+function trackDirtyObject(obj) {
+    if (!obj || obj.gridLine) return;
+    assignObjectId(obj);
+    state.dirtyObjectIds.add(obj.objectId);
+
+    // If it's a rect, also mark its dimension labels
+    if (obj.rectId) {
+        const rectData = state.stageRectangles.find(r => r.id === obj.rectId);
+        if (rectData) {
+            if (rectData.widthLabel && rectData.widthLabel !== obj) {
+                assignObjectId(rectData.widthLabel);
+                state.dirtyObjectIds.add(rectData.widthLabel.objectId);
+            }
+            if (rectData.heightLabel && rectData.heightLabel !== obj) {
+                assignObjectId(rectData.heightLabel);
+                state.dirtyObjectIds.add(rectData.heightLabel.objectId);
+            }
+            if (rectData.rect && rectData.rect !== obj) {
+                assignObjectId(rectData.rect);
+                state.dirtyObjectIds.add(rectData.rect.objectId);
+            }
+        }
+    }
+}
+
+// Setup real-time listener for plot objects subcollection
+function setupPlotObjectsListener(plotId) {
+    // Detach previous listener
+    if (state.plotObjectsUnsubscribe) {
+        state.plotObjectsUnsubscribe();
+        state.plotObjectsUnsubscribe = null;
+    }
+
+    const unsubscribe = collections.stagePlots.doc(plotId).collection('objects')
+        .onSnapshot((snapshot) => {
+            if (!state.canvas || state.currentPlotId !== plotId) return;
+
+            const remoteChanges = snapshot.docChanges().filter(c => c.doc.data().updatedBy !== CLIENT_ID);
+            if (remoteChanges.length > 0) {
+                state.isReceivingRemote = true;
+
+                remoteChanges.forEach(change => {
+                    const data = change.doc.data();
+                    if (change.type === 'added' || change.type === 'modified') {
+                        applyRemoteObject(data);
+                    } else if (change.type === 'removed') {
+                        removeRemoteObject(data.objectId);
+                    }
+                });
+
+                state.canvas.renderAll();
+                state.isReceivingRemote = false;
+            }
+        }, (error) => {
+            console.error('Error listening to plot objects:', error);
+        });
+
+    state.plotObjectsUnsubscribe = unsubscribe;
+}
+
+// Apply a remote object change to the canvas
+function applyRemoteObject(data) {
+    if (!data.fabricData || !data.objectId) return;
+
+    // Find existing object on canvas
+    const existing = state.canvas.getObjects().find(o => o.objectId === data.objectId);
+
+    if (existing) {
+        // Update existing object properties
+        const fabricData = data.fabricData;
+        existing.set(fabricData);
+        existing.setCoords();
+    } else {
+        // Create new object from fabric data
+        const objData = { ...data.fabricData, objectId: data.objectId };
+        if (data.rectId) objData.rectId = data.rectId;
+
+        fabric.util.enlivenObjects([objData], (objects) => {
+            objects.forEach(obj => {
+                // Insert at correct z-position based on stored zIndex
+                const targetZIndex = data.zIndex;
+                if (targetZIndex != null) {
+                    const nonGridObjects = state.canvas.getObjects().filter(o => !o.gridLine);
+                    const gridCount = state.canvas.getObjects().filter(o => o.gridLine).length;
+                    // Clamp insertion index: gridCount offset + position among non-grid objects
+                    const insertAt = Math.min(gridCount + targetZIndex, state.canvas.getObjects().length);
+                    state.canvas.insertAt(obj, insertAt);
+                } else {
+                    state.canvas.add(obj);
+                }
+            });
+            // Rebuild stage rectangles if rect-related
+            if (data.rectId) {
+                rebuildStageRectangles();
+                sendStageRectsToBack();
+            }
+        });
+    }
+}
+
+// Remove a remote object from the canvas
+function removeRemoteObject(objectId) {
+    if (!objectId) return;
+    const obj = state.canvas.getObjects().find(o => o.objectId === objectId);
+    if (obj) {
+        // If it's a rect, also remove related labels
+        if (obj.rectId) {
+            const rectData = state.stageRectangles.find(r => r.id === obj.rectId);
+            if (rectData) {
+                if (rectData.widthLabel) state.canvas.remove(rectData.widthLabel);
+                if (rectData.heightLabel) state.canvas.remove(rectData.heightLabel);
+                if (rectData.rect) state.canvas.remove(rectData.rect);
+                state.stageRectangles = state.stageRectangles.filter(r => r.id !== obj.rectId);
+                return;
+            }
+        }
+        state.canvas.remove(obj);
+    }
+}
+
+// After undo/redo, sync entire canvas state to Firestore
+async function syncAfterUndoRedo() {
+    if (!state.currentPlotId || !state.canvas) return;
+
+    state.isReceivingRemote = true;
+
+    // Get all current canvas objects (non-grid)
+    const canvasObjects = state.canvas.getObjects().filter(o => !o.gridLine);
+    const canvasObjectIds = new Set();
+
+    // Assign IDs and mark all as dirty
+    canvasObjects.forEach(obj => {
+        assignObjectId(obj);
+        canvasObjectIds.add(obj.objectId);
+        state.dirtyObjectIds.add(obj.objectId);
+    });
+
+    // Find objects in Firestore that are no longer on canvas
+    try {
+        const objectsSnap = await collections.stagePlots.doc(state.currentPlotId).collection('objects').get();
+        objectsSnap.docs.forEach(doc => {
+            const objectId = doc.data().objectId;
+            if (!canvasObjectIds.has(objectId)) {
+                state.deletedObjectIds.add(objectId);
+            }
+        });
+    } catch (error) {
+        console.error('Error fetching objects for undo/redo sync:', error);
+    }
+
+    state.isReceivingRemote = false;
+    triggerAutoSave();
+}
+
+// =============================================
+// PROPERTIES PANEL (COLOR PICKER + FILL)
+// =============================================
+
+function hexToRgb(hex) {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result ? {
+        r: parseInt(result[1], 16),
+        g: parseInt(result[2], 16),
+        b: parseInt(result[3], 16)
+    } : { r: 0, g: 0, b: 0 };
+}
+
+function rgbaToHex(rgba) {
+    if (!rgba || rgba === 'transparent') return '#000000';
+    if (rgba.startsWith('#')) return rgba;
+    const match = rgba.match(/(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+    if (!match) return '#000000';
+    const r = parseInt(match[1]).toString(16).padStart(2, '0');
+    const g = parseInt(match[2]).toString(16).padStart(2, '0');
+    const b = parseInt(match[3]).toString(16).padStart(2, '0');
+    return `#${r}${g}${b}`;
+}
+
+function showPropertiesPanel(selectedObjects) {
+    const panel = document.getElementById('properties-panel');
+    if (!panel || !selectedObjects || selectedObjects.length === 0) return;
+
+    const obj = selectedObjects[0];
+
+    // Skip grid lines and dimension labels
+    if (obj.gridLine || obj.isRectDimension) return;
+
+    const strokeInput = document.getElementById('prop-stroke-color');
+    const fillEnabledInput = document.getElementById('prop-fill-enabled');
+    const fillColorInput = document.getElementById('prop-fill-color');
+    const fillOpacitySelect = document.getElementById('prop-fill-opacity');
+    const fillControls = document.getElementById('prop-fill-controls');
+
+    // Determine if this is a rect-type object (show fill controls)
+    const isRect = obj.type === 'rect' && obj.rectId;
+
+    // Set stroke color
+    if (strokeInput) {
+        const strokeColor = obj.stroke || (isRect ? '#c9a961' : '#000000');
+        strokeInput.value = rgbaToHex(strokeColor);
+    }
+
+    // Show/hide fill controls
+    if (fillControls) {
+        fillControls.style.display = isRect ? 'contents' : 'none';
+    }
+
+    if (isRect) {
+        const fillEnabled = obj.fillEnabled !== undefined ? obj.fillEnabled : true;
+        const fillColor = obj.fillColor || rgbaToHex(obj.fill) || '#c9a961';
+        const fillOpacity = obj.fillOpacity !== undefined ? obj.fillOpacity : 0.2;
+
+        if (fillEnabledInput) fillEnabledInput.checked = fillEnabled;
+        if (fillColorInput) fillColorInput.value = fillColor;
+        if (fillOpacitySelect) {
+            // Find closest opacity option
+            const options = ['0.2', '0.4', '0.6', '1.0'];
+            const closest = options.reduce((prev, curr) =>
+                Math.abs(parseFloat(curr) - fillOpacity) < Math.abs(parseFloat(prev) - fillOpacity) ? curr : prev
+            );
+            fillOpacitySelect.value = closest;
+        }
+    }
+
+    panel.style.display = 'flex';
+}
+
+function hidePropertiesPanel() {
+    const panel = document.getElementById('properties-panel');
+    if (panel) panel.style.display = 'none';
+}
+
+function setupPropertiesPanel() {
+    const strokeInput = document.getElementById('prop-stroke-color');
+    const fillEnabledInput = document.getElementById('prop-fill-enabled');
+    const fillColorInput = document.getElementById('prop-fill-color');
+    const fillOpacitySelect = document.getElementById('prop-fill-opacity');
+
+    if (strokeInput) {
+        strokeInput.addEventListener('input', () => {
+            const obj = state.canvas?.getActiveObject();
+            if (!obj) return;
+
+            const newColor = strokeInput.value;
+            obj.set('stroke', newColor);
+
+            // If rect, update dimension label colors to match
+            if (obj.rectId) {
+                const rectData = state.stageRectangles.find(r => r.id === obj.rectId);
+                if (rectData) {
+                    rectData.widthLabel.set('fill', newColor);
+                    rectData.heightLabel.set('fill', newColor);
+                    trackDirtyObject(rectData.widthLabel);
+                    trackDirtyObject(rectData.heightLabel);
+                }
+            }
+
+            trackDirtyObject(obj);
+            state.canvas.renderAll();
+            triggerAutoSave();
+        });
+    }
+
+    if (fillEnabledInput) {
+        fillEnabledInput.addEventListener('change', () => {
+            const obj = state.canvas?.getActiveObject();
+            if (!obj || !obj.rectId) return;
+
+            obj.fillEnabled = fillEnabledInput.checked;
+            applyFillToRect(obj);
+            trackDirtyObject(obj);
+            state.canvas.renderAll();
+            triggerAutoSave();
+        });
+    }
+
+    if (fillColorInput) {
+        fillColorInput.addEventListener('input', () => {
+            const obj = state.canvas?.getActiveObject();
+            if (!obj || !obj.rectId) return;
+
+            obj.fillColor = fillColorInput.value;
+            if (obj.fillEnabled) {
+                applyFillToRect(obj);
+            }
+            trackDirtyObject(obj);
+            state.canvas.renderAll();
+            triggerAutoSave();
+        });
+    }
+
+    if (fillOpacitySelect) {
+        fillOpacitySelect.addEventListener('change', () => {
+            const obj = state.canvas?.getActiveObject();
+            if (!obj || !obj.rectId) return;
+
+            obj.fillOpacity = parseFloat(fillOpacitySelect.value);
+            if (obj.fillEnabled) {
+                applyFillToRect(obj);
+            }
+            trackDirtyObject(obj);
+            state.canvas.renderAll();
+            triggerAutoSave();
+        });
+    }
+}
+
+function applyFillToRect(rect) {
+    if (rect.fillEnabled) {
+        const color = rect.fillColor || '#c9a961';
+        const opacity = rect.fillOpacity !== undefined ? rect.fillOpacity : 0.2;
+        const rgb = hexToRgb(color);
+        rect.set('fill', `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${opacity})`);
+    } else {
+        rect.set('fill', 'transparent');
+    }
 }
 
 // ========================================

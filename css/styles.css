@@ -4473,6 +4473,60 @@ body.menu-open {
     font-size: 0.85rem;
 }
 
+/* Properties Panel */
+.properties-panel {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.6rem 1.5rem;
+    background: #f8f9fa;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    margin-bottom: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.properties-panel .prop-label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #2c3e50;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.properties-panel input[type="color"] {
+    width: 32px;
+    height: 28px;
+    padding: 0;
+    border: 2px solid #ddd;
+    border-radius: 4px;
+    cursor: pointer;
+    background: none;
+}
+
+.properties-panel input[type="color"]::-webkit-color-swatch-wrapper {
+    padding: 1px;
+}
+
+.properties-panel input[type="color"]::-webkit-color-swatch {
+    border: none;
+    border-radius: 2px;
+}
+
+.properties-panel select {
+    padding: 0.3rem 0.5rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    background: white;
+}
+
+.properties-panel input[type="checkbox"] {
+    margin: 0;
+    cursor: pointer;
+}
+
 /* ========================================
    Venue Map Page
    ======================================== */
@@ -5019,6 +5073,7 @@ body.menu-open {
 @media print {
     .element-library,
     .plot-controls,
+    .properties-panel,
     .canvas-info,
     .page-header {
         display: none !important;
@@ -5515,5 +5570,522 @@ body.menu-open {
     .packing-progress-legend {
         flex-wrap: wrap;
         gap: 10px;
+    }
+}
+
+/* ==================== MENU PAGE ==================== */
+
+/* View bar */
+.menu-view-bar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+.menu-view-toggle {
+    display: flex;
+    border: 1px solid #e8e6df;
+    border-radius: 8px;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+.menu-view-btn {
+    padding: 7px 16px;
+    font-size: 0.82rem;
+    font-weight: 500;
+    border: none;
+    background: #fff;
+    color: #666;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.menu-view-btn + .menu-view-btn {
+    border-left: 1px solid #e8e6df;
+}
+
+.menu-view-btn.active {
+    background: #1a3a35;
+    color: #c9a961;
+}
+
+.menu-view-btn:hover:not(.active) {
+    background: #f5f2eb;
+}
+
+/* Category tabs */
+.menu-category-tabs {
+    display: flex;
+    gap: 4px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    flex: 1;
+}
+
+.menu-category-tabs::-webkit-scrollbar {
+    display: none;
+}
+
+.menu-cat-tab {
+    padding: 7px 14px;
+    font-size: 0.82rem;
+    font-weight: 500;
+    border: none;
+    background: transparent;
+    color: #888;
+    cursor: pointer;
+    white-space: nowrap;
+    border-bottom: 2px solid transparent;
+    transition: all 0.15s;
+    border-radius: 6px 6px 0 0;
+}
+
+.menu-cat-tab:hover {
+    color: #555;
+    background: rgba(201, 169, 97, 0.06);
+}
+
+.menu-cat-tab.active {
+    color: #c9a961;
+    border-bottom-color: #c9a961;
+    background: rgba(201, 169, 97, 0.08);
+}
+
+/* Dietary pills */
+.dietary-pill {
+    display: inline-block;
+    font-size: 0.65rem;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 4px;
+    letter-spacing: 0.5px;
+    line-height: 1.5;
+}
+
+.pill-v { background: #dcfce7; color: #15803d; }
+.pill-vg { background: #d1fae5; color: #065f46; }
+.pill-gf { background: #fef3c7; color: #92400e; }
+.pill-df { background: #dbeafe; color: #1e40af; }
+.pill-nf { background: #fee2e2; color: #991b1b; }
+
+.dietary-pill-sm {
+    display: inline-block;
+    font-size: 0.55rem;
+    font-weight: 700;
+    padding: 0px 4px;
+    border-radius: 3px;
+    letter-spacing: 0.3px;
+    vertical-align: middle;
+}
+
+.dietary-pill-sm.pill-v { background: #dcfce7; color: #15803d; }
+.dietary-pill-sm.pill-vg { background: #d1fae5; color: #065f46; }
+.dietary-pill-sm.pill-gf { background: #fef3c7; color: #92400e; }
+.dietary-pill-sm.pill-df { background: #dbeafe; color: #1e40af; }
+.dietary-pill-sm.pill-nf { background: #fee2e2; color: #991b1b; }
+
+/* Dietary summary bar */
+.menu-dietary-summary {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+}
+
+.dietary-summary-pill {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.78rem;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 12px;
+}
+
+.dietary-summary-pill.pill-v { background: #dcfce7; color: #15803d; }
+.dietary-summary-pill.pill-vg { background: #d1fae5; color: #065f46; }
+.dietary-summary-pill.pill-gf { background: #fef3c7; color: #92400e; }
+.dietary-summary-pill.pill-df { background: #dbeafe; color: #1e40af; }
+.dietary-summary-pill.pill-nf { background: #fee2e2; color: #991b1b; }
+
+/* Dietary checkboxes in modal */
+.menu-dietary-checkboxes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 8px 0;
+}
+
+.menu-dietary-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    color: #555;
+}
+
+.menu-dietary-check input[type="checkbox"] {
+    margin: 0;
+}
+
+/* Menu category sections */
+.menu-category-section {
+    background: #fff;
+    border: 1px solid #e8e6df;
+    border-radius: 14px;
+    margin-bottom: 14px;
+    overflow: hidden;
+    border-left: 4px solid #888;
+}
+
+.menu-category-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    cursor: pointer;
+    user-select: none;
+    background: #faf8f3;
+    border-bottom: 1px solid #e8e6df;
+    transition: background 0.15s;
+}
+
+.menu-category-header:hover {
+    background: #f5f2eb;
+}
+
+.menu-category-header-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.menu-category-name {
+    font-weight: 600;
+    font-size: 0.95rem;
+}
+
+.menu-category-count {
+    font-size: 0.78rem;
+    color: #888;
+}
+
+.menu-category-body {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease;
+}
+
+.menu-category-body.open {
+    max-height: 5000px;
+}
+
+/* Full view */
+.menu-full-view {
+    border-radius: 14px;
+}
+
+.menu-category-heading {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    padding: 16px 18px 8px;
+    border-bottom: 1px solid #e8e6df;
+}
+
+.menu-category-heading .menu-category-name {
+    font-size: 1.05rem;
+    font-weight: 700;
+}
+
+.menu-category-heading .menu-category-count {
+    font-size: 0.78rem;
+    color: #999;
+}
+
+/* Subcategory headings */
+.menu-subcategory-heading {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 12px 18px 4px;
+    border-top: 1px solid #f0eee8;
+}
+
+/* Menu item cards */
+.menu-item-card {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    padding: 12px 18px;
+    border-bottom: 1px solid #f0eee8;
+    transition: background 0.15s;
+}
+
+.menu-item-card:last-child {
+    border-bottom: none;
+}
+
+.menu-item-card:hover {
+    background: #faf8f3;
+}
+
+.menu-item-main {
+    flex: 1;
+    min-width: 0;
+}
+
+.menu-item-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.menu-item-name {
+    font-weight: 600;
+    font-size: 0.92rem;
+    color: #2d2d2d;
+}
+
+.menu-item-pills {
+    display: inline-flex;
+    gap: 3px;
+}
+
+.menu-item-desc {
+    font-size: 0.82rem;
+    color: #888;
+    margin-top: 2px;
+    font-style: italic;
+}
+
+.menu-item-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 6px;
+    flex-wrap: wrap;
+}
+
+.menu-serving-badge {
+    font-size: 0.72rem;
+    font-weight: 500;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: #f0eee8;
+    color: #666;
+    text-transform: capitalize;
+}
+
+.menu-status-badge {
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 4px;
+}
+
+.menu-status-confirmed {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.menu-status-pending {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.menu-qty-badge {
+    font-size: 0.72rem;
+    color: #999;
+}
+
+.menu-item-actions {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+    margin-left: 12px;
+    padding-top: 2px;
+}
+
+/* Presentation / Print view */
+.menu-print-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: #fff;
+    z-index: 200;
+    overflow-y: auto;
+}
+
+.menu-print-content {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 60px 40px;
+    position: relative;
+}
+
+.menu-print-close {
+    position: fixed;
+    top: 20px;
+    right: 30px;
+    font-size: 2rem;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #999;
+    z-index: 210;
+    line-height: 1;
+    padding: 8px;
+}
+
+.menu-print-close:hover {
+    color: #333;
+}
+
+.menu-print-header {
+    text-align: center;
+    margin-bottom: 48px;
+}
+
+.menu-print-header h1 {
+    font-family: 'Cormorant Garamond', Georgia, serif;
+    font-size: 2.4rem;
+    font-weight: 600;
+    color: #1a3a35;
+    margin-bottom: 4px;
+    letter-spacing: 1px;
+}
+
+.menu-print-date {
+    font-family: 'Cormorant Garamond', Georgia, serif;
+    font-size: 1.1rem;
+    color: #888;
+    letter-spacing: 2px;
+    margin-bottom: 20px;
+}
+
+.menu-print-divider {
+    width: 60px;
+    height: 2px;
+    background: #c9a961;
+    margin: 16px auto;
+}
+
+.menu-print-header h2 {
+    font-family: 'Cormorant Garamond', Georgia, serif;
+    font-size: 1.6rem;
+    font-weight: 500;
+    color: #c9a961;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+}
+
+.menu-print-category {
+    margin-bottom: 36px;
+}
+
+.menu-print-cat-title {
+    font-family: 'Cormorant Garamond', Georgia, serif;
+    font-size: 1.3rem;
+    font-weight: 600;
+    color: #1a3a35;
+    text-align: center;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-bottom: 4px;
+}
+
+.menu-print-rule {
+    width: 40px;
+    height: 1px;
+    background: #c9a961;
+    margin: 8px auto 20px;
+}
+
+.menu-print-subcat {
+    font-family: 'Cormorant Garamond', Georgia, serif;
+    font-size: 1.05rem;
+    font-style: italic;
+    color: #888;
+    text-align: center;
+    margin: 20px 0 10px;
+}
+
+.menu-print-item {
+    text-align: center;
+    margin-bottom: 14px;
+}
+
+.menu-print-item-name {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #2d2d2d;
+}
+
+.menu-print-item-desc {
+    font-size: 0.9rem;
+    font-style: italic;
+    color: #888;
+    margin-top: 2px;
+}
+
+/* Print media query */
+@media print {
+    .navbar, .page-header, .page-search-bar, .menu-view-bar, .stats-grid, .menu-dietary-summary, #menu-container, .menu-print-close, .toast-container {
+        display: none !important;
+    }
+
+    .menu-print-overlay {
+        position: static !important;
+        display: block !important;
+    }
+
+    .menu-print-content {
+        padding: 20px;
+    }
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .menu-view-bar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+    }
+
+    .menu-category-tabs {
+        padding-bottom: 4px;
+    }
+
+    .menu-item-card {
+        padding: 10px 14px;
+    }
+
+    .menu-item-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 4px;
+    }
+
+    .menu-dietary-checkboxes {
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .menu-print-content {
+        padding: 30px 20px;
+    }
+
+    .menu-print-header h1 {
+        font-size: 1.8rem;
     }
 }
