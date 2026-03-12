@@ -32,6 +32,7 @@ const state = {
     currentStage: 'main',  // For stage input filtering
     currentStagePlotType: 'main',  // For stage plot tabs
     currentPlotId: null,  // Currently selected plot
+    isDraftPlot: false,  // Whether current plot is a local draft (not yet in Firestore)
     canvas: null,  // Fabric.js canvas instance
     autoSaveTimeout: null,  // For debounced auto-save
     isDrawingStage: false,  // Drawing mode flag
@@ -3442,7 +3443,7 @@ const MENU_CATEGORIES = {
     "Seated Dinner": ["Salad", "Main Course", "Dessert"],
     "Late Night Bites": [],
     "Coffee & Tea Station": [],
-    "Bar": ["Signature Cocktails", "Wine", "Beer", "Non-Alcoholic"]
+    "Bar": ["Signature Cocktails", "Alternative Cocktails", "Sponsor Feature", "Wine", "Beer", "Non-Alcoholic"]
 };
 
 const MENU_CATEGORY_ORDER = [
@@ -4251,11 +4252,11 @@ function initializeStagePlots() {
     }
     updatePlotSelector();
 
-    // Auto-create a plot if none is selected (same behavior as clicking "+ New Plot")
+    // Show a local draft canvas if no plot is selected (no Firestore write)
     setTimeout(() => {
         if (!state.currentPlotId) {
-            console.log('No plot selected - auto-creating new plot');
-            createNewPlot();
+            console.log('No plot selected - creating local draft');
+            createDraftPlot();
         }
     }, 200);
 }
@@ -4535,6 +4536,8 @@ function setupStagePlotControls() {
         plotSelect.addEventListener('change', (e) => {
             const plotId = e.target.value;
             if (plotId) {
+                // Discard draft silently when switching to an existing plot
+                state.isDraftPlot = false;
                 loadPlot(plotId);
             } else {
                 // Detach listener
@@ -4567,7 +4570,7 @@ function setupStagePlotControls() {
     // New plot button
     const newPlotBtn = document.getElementById('new-plot-btn');
     if (newPlotBtn) {
-        newPlotBtn.addEventListener('click', createNewPlot);
+        newPlotBtn.addEventListener('click', createDraftPlot);
     }
 
     // Delete plot button
@@ -4658,6 +4661,92 @@ function updatePlotSelector() {
     // Select current plot if any
     if (state.currentPlotId) {
         plotSelect.value = state.currentPlotId;
+    }
+}
+
+// Create a local-only draft plot (no Firestore write until first meaningful action)
+function createDraftPlot() {
+    // Detach any existing plot listener
+    if (state.plotObjectsUnsubscribe) {
+        state.plotObjectsUnsubscribe();
+        state.plotObjectsUnsubscribe = null;
+    }
+
+    state.currentPlotId = null;
+    state.isDraftPlot = true;
+    state.undoStack = [];
+    state.redoStack = [];
+    state.dirtyObjectIds.clear();
+    state.deletedObjectIds.clear();
+    updateUndoRedoButtons();
+
+    // Clear canvas and draw grid
+    if (state.canvas) {
+        state.canvas.clear();
+        state.canvas.backgroundColor = '#ffffff';
+        drawGrid();
+    }
+
+    // Set up plot name input
+    const plotNameInput = document.getElementById('plot-name-input');
+    if (plotNameInput) {
+        plotNameInput.value = 'Untitled Plot';
+        plotNameInput.disabled = false;
+        setTimeout(() => {
+            plotNameInput.focus();
+            plotNameInput.select();
+        }, 100);
+    }
+
+    // Reset plot selector to "Select a plot..."
+    const plotSelect = document.getElementById('plot-select');
+    if (plotSelect) {
+        plotSelect.value = '';
+    }
+
+    updateSaveStatus('Draft (not saved)');
+    console.log('Draft plot created locally');
+}
+
+// Promote a draft plot to a real Firestore document
+async function promoteDraftPlot() {
+    if (!state.isDraftPlot) return;
+
+    const plotNameInput = document.getElementById('plot-name-input');
+    const plotName = (plotNameInput && plotNameInput.value.trim()) || 'Untitled Plot';
+
+    const plotData = {
+        name: plotName,
+        stageType: state.currentStagePlotType,
+        width: 40,
+        height: 30,
+        schemaVersion: 2,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    };
+
+    try {
+        const docRef = await collections.stagePlots.add(plotData);
+        state.currentPlotId = docRef.id;
+        state.isDraftPlot = false;
+
+        // Reload data to update dropdown
+        await loadAllData();
+
+        // Select the new plot in dropdown
+        const plotSelect = document.getElementById('plot-select');
+        if (plotSelect) {
+            plotSelect.value = docRef.id;
+        }
+
+        // Setup real-time listener
+        setupPlotObjectsListener(docRef.id);
+
+        console.log('Draft promoted to Firestore plot:', docRef.id);
+        showToast('Plot saved');
+    } catch (error) {
+        console.error('Error promoting draft plot:', error);
+        showToast('Error saving plot. Please try again.', 'error');
     }
 }
 
@@ -5006,6 +5095,16 @@ function triggerAutoSave() {
         clearTimeout(state.autoSaveTimeout);
     }
 
+    // If this is a draft plot, promote it first then save
+    if (state.isDraftPlot) {
+        updateSaveStatus('Saving...');
+        state.autoSaveTimeout = setTimeout(async () => {
+            await promoteDraftPlot();
+            savePlot();
+        }, 500);
+        return;
+    }
+
     // Set new timeout for 500ms
     state.autoSaveTimeout = setTimeout(() => {
         savePlot();
@@ -5016,7 +5115,7 @@ function triggerAutoSave() {
 
 // Save Plot to Firestore (per-object batch write)
 async function savePlot() {
-    if (!state.currentPlotId || !state.canvas) return;
+    if (state.isDraftPlot || !state.currentPlotId || !state.canvas) return;
 
     const dirtyIds = new Set(state.dirtyObjectIds);
     const deletedIds = new Set(state.deletedObjectIds);
@@ -6215,18 +6314,27 @@ function setupPlotNameInput() {
 
     // Update plot name on blur
     plotNameInput.addEventListener('blur', async () => {
-        if (!state.currentPlotId) return;
-
         const newName = plotNameInput.value.trim();
         if (!newName) {
             alert('Plot name cannot be empty');
-            // Restore previous name
-            const plot = state.stagePlots.find(p => p.id === state.currentPlotId);
-            if (plot) {
-                plotNameInput.value = plot.name;
+            if (state.isDraftPlot) {
+                plotNameInput.value = 'Untitled Plot';
+            } else {
+                const plot = state.stagePlots.find(p => p.id === state.currentPlotId);
+                if (plot) {
+                    plotNameInput.value = plot.name;
+                }
             }
             return;
         }
+
+        // Promote draft if user typed a non-default name
+        if (state.isDraftPlot && newName !== 'Untitled Plot') {
+            await promoteDraftPlot();
+            return;
+        }
+
+        if (!state.currentPlotId) return;
 
         try {
             await collections.stagePlots.doc(state.currentPlotId).update({
