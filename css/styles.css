@@ -1962,8 +1962,13 @@ tr.task-completed td:not(.checkbox-col):not(.actions-col) {
     .data-table th,
     .data-table td {
         border: 1px solid #333;
-        padding: 6px 8px;
-        font-size: 10pt;
+        padding: 3px 6px;
+        font-size: 9pt;
+    }
+
+    .timeline-table td {
+        padding: 2px 6px;
+        line-height: 1.3;
     }
 
     .data-table th {
@@ -1983,8 +1988,9 @@ tr.task-completed td:not(.checkbox-col):not(.actions-col) {
 
     .timeline-table th.time-col,
     .timeline-table td.time-col {
-        width: 80px;
+        width: auto;
         font-weight: bold;
+        white-space: nowrap;
     }
 
     /* Page breaks */
@@ -2015,6 +2021,30 @@ tr.task-completed td:not(.checkbox-col):not(.actions-col) {
     .setlist-songs-toggle { display: none !important; }
     .setlist-songs-list { display: block !important; }
     .setlist-card .staff-actions { display: none !important; }
+
+    /* Timeline day header - prominent in print */
+    .timeline-card-header {
+        padding: 0.5rem 0 !important;
+        border-bottom: 2px solid #000 !important;
+        margin-bottom: 0.25rem;
+        background: none !important;
+    }
+
+    .timeline-card-header h2 {
+        font-size: 16pt !important;
+        font-weight: 700 !important;
+        color: #000 !important;
+    }
+
+    .timeline-header-left {
+        display: flex !important;
+        gap: 0.5rem;
+    }
+
+    #timeline-date-subtitle {
+        font-size: 12pt !important;
+        color: #333 !important;
+    }
 
     /* Print title */
     @page {
