@@ -75,6 +75,7 @@ const state = {
     vmCurrentTool: 'select',
     vmCurrentColor: '#e53e3e',
     vmStrokeWidth: 4,
+    vmFillShape: false,
     vmDrawingObj: null,
     vmDrawStart: null,
     vmAutoSaveTimeout: null,
@@ -6922,6 +6923,20 @@ function setupVenueMap() {
         });
     }
 
+    // Fill toggle
+    const fillToggle = document.getElementById('vm-fill-toggle');
+    if (fillToggle) {
+        fillToggle.addEventListener('change', (e) => {
+            state.vmFillShape = e.target.checked;
+            const active = state.vmCanvas?.getActiveObject();
+            if (active && (active.type === 'rect' || active.type === 'ellipse')) {
+                active.set('fill', state.vmFillShape ? active.stroke : 'transparent');
+                state.vmCanvas.renderAll();
+                vmTriggerSave();
+            }
+        });
+    }
+
     // Zoom buttons
     const zoomInBtn = document.getElementById('vm-zoom-in-btn');
     const zoomOutBtn = document.getElementById('vm-zoom-out-btn');
@@ -7088,14 +7103,14 @@ function vmSetupDrawingEvents() {
             state.vmDrawingObj = new fabric.Rect({
                 left: pointer.x, top: pointer.y, width: 0, height: 0,
                 stroke: state.vmCurrentColor, strokeWidth: state.vmStrokeWidth,
-                fill: 'transparent', selectable: false, _vmLayerId: state.vmActiveLayerId
+                fill: state.vmFillShape ? state.vmCurrentColor : 'transparent', selectable: false, _vmLayerId: state.vmActiveLayerId
             });
             c.add(state.vmDrawingObj);
         } else if (state.vmCurrentTool === 'circle') {
             state.vmDrawingObj = new fabric.Ellipse({
                 left: pointer.x, top: pointer.y, rx: 0, ry: 0,
                 stroke: state.vmCurrentColor, strokeWidth: state.vmStrokeWidth,
-                fill: 'transparent', selectable: false, _vmLayerId: state.vmActiveLayerId
+                fill: state.vmFillShape ? state.vmCurrentColor : 'transparent', selectable: false, _vmLayerId: state.vmActiveLayerId
             });
             c.add(state.vmDrawingObj);
         }
@@ -7129,12 +7144,31 @@ function vmSetupDrawingEvents() {
 
     c.on('mouse:up', () => {
         if (state.vmDrawingObj) {
-            state.vmDrawingObj.setCoords();
+            const drawnObj = state.vmDrawingObj;
+            drawnObj.setCoords();
             state.vmDrawingObj = null;
             state.vmDrawStart = null;
             vmTriggerSave();
+            // Switch back to select and auto-select the drawn shape
+            state.vmCurrentTool = 'select';
+            document.querySelectorAll('.vm-tool-btn').forEach(b => b.classList.toggle('active', b.dataset.tool === 'select'));
+            vmUpdateCanvasMode();
+            c.setActiveObject(drawnObj);
+            c.renderAll();
         }
     });
+
+    // Sync fill checkbox on selection
+    function vmUpdateFillCheckbox() {
+        const obj = state.vmCanvas.getActiveObject();
+        const toggle = document.getElementById('vm-fill-toggle');
+        if (obj && (obj.type === 'rect' || obj.type === 'ellipse')) {
+            toggle.checked = obj.fill !== 'transparent' && obj.fill !== '';
+            state.vmFillShape = toggle.checked;
+        }
+    }
+    c.on('selection:created', vmUpdateFillCheckbox);
+    c.on('selection:updated', vmUpdateFillCheckbox);
 
     // Auto-save on object modifications
     c.on('object:modified', () => vmTriggerSave());
@@ -7457,6 +7491,7 @@ function vmPrintMap() {
         .map { text-align: center; padding: 0 10px; }
         @media print {
             @page { size: landscape; margin: 0.4in; }
+            * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
         }
     </style>
 </head>
