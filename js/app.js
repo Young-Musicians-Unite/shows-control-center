@@ -6954,6 +6954,7 @@ function setupVenueMap() {
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
         if (e.key === 'Delete' || e.key === 'Backspace') {
+            if (state.vmCanvas.getActiveObject()?.isEditing) return;
             vmDeleteSelected();
             e.preventDefault();
         }
@@ -7056,11 +7057,10 @@ function vmSetupDrawingEvents() {
         state.vmDrawStart = { x: pointer.x, y: pointer.y };
 
         if (state.vmCurrentTool === 'text') {
-            const text = prompt('Enter text:');
-            if (!text) return;
-            const textObj = new fabric.Text(text, {
+            const textObj = new fabric.Textbox('Text', {
                 left: pointer.x,
                 top: pointer.y,
+                width: 200,
                 fontSize: state.vmStrokeWidth * 5 + 10,
                 fill: state.vmCurrentColor,
                 fontFamily: 'DM Sans, sans-serif',
@@ -7068,6 +7068,8 @@ function vmSetupDrawingEvents() {
             });
             c.add(textObj);
             c.setActiveObject(textObj);
+            textObj.enterEditing();
+            textObj.selectAll();
             vmTriggerSave();
             // Switch back to select
             state.vmCurrentTool = 'select';
@@ -7137,6 +7139,7 @@ function vmSetupDrawingEvents() {
     // Auto-save on object modifications
     c.on('object:modified', () => vmTriggerSave());
     c.on('object:removed', () => vmTriggerSave());
+    c.on('text:changed', () => vmTriggerSave());
 }
 
 // --- Layer Management ---
@@ -7418,8 +7421,10 @@ function vmPrintMap() {
     c.setHeight(Math.round(h * prevZoom));
     c.renderAll();
 
-    const visibleNames = state.vmLayers.filter(l => l.visible).map(l => l.name);
-    const layerLabel = visibleNames.length > 0 ? visibleNames.join(', ') : 'No annotation layers';
+    const visibleLayers = state.vmLayers.filter(l => l.visible);
+    const legendHTML = visibleLayers.length > 0
+        ? visibleLayers.map(l => `<span style="display:inline-flex;align-items:center;gap:4px;margin-right:12px;"><span style="display:inline-block;width:12px;height:12px;background:${l.color};border-radius:2px;"></span>${l.name}</span>`).join('')
+        : 'No annotation layers';
 
     // Build the map image HTML — either a single composited image or layered images
     let mapHTML;
@@ -7458,7 +7463,7 @@ function vmPrintMap() {
 <body>
     <div class="header">
         <h1>YMU Gala 2026 - Venue Map</h1>
-        <p>Layers: ${layerLabel}</p>
+        <div style="display:flex;flex-wrap:wrap;justify-content:center;margin-top:4px;font-size:12px;color:#4a5568;">${legendHTML}</div>
     </div>
     <div class="map">
         ${mapHTML}

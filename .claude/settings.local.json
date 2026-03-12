@@ -3,7 +3,8 @@
     "allow": [
       "mcp__plugin_playwright_playwright__browser_hover",
       "mcp__plugin_playwright_playwright__browser_press_key",
-      "Skill(push-live:push-live)"
+      "Skill(push-live:push-live)",
+      "mcp__plugin_playwright_playwright__browser_fill_form"
     ]
   }
 }
