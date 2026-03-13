@@ -4827,6 +4827,19 @@ body.menu-open {
     opacity: 1 !important;
 }
 
+.vm-layer-item[draggable="true"] {
+    cursor: grab;
+}
+.vm-layer-item.vm-layer-dragging {
+    opacity: 0.4;
+}
+.vm-layer-item.vm-layer-drop-above {
+    border-top: 2px solid #c9a961;
+}
+.vm-layer-item.vm-layer-drop-below {
+    border-bottom: 2px solid #c9a961;
+}
+
 /* Canvas Area */
 .vm-canvas-area {
     flex: 1;
@@ -4850,6 +4863,31 @@ body.menu-open {
 .vm-canvas-wrapper canvas,
 .vm-canvas-wrapper .canvas-container {
     border-radius: 8px;
+}
+
+/* Context menu for z-order */
+.vm-context-menu {
+    position: fixed;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    padding: 4px 0;
+    z-index: 1000;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+.vm-context-menu button {
+    display: block;
+    width: 100%;
+    padding: 8px 16px;
+    background: none;
+    border: none;
+    color: #e2e8f0;
+    font-size: 0.85rem;
+    text-align: left;
+    cursor: pointer;
+}
+.vm-context-menu button:hover {
+    background: #334155;
 }
 
 /* Save status */

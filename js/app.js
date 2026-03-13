@@ -6908,6 +6908,20 @@ function setupVenueMap() {
             if (state.vmCanvas && state.vmCanvas.isDrawingMode) {
                 state.vmCanvas.freeDrawingBrush.color = state.vmCurrentColor;
             }
+            // Apply color to selected object(s)
+            const active = state.vmCanvas?.getActiveObject();
+            if (active) {
+                if (active.type === 'textbox') {
+                    active.set('fill', state.vmCurrentColor);
+                } else {
+                    active.set('stroke', state.vmCurrentColor);
+                    if (active.fill && active.fill !== 'transparent') {
+                        active.set('fill', state.vmCurrentColor);
+                    }
+                }
+                state.vmCanvas.renderAll();
+                vmTriggerSave();
+            }
         });
     });
 
@@ -6919,6 +6933,13 @@ function setupVenueMap() {
             // Update the active brush if currently in pen mode
             if (state.vmCanvas && state.vmCanvas.isDrawingMode) {
                 state.vmCanvas.freeDrawingBrush.width = state.vmStrokeWidth;
+            }
+            // Apply stroke width to selected object (not text)
+            const active = state.vmCanvas?.getActiveObject();
+            if (active && active.type !== 'textbox') {
+                active.set('strokeWidth', state.vmStrokeWidth);
+                state.vmCanvas.renderAll();
+                vmTriggerSave();
             }
         });
     }
@@ -7016,6 +7037,13 @@ function vmInitCanvas() {
     state.vmBaseWidth = canvasWidth;
     state.vmBaseHeight = canvasHeight;
     state.vmZoom = 1.0;
+
+    // Right-click context menu for z-order
+    const wrapperEl = document.getElementById('vm-canvas-wrapper');
+    wrapperEl.addEventListener('contextmenu', vmShowContextMenu);
+    document.addEventListener('click', vmHideContextMenu);
+
+    state.vmCanvas.calcOffset();
 
     vmSetupDrawingEvents();
     vmLoadLayers();
@@ -7170,11 +7198,60 @@ function vmSetupDrawingEvents() {
     c.on('selection:created', vmUpdateFillCheckbox);
     c.on('selection:updated', vmUpdateFillCheckbox);
 
+    // Option/Alt + drag to duplicate
+    c.on('mouse:down', (opt) => {
+        if (!opt.e.altKey) return;
+        if (state.vmCurrentTool !== 'select') return;
+        const active = c.getActiveObject();
+        if (!active || active._vmBackground) return;
+
+        active.clone((cloned) => {
+            cloned.set({
+                left: active.left,
+                top: active.top,
+                _vmLayerId: active._vmLayerId
+            });
+            c.add(cloned);
+            c.renderAll();
+            vmTriggerSave();
+        });
+    });
+
     // Auto-save on object modifications
     c.on('object:modified', () => vmTriggerSave());
     c.on('object:removed', () => vmTriggerSave());
     c.on('text:changed', () => vmTriggerSave());
 }
+
+// --- Right-click context menu for z-order ---
+
+function vmShowContextMenu(e) {
+    const activeObj = state.vmCanvas && state.vmCanvas.getActiveObject();
+    if (!activeObj) return;
+
+    e.preventDefault();
+    const menu = document.getElementById('vm-context-menu');
+    menu.style.display = 'block';
+    menu.style.left = e.clientX + 'px';
+    menu.style.top = e.clientY + 'px';
+}
+
+function vmHideContextMenu() {
+    const menu = document.getElementById('vm-context-menu');
+    if (menu) menu.style.display = 'none';
+}
+
+function vmContextAction(action) {
+    const obj = state.vmCanvas && state.vmCanvas.getActiveObject();
+    if (!obj) return;
+
+    state.vmCanvas[action](obj);
+    state.vmCanvas.renderAll();
+    vmHideContextMenu();
+    vmTriggerSave();
+}
+
+window.vmContextAction = vmContextAction;
 
 // --- Layer Management ---
 
@@ -7208,7 +7285,12 @@ function vmRenderLayers() {
 
     list.innerHTML = state.vmLayers.map(layer => `
         <div class="vm-layer-item ${layer.id === state.vmActiveLayerId ? 'active' : ''}"
-             data-layer-id="${layer.id}" onclick="vmSelectLayer('${layer.id}')">
+             data-layer-id="${layer.id}" onclick="vmSelectLayer('${layer.id}')"
+             draggable="true"
+             ondragstart="vmLayerDragStart(event, '${layer.id}')"
+             ondragover="vmLayerDragOver(event)"
+             ondrop="vmLayerDrop(event, '${layer.id}')"
+             ondragend="vmLayerDragEnd(event)">
             <div class="vm-layer-color" style="background:${layer.color}"></div>
             <span class="vm-layer-name" ondblclick="vmRenameLayer(event, '${layer.id}')">${layer.name}</span>
             <button class="vm-layer-visibility" onclick="vmToggleLayerVisibility(event, '${layer.id}')" title="${layer.visible ? 'Hide' : 'Show'}">
@@ -7218,6 +7300,55 @@ function vmRenderLayers() {
         </div>
     `).join('');
 }
+
+let vmDraggedLayerId = null;
+
+function vmLayerDragStart(e, layerId) {
+    vmDraggedLayerId = layerId;
+    e.dataTransfer.effectAllowed = 'move';
+    e.currentTarget.classList.add('vm-layer-dragging');
+}
+
+function vmLayerDragOver(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const item = e.currentTarget;
+    const rect = item.getBoundingClientRect();
+    const midY = rect.top + rect.height / 2;
+    item.classList.toggle('vm-layer-drop-above', e.clientY < midY);
+    item.classList.toggle('vm-layer-drop-below', e.clientY >= midY);
+}
+
+function vmLayerDrop(e, targetLayerId) {
+    e.preventDefault();
+    if (!vmDraggedLayerId || vmDraggedLayerId === targetLayerId) return;
+
+    const fromIdx = state.vmLayers.findIndex(l => l.id === vmDraggedLayerId);
+    const toIdx = state.vmLayers.findIndex(l => l.id === targetLayerId);
+    if (fromIdx === -1 || toIdx === -1) return;
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const dropAfter = e.clientY >= rect.top + rect.height / 2;
+
+    const [moved] = state.vmLayers.splice(fromIdx, 1);
+    const newIdx = state.vmLayers.findIndex(l => l.id === targetLayerId);
+    state.vmLayers.splice(dropAfter ? newIdx + 1 : newIdx, 0, moved);
+
+    vmRenderLayers();
+    vmSaveLayers();
+}
+
+function vmLayerDragEnd(e) {
+    vmDraggedLayerId = null;
+    document.querySelectorAll('.vm-layer-item').forEach(el => {
+        el.classList.remove('vm-layer-dragging', 'vm-layer-drop-above', 'vm-layer-drop-below');
+    });
+}
+
+window.vmLayerDragStart = vmLayerDragStart;
+window.vmLayerDragOver = vmLayerDragOver;
+window.vmLayerDrop = vmLayerDrop;
+window.vmLayerDragEnd = vmLayerDragEnd;
 
 function vmSelectLayer(layerId) {
     // Don't re-render if we're in the middle of renaming a layer
@@ -7527,6 +7658,7 @@ function vmSetZoom(newZoom) {
     c.setZoom(newZoom);
     c.setWidth(newWidth);
     c.setHeight(newHeight);
+    c.calcOffset();
     c.renderAll();
 
     const label = document.getElementById('vm-zoom-level');
