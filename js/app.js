@@ -235,6 +235,8 @@ function openHamburgerMenu() {
     hamburger.classList.add('active');
     navMenu.classList.add('active');
     document.body.classList.add('menu-open');
+    // Auto-expand all nav groups so all pages are visible
+    document.querySelectorAll('.nav-group').forEach(g => g.classList.add('open'));
 }
 
 function closeHamburgerMenu() {
@@ -1000,6 +1002,36 @@ function renderBudgetGrouped() {
                             </tbody>
                         </table>
                     </div>
+                    <div class="budget-mobile-cards">
+                        ${getSortedBudgetItems(items).map(item => {
+                            const budgeted = parseFloat(item.budgeted) || 0;
+                            const actual = parseFloat(item.actual) || 0;
+                            const difference = budgeted - actual;
+                            const pct = budgeted > 0 ? Math.min((actual / budgeted) * 100, 150) : 0;
+                            const isOver = difference < 0;
+
+                            return `
+                                <div class="mobile-card">
+                                    <div class="mobile-card-row">
+                                        <input type="checkbox" class="mobile-card-checkbox"
+                                               ${item.confirmed ? 'checked' : ''}
+                                               onchange="toggleBudgetConfirmed('${item.id}', this.checked)">
+                                        <span class="mobile-card-title">${escapeHtml(item.vendor || 'No vendor')}</span>
+                                        <span class="mobile-card-amount ${isOver ? 'over' : ''}">${formatCurrency(budgeted)}</span>
+                                    </div>
+                                    ${item.description ? `<div style="font-size: 0.8rem; color: #777; margin: 0.25rem 0 0.25rem 2rem;">${escapeHtml(item.description)}</div>` : ''}
+                                    <div class="mobile-card-details">
+                                        <span class="mobile-card-detail"><strong>Spent:</strong> ${formatCurrency(actual)}</span>
+                                        <span class="mobile-card-detail ${isOver ? 'mobile-card-amount over' : ''}"><strong>${isOver ? 'Over:' : 'Left:'}</strong> ${formatCurrency(Math.abs(difference))}</span>
+                                        <span class="status-badge ${item.paymentStatus || 'not-paid'}" style="font-size: 0.7rem;">${formatPaymentStatus(item.paymentStatus)}</span>
+                                    </div>
+                                    <div class="mobile-card-progress">
+                                        <div class="mobile-card-progress-bar ${isOver ? 'over-budget' : ''}" style="width: ${Math.min(pct, 100)}%"></div>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
                 </div>
             </div>
         `;
@@ -1182,6 +1214,42 @@ function renderTimeline() {
     tbody.innerHTML = rowsHtml + phantomRow;
     state.pendingNewRow = {};
     state.timelineAnimateRows = false;
+
+    // Mobile card view
+    const mobileContainer = document.getElementById('timeline-mobile-cards');
+    if (mobileContainer) {
+        if (sorted.length === 0) {
+            mobileContainer.innerHTML = '<div class="mobile-card-empty">No tasks for this day</div>';
+        } else {
+            mobileContainer.innerHTML = sorted.map(item => {
+                const isComplete = item.completed === true || item.status === 'complete';
+                const rowColor = item.highlightColor || '';
+                const hasHighlight = rowColor && rowColor !== '#ffffff';
+                const borderStyle = hasHighlight ? `border-left-color: ${rowColor}` : '';
+                const badges = [];
+                if (item.production === true || item.tag === 'production') badges.push('<span class="mobile-card-badge prod">Prod</span>');
+                if (item.andi === true) badges.push('<span class="mobile-card-badge andi">Andi</span>');
+
+                return `
+                    <div class="mobile-card ${isComplete ? 'completed' : ''}" style="${borderStyle}">
+                        <div class="mobile-card-row">
+                            <input type="checkbox" class="mobile-card-checkbox"
+                                   ${isComplete ? 'checked' : ''}
+                                   onchange="toggleTaskComplete('${item.id}', this.checked)">
+                            ${item.time ? `<span class="mobile-card-time">${formatTime12Hour(item.time)}</span>` : ''}
+                            <span class="mobile-card-event">${escapeHtml(item.event || 'Untitled')}</span>
+                        </div>
+                        ${(item.responsible || item.staff || badges.length > 0) ? `
+                        <div class="mobile-card-details">
+                            ${item.responsible ? `<span class="mobile-card-detail"><strong>Resp:</strong> ${escapeHtml(item.responsible)}</span>` : ''}
+                            ${item.staff ? `<span class="mobile-card-detail"><strong>Staff:</strong> ${escapeHtml(item.staff)}</span>` : ''}
+                            ${badges.length > 0 ? `<div class="mobile-card-badges">${badges.join('')}</div>` : ''}
+                        </div>` : ''}
+                    </div>
+                `;
+            }).join('');
+        }
+    }
 }
 
 // Modal Management
@@ -2890,6 +2958,32 @@ function renderStageInputs() {
 
     tbody.innerHTML = rowsHtml + phantomRow;
     state.pendingNewStageRow = {};
+
+    // Mobile card view
+    const mobileContainer = document.getElementById('stage-mobile-cards');
+    if (mobileContainer) {
+        if (sorted.length === 0) {
+            mobileContainer.innerHTML = '<div class="mobile-card-empty">No inputs</div>';
+        } else {
+            mobileContainer.innerHTML = sorted.map(item => {
+                return `
+                    <div class="mobile-card">
+                        <div class="mobile-card-row">
+                            <span class="mobile-card-channel">${escapeHtml(item.channel || '?')}</span>
+                            <span class="mobile-card-title">${escapeHtml(item.instrument || 'No instrument')}</span>
+                            ${item.symbol ? `<span class="mobile-card-subtitle">${escapeHtml(item.symbol)}</span>` : ''}
+                        </div>
+                        <div class="mobile-card-details">
+                            ${item.subsnake ? `<span class="mobile-card-detail"><strong>Snake:</strong> ${escapeHtml(item.subsnake)}</span>` : ''}
+                            ${item.mics ? `<span class="mobile-card-detail"><strong>Mic:</strong> ${escapeHtml(item.mics)}</span>` : ''}
+                            ${item.stands ? `<span class="mobile-card-detail"><strong>Stand:</strong> ${escapeHtml(item.stands)}</span>` : ''}
+                            ${item.notes ? `<span class="mobile-card-detail"><strong>Notes:</strong> ${escapeHtml(item.notes)}</span>` : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+    }
 }
 
 // Single-click cell editing for Stage Inputs
@@ -4252,6 +4346,20 @@ function initializeStagePlots() {
         setupCanvas();
     }
     updatePlotSelector();
+
+    // Mobile: make element library collapsible
+    if (window.innerWidth <= 768) {
+        const lib = document.querySelector('.element-library');
+        if (lib && !lib.dataset.mobileInit) {
+            lib.dataset.mobileInit = 'true';
+            const h3 = lib.querySelector('h3');
+            if (h3) {
+                h3.addEventListener('click', () => {
+                    lib.classList.toggle('mobile-expanded');
+                });
+            }
+        }
+    }
 
     // Show a local draft canvas if no plot is selected (no Firestore write)
     setTimeout(() => {
