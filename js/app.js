@@ -479,7 +479,7 @@ function vendorItemMatchesSearch(item, query) {
     if (tokens.length === 0) return true;
     const fields = [
         item.vendor || '', item.description || '', item.category || '',
-        item.contact || '', item.email || '', item.phone || '', item.notes || ''
+        item.contact || '', item.email || '', item.phone || '', item.owner || '', item.notes || ''
     ];
     const text = fields.join(' ').toLowerCase();
     return tokens.every(t => text.includes(t));
@@ -943,6 +943,7 @@ function renderBudgetGrouped() {
                                     <th class="sortable-th" onclick="sortBudgetBy('confirmed')">Confirmed${budgetSortIndicator('confirmed')}</th>
                                     <th class="sortable-th" onclick="sortBudgetBy('vendor')">Vendor/Item${budgetSortIndicator('vendor')}</th>
                                     <th class="sortable-th" onclick="sortBudgetBy('description')">Description/Role${budgetSortIndicator('description')}</th>
+                                    <th class="sortable-th" onclick="sortBudgetBy('owner')">Owner${budgetSortIndicator('owner')}</th>
                                     <th class="sortable-th" onclick="sortBudgetBy('budgeted')">Budgeted${budgetSortIndicator('budgeted')}</th>
                                     <th class="sortable-th" onclick="sortBudgetBy('actual')">Actual${budgetSortIndicator('actual')}</th>
                                     <th class="sortable-th" onclick="sortBudgetBy('difference')">Difference${budgetSortIndicator('difference')}</th>
@@ -965,6 +966,7 @@ function renderBudgetGrouped() {
                                             </td>
                                             <td data-field="vendor" data-original="${escapeHtml(item.vendor || '')}" onclick="editBudgetCell(this)">${escapeHtml(item.vendor || '')}</td>
                                             <td data-field="description" data-original="${escapeHtml(item.description || '')}" onclick="editBudgetCell(this)">${escapeHtml(item.description || '')}</td>
+                                            <td data-field="owner" data-original="${escapeHtml(item.owner || '')}" onclick="editBudgetCell(this)">${escapeHtml(item.owner || '')}</td>
                                             <td data-field="budgeted" data-original="${budgeted}" onclick="editBudgetCell(this)">${formatCurrency(budgeted)}</td>
                                             <td data-field="actual" data-original="${actual}" onclick="editBudgetCell(this)">${formatCurrency(actual)}</td>
                                             <td data-computed="difference" class="${diffClass}">${formatCurrency(Math.abs(difference))} ${difference < 0 ? 'over' : difference > 0 ? 'under' : ''}</td>
@@ -992,6 +994,7 @@ function renderBudgetGrouped() {
                                     <td class="confirmed-cell"></td>
                                     <td data-field="vendor" onclick="editBudgetCell(this)"><span class="phantom-placeholder">+ vendor</span></td>
                                     <td data-field="description" onclick="editBudgetCell(this)"><span class="phantom-placeholder">+ description</span></td>
+                                    <td data-field="owner" onclick="editBudgetCell(this)"><span class="phantom-placeholder">+ owner</span></td>
                                     <td data-field="budgeted" onclick="editBudgetCell(this)"><span class="phantom-placeholder">+ budgeted</span></td>
                                     <td data-field="actual" onclick="editBudgetCell(this)"><span class="phantom-placeholder">+ actual</span></td>
                                     <td data-computed="difference"></td>
@@ -1020,6 +1023,7 @@ function renderBudgetGrouped() {
                                         <span class="mobile-card-amount ${isOver ? 'over' : ''}">${formatCurrency(budgeted)}</span>
                                     </div>
                                     ${item.description ? `<div style="font-size: 0.8rem; color: #777; margin: 0.25rem 0 0.25rem 2rem;">${escapeHtml(item.description)}</div>` : ''}
+                                    ${item.owner ? `<div style="font-size: 0.8rem; color: #555; margin: 0.25rem 0 0.25rem 2rem;"><strong>Owner:</strong> ${escapeHtml(item.owner)}</div>` : ''}
                                     <div class="mobile-card-details">
                                         <span class="mobile-card-detail"><strong>Spent:</strong> ${formatCurrency(actual)}</span>
                                         <span class="mobile-card-detail ${isOver ? 'mobile-card-amount over' : ''}"><strong>${isOver ? 'Over:' : 'Left:'}</strong> ${formatCurrency(Math.abs(difference))}</span>
@@ -1369,6 +1373,7 @@ function openBudgetModal(itemId = null) {
             'budget-vendor': 'vendor',
             'budget-description': 'description',
             'budget-category': 'category',
+            'budget-owner': 'owner',
             'budget-contact': 'contact',
             'budget-phone': 'phone',
             'budget-email': 'email',
@@ -1511,6 +1516,7 @@ async function handleBudgetSubmit(e) {
             'budget-vendor': 'vendor',
             'budget-description': 'description',
             'budget-category': 'category',
+            'budget-owner': 'owner',
             'budget-contact': 'contact',
             'budget-phone': 'phone',
             'budget-email': 'email',
@@ -2051,6 +2057,7 @@ function exportBudgetToExcel() {
     const data = state.budget.map(item => ({
         'Vendor/Item': item.vendor || '',
         'Category': item.category || '',
+        'Owner': item.owner || '',
         'Budgeted': parseFloat(item.budgeted) || 0,
         'Actual': parseFloat(item.actual) || 0,
         'Difference': (parseFloat(item.budgeted) || 0) - (parseFloat(item.actual) || 0),
@@ -2065,6 +2072,7 @@ function exportBudgetToExcel() {
     ws['!cols'] = [
         { wch: 30 },  // Vendor/Item
         { wch: 35 },  // Category
+        { wch: 20 },  // Owner
         { wch: 12 },  // Budgeted
         { wch: 12 },  // Actual
         { wch: 12 },  // Difference
@@ -2075,7 +2083,7 @@ function exportBudgetToExcel() {
     // Add number formatting for currency columns
     const range = XLSX.utils.decode_range(ws['!ref']);
     for (let R = range.s.r + 1; R <= range.e.r; ++R) {
-        ['C', 'D', 'E'].forEach(col => {
+        ['D', 'E', 'F'].forEach(col => {
             const cellRef = col + (R + 1);
             if (ws[cellRef]) {
                 ws[cellRef].z = '$#,##0.00';
@@ -2110,7 +2118,7 @@ function exportBudgetToExcel() {
 // Inline Editing for Timeline
 // Editable cell field order for Tab navigation (skip tag — it has its own <select>)
 const TIMELINE_FIELD_ORDER = ['time', 'event', 'responsible', 'staff'];
-const BUDGET_FIELD_ORDER = ['vendor', 'description', 'budgeted', 'actual', 'paymentStatus', 'notes'];
+const BUDGET_FIELD_ORDER = ['vendor', 'description', 'owner', 'budgeted', 'actual', 'paymentStatus', 'notes'];
 const STAGE_FIELD_ORDER = ['channel', 'subsnake', 'instrument', 'mics', 'stands', 'notes', 'symbol'];
 
 // Single-click cell editing
