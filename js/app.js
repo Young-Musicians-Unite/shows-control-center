@@ -7000,8 +7000,21 @@ function setupVenueMap() {
     const wrapper = document.getElementById('vm-canvas-wrapper');
     if (!wrapper) return;
 
-    // Pre-load the image but defer canvas creation until the page is visible
+    // Pre-load the image. Try with CORS first (needed for toDataURL export on
+    // deployed sites). Fall back without CORS for file:// local dev.
     state.vmBgImage = new Image();
+    state.vmBgImage.crossOrigin = 'anonymous';
+    state.vmBgCORS = true;
+    state.vmBgImage.onerror = () => {
+        // CORS load failed (likely file:// protocol) — retry without crossOrigin
+        state.vmBgCORS = false;
+        const retry = new Image();
+        retry.onload = () => {
+            state.vmBgImage = retry;
+            vmInitCanvas();
+        };
+        retry.src = 'venue-map.png';
+    };
     state.vmBgImage.src = 'venue-map.png';
 
     // Tool buttons
@@ -7580,14 +7593,16 @@ function vmBuildExport(callback) {
         c.renderAll();
     }
 
-    // Try direct export (works if background was loaded with crossOrigin)
-    try {
-        const dataURL = c.toDataURL({ format: 'png' });
-        restoreZoom();
-        callback(dataURL);
-        return;
-    } catch (e) {
-        // Canvas is tainted by the background image — use composite approach
+    // Direct export works only if the background was loaded with CORS
+    if (state.vmBgCORS) {
+        try {
+            const dataURL = c.toDataURL({ format: 'png' });
+            restoreZoom();
+            callback(dataURL);
+            return;
+        } catch (e) {
+            // Unexpected — fall through to composite
+        }
     }
 
     // Composite approach: export annotations separately, then layer onto a CORS background
