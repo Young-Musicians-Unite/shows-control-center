@@ -993,23 +993,29 @@
                 <button class="day-tab" data-setlist-stage="cocktail">Cocktail Stage</button>
             </div>
 
-            <!-- Stats -->
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <div class="stat-content">
-                        <div class="stat-label">Total Set Lists</div>
-                        <div class="stat-value" id="setlist-stat-total">0</div>
+            <!-- Stats & Expand/Collapse -->
+            <div class="setlist-stats-row">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-content">
+                            <div class="stat-label">Total Set Lists</div>
+                            <div class="stat-value" id="setlist-stat-total">0</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-content">
+                            <div class="stat-label">Total Songs</div>
+                            <div class="stat-value" id="setlist-stat-songs">0</div>
+                        </div>
                     </div>
                 </div>
-                <div class="stat-card">
-                    <div class="stat-content">
-                        <div class="stat-label">Total Songs</div>
-                        <div class="stat-value" id="setlist-stat-songs">0</div>
-                    </div>
+                <div class="setlist-expand-controls">
+                    <button class="btn btn-sm" onclick="expandAllSetLists()">Expand All</button>
+                    <button class="btn btn-sm" onclick="collapseAllSetLists()">Collapse All</button>
                 </div>
             </div>
 
-            <!-- Card grid -->
+            <!-- Accordion list -->
             <div id="setlist-grid">
                 <p class="empty-state">No set lists added</p>
             </div>

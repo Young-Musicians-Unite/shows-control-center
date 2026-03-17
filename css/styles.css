@@ -215,7 +215,9 @@ body {
 #dashboard {
     background: linear-gradient(135deg, #1a3a35 0%, #0f2621 100%);
     margin: -2rem;
-    padding: 2rem;
+    margin-left: calc(-50vw + 50%);
+    margin-right: calc(-50vw + 50%);
+    padding: 2rem calc(50vw - 50%);
     min-height: calc(100vh - 60px);
 }
 
@@ -1226,7 +1228,9 @@ body {
 
     #dashboard {
         margin: -1rem;
-        padding: 1rem;
+        margin-left: calc(-50vw + 50%);
+        margin-right: calc(-50vw + 50%);
+        padding: 1rem calc(50vw - 50%);
     }
 
     .page-header {
@@ -1671,13 +1675,6 @@ body {
     letter-spacing: 0.5px;
 }
 
-/* Set list card highlight animation */
-.setlist-card-highlight {
-    outline: 3px solid #3498db;
-    outline-offset: 2px;
-    animation: setlist-highlight-pulse 0.6s ease-in-out 2;
-}
-
 @keyframes setlist-highlight-pulse {
     0%, 100% { outline-color: #3498db; }
     50% { outline-color: #85c1e9; }
@@ -2012,15 +2009,15 @@ tr.task-completed td:not(.checkbox-col):not(.actions-col) {
     }
 
     /* Set Lists print */
-    .setlist-card {
+    .setlist-accordion-item {
         box-shadow: none !important;
         border: 1px solid #ccc;
         animation: none !important;
         page-break-inside: avoid;
     }
-    .setlist-songs-toggle { display: none !important; }
-    .setlist-songs-list { display: block !important; }
-    .setlist-card .staff-actions { display: none !important; }
+    .setlist-accordion-body { display: block !important; }
+    .setlist-header-actions { display: none !important; }
+    .setlist-expand-controls { display: none !important; }
 
     /* Timeline day header - prominent in print */
     .timeline-card-header {
@@ -2540,7 +2537,9 @@ tr.editing td {
 
     #dashboard {
         margin: -1rem;
-        padding: 1rem;
+        margin-left: calc(-50vw + 50%);
+        margin-right: calc(-50vw + 50%);
+        padding: 1rem calc(50vw - 50%);
     }
 
     /* Page Header */
@@ -3522,89 +3521,92 @@ body.menu-open::after {
    SET LISTS PAGE
    ============================================= */
 
-.setlist-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-    gap: 1.5rem;
+/* Accordion layout */
+.setlist-accordion {
     margin-top: 0.5rem;
 }
 
-.setlist-card {
+.setlist-accordion-item {
     background: #faf8f3;
-    border-radius: 12px;
-    padding: 1.5rem;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
     border: 1px solid #f0ece3;
     border-left: 4px solid #c9a961;
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    border-radius: 8px;
+    margin-bottom: 0.5rem;
     animation: staff-card-in 0.35s ease both;
+    overflow: hidden;
 }
 
-.setlist-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(201, 169, 97, 0.15);
-}
-
-.setlist-card:hover .staff-actions {
-    opacity: 1;
-}
-
-.setlist-card-header {
+.setlist-accordion-header {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    margin-bottom: 0.75rem;
-    padding-bottom: 0.75rem;
-    border-bottom: 2px solid #c9a961;
+    gap: 0.75rem;
+    padding: 0.875rem 1.25rem;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.15s ease;
+}
+
+.setlist-accordion-header:hover {
+    background: #f5f2eb;
+}
+
+.setlist-toggle-icon {
+    color: #c9a961;
+    font-size: 0.75rem;
+    flex-shrink: 0;
+    width: 14px;
+    text-align: center;
+    transition: transform 0.2s ease;
 }
 
 .setlist-performer {
     font-family: 'Cormorant Garamond', Georgia, serif;
-    font-size: 1.3rem;
+    font-size: 1.2rem;
     font-weight: 700;
     color: #1a3a35;
+    white-space: nowrap;
 }
 
 .setlist-stage-badge {
-    font-size: 0.75rem;
-    padding: 0.25rem 0.75rem;
+    font-size: 0.7rem;
+    padding: 0.2rem 0.6rem;
     border-radius: 12px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     white-space: nowrap;
+    flex-shrink: 0;
 }
 .setlist-stage-badge.stage-main { background: #d4edda; color: #155724; }
 .setlist-stage-badge.stage-cocktail { background: #cce5ff; color: #004085; }
 
-.setlist-summary {
-    font-size: 0.9rem;
-    color: #666;
-    margin-bottom: 0.75rem;
+.setlist-song-count {
+    font-size: 0.85rem;
+    color: #888;
+    margin-left: auto;
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
-.setlist-songs-toggle {
-    cursor: pointer;
-    font-size: 0.85rem;
-    color: #c9a961;
-    font-weight: 600;
-    margin-bottom: 0.5rem;
-    user-select: none;
+.setlist-header-actions {
+    display: flex;
+    gap: 0.4rem;
+    flex-shrink: 0;
 }
-.setlist-songs-toggle:hover {
-    color: #b8943a;
+
+.setlist-accordion-body {
+    padding: 0 1.25rem 1rem 2.75rem;
 }
 
 .setlist-songs-list {
-    margin-bottom: 0.75rem;
-    padding-left: 0.5rem;
+    margin-bottom: 0.5rem;
 }
 
 .setlist-song-row {
     display: flex;
     gap: 0.5rem;
     align-items: baseline;
-    padding: 0.25rem 0;
+    padding: 0.3rem 0;
     font-size: 0.9rem;
     border-bottom: 1px solid #f0ece3;
 }
@@ -3619,10 +3621,35 @@ body.menu-open::after {
     font-size: 0.85rem;
     color: #666;
     font-style: italic;
-    margin: 0.5rem 0;
     padding: 0.5rem;
     background: #f5f2eb;
     border-radius: 6px;
+}
+
+/* Stats row with expand controls */
+.setlist-stats-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.setlist-stats-row .stats-grid {
+    flex: 1;
+}
+
+.setlist-expand-controls {
+    display: flex;
+    gap: 0.4rem;
+    padding-top: 0.5rem;
+    flex-shrink: 0;
+}
+
+/* Accordion highlight animation (for timeline linking) */
+.setlist-accordion-highlight {
+    outline: 3px solid #3498db;
+    outline-offset: 2px;
+    animation: setlist-highlight-pulse 0.6s ease-in-out 2;
 }
 
 /* Song edit rows in modal */
@@ -3639,21 +3666,30 @@ body.menu-open::after {
 .modal-lg { max-width: 700px; }
 
 @media (max-width: 768px) {
-    .setlist-grid {
-        grid-template-columns: 1fr;
-        gap: 1rem;
+    .setlist-accordion-header {
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        padding: 0.75rem 1rem;
     }
-    .setlist-card { padding: 1.25rem; }
-    .setlist-performer { font-size: 1.2rem; }
-    .setlist-card .staff-actions {
-        opacity: 1;
-        flex-direction: column;
+    .setlist-performer { font-size: 1.1rem; }
+    .setlist-song-count { margin-left: 0; }
+    .setlist-header-actions {
+        width: 100%;
     }
-    .setlist-card .staff-actions .btn { width: 100%; }
+    .setlist-header-actions .btn { flex: 1; }
+    .setlist-accordion-body { padding-left: 1rem; }
+    .setlist-stats-row { flex-direction: column; }
     .song-edit-row {
         flex-wrap: wrap;
     }
     .song-edit-row .song-notes-input { flex-basis: 100%; }
+}
+
+/* Print: expand all accordion items */
+@media print {
+    .setlist-accordion-body { display: block !important; }
+    .setlist-expand-controls { display: none; }
+    .setlist-header-actions { display: none; }
 }
 
 /* =============================================

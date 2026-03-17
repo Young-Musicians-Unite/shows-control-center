@@ -1607,15 +1607,21 @@ function updateNavActiveState(pageName) {
 window.goToLinkedSetList = function(performer) {
     switchPage('set-lists');
     updateNavActiveState('set-lists');
-    // Find and highlight the matching card after switchPage renders
+    // Find and highlight the matching accordion item after switchPage renders
     setTimeout(() => {
-        const cards = document.querySelectorAll('.setlist-card');
-        for (const card of cards) {
-            const perfEl = card.querySelector('.setlist-performer');
+        const items = document.querySelectorAll('.setlist-accordion-item');
+        for (const item of items) {
+            const perfEl = item.querySelector('.setlist-performer');
             if (perfEl && perfEl.textContent.toLowerCase() === performer.toLowerCase()) {
-                card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                card.classList.add('setlist-card-highlight');
-                setTimeout(() => card.classList.remove('setlist-card-highlight'), 2000);
+                // Expand the accordion body
+                const body = item.querySelector('.setlist-accordion-body');
+                const icon = item.querySelector('.setlist-toggle-icon');
+                if (body) body.style.display = '';
+                if (icon) icon.innerHTML = '&#9660;';
+                item.classList.add('expanded');
+                item.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                item.classList.add('setlist-accordion-highlight');
+                setTimeout(() => item.classList.remove('setlist-accordion-highlight'), 2000);
                 break;
             }
         }
@@ -7990,7 +7996,7 @@ function renderSetLists() {
         return;
     }
 
-    container.innerHTML = '<div class="setlist-grid">' + items.map((sl, idx) => {
+    container.innerHTML = '<div class="setlist-accordion">' + items.map((sl, idx) => {
         const songs = sl.songs || [];
         const stageLabel = sl.stage === 'main' ? 'Main Stage' : 'Cocktail Stage';
         const songListHtml = songs.map((s, i) =>
@@ -8003,29 +8009,20 @@ function renderSetLists() {
         ).join('');
 
         return `
-        <div class="setlist-card" style="animation-delay: ${idx * 40}ms">
-            <div class="setlist-card-header">
-                <div class="setlist-performer">${escapeHtml(sl.performer || '')}</div>
+        <div class="setlist-accordion-item" data-setlist-id="${sl.id}" style="animation-delay: ${idx * 40}ms">
+            <div class="setlist-accordion-header" onclick="toggleSetListSongs('${sl.id}')">
+                <span class="setlist-toggle-icon" id="setlist-toggle-icon-${sl.id}">&#9654;</span>
+                <span class="setlist-performer">${escapeHtml(sl.performer || '')}</span>
                 <span class="setlist-stage-badge stage-${sl.stage}">${stageLabel}</span>
+                <span class="setlist-song-count">${songs.length} song${songs.length !== 1 ? 's' : ''}${sl.estimatedDuration ? ' \u00b7 ' + escapeHtml(sl.estimatedDuration) : ''}</span>
+                <span class="setlist-header-actions" onclick="event.stopPropagation()">
+                    <button class="btn btn-edit btn-sm" onclick="openSetListModal('${sl.id}')">Edit</button>
+                    <button class="btn btn-danger btn-sm" onclick="deleteSetList('${sl.id}')">Delete</button>
+                </span>
             </div>
-            <div class="setlist-summary">
-                <span>${songs.length} song${songs.length !== 1 ? 's' : ''}</span>
-                ${sl.estimatedDuration ? `<span> &middot; ${escapeHtml(sl.estimatedDuration)}</span>` : ''}
-            </div>
-            ${songs.length > 0 ? `
-                <div class="setlist-songs-toggle" onclick="toggleSetListSongs('${sl.id}')">
-                    <span id="setlist-toggle-icon-${sl.id}">&#9654;</span> View Songs
-                </div>
-                <div class="setlist-songs-list" id="setlist-songs-${sl.id}" style="display:none">
-                    ${songListHtml}
-                </div>
-            ` : ''}
-            ${sl.generalNotes ? `
-                <div class="setlist-notes">${escapeHtml(sl.generalNotes)}</div>
-            ` : ''}
-            <div class="staff-actions">
-                <button class="btn btn-edit" onclick="openSetListModal('${sl.id}')">Edit</button>
-                <button class="btn btn-danger" onclick="deleteSetList('${sl.id}')">Delete</button>
+            <div class="setlist-accordion-body" id="setlist-songs-${sl.id}" style="display:none">
+                ${songs.length > 0 ? `<div class="setlist-songs-list">${songListHtml}</div>` : ''}
+                ${sl.generalNotes ? `<div class="setlist-notes">${escapeHtml(sl.generalNotes)}</div>` : ''}
             </div>
         </div>`;
     }).join('') + '</div>';
@@ -8134,13 +8131,35 @@ async function handleSetListSubmit(e) {
 function toggleSetListSongs(id) {
     const el = document.getElementById('setlist-songs-' + id);
     const icon = document.getElementById('setlist-toggle-icon-' + id);
-    if (el.style.display === 'none') {
-        el.style.display = '';
-        icon.innerHTML = '&#9660;';
+    if (!el || !icon) return;
+    const isHidden = el.style.display === 'none';
+    el.style.display = isHidden ? '' : 'none';
+    icon.innerHTML = isHidden ? '&#9660;' : '&#9654;';
+    if (isHidden) {
+        el.closest('.setlist-accordion-item').classList.add('expanded');
     } else {
-        el.style.display = 'none';
-        icon.innerHTML = '&#9654;';
+        el.closest('.setlist-accordion-item').classList.remove('expanded');
     }
+}
+
+function expandAllSetLists() {
+    document.querySelectorAll('.setlist-accordion-body').forEach(body => {
+        body.style.display = '';
+        body.closest('.setlist-accordion-item').classList.add('expanded');
+    });
+    document.querySelectorAll('.setlist-toggle-icon').forEach(icon => {
+        icon.innerHTML = '&#9660;';
+    });
+}
+
+function collapseAllSetLists() {
+    document.querySelectorAll('.setlist-accordion-body').forEach(body => {
+        body.style.display = 'none';
+        body.closest('.setlist-accordion-item').classList.remove('expanded');
+    });
+    document.querySelectorAll('.setlist-toggle-icon').forEach(icon => {
+        icon.innerHTML = '&#9654;';
+    });
 }
 
 function handleSetListSearch(value) {
@@ -8208,6 +8227,8 @@ window.deleteSetList = createDeleteHandler('setLists', 'set list');
 window.addSongRow = addSongRow;
 window.removeSongRow = removeSongRow;
 window.toggleSetListSongs = toggleSetListSongs;
+window.expandAllSetLists = expandAllSetLists;
+window.collapseAllSetLists = collapseAllSetLists;
 window.handleSetListSearch = handleSetListSearch;
 window.clearSetListSearch = clearSetListSearch;
 
