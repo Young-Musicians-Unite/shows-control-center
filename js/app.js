@@ -154,6 +154,29 @@ function initializeApp() {
     setupPropertiesPanel();
     setupVenueMap();
     setupSetListPage();
+
+    // Restore page from URL hash (or default to dashboard)
+    const hash = location.hash.replace('#', '');
+    if (hash && document.getElementById(hash)) {
+        switchPage(hash);
+        // Update nav link active state to match
+        const navLinks = document.querySelectorAll('.nav-link');
+        navLinks.forEach(l => l.classList.toggle('active', l.dataset.page === hash));
+        updateNavGroupIndicators();
+    } else {
+        switchPage('dashboard');
+    }
+
+    // Browser back/forward navigation
+    window.addEventListener('hashchange', () => {
+        const page = location.hash.replace('#', '');
+        if (page && document.getElementById(page) && page !== state.currentPage) {
+            switchPage(page);
+            const navLinks = document.querySelectorAll('.nav-link');
+            navLinks.forEach(l => l.classList.toggle('active', l.dataset.page === page));
+            updateNavGroupIndicators();
+        }
+    });
 }
 
 // Venue Map - setup is at end of file (setupVenueMap)
@@ -260,6 +283,7 @@ function switchPage(pageName) {
     if (targetPage) {
         targetPage.classList.add('active');
         state.currentPage = pageName;
+        window.location.hash = pageName;
 
         // Clear editing state when switching pages
         state.budgetEditingRowId = null;
