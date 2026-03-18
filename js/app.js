@@ -7073,6 +7073,7 @@ function setupVenueMap() {
             // Apply color to selected object(s)
             const active = state.vmCanvas?.getActiveObject();
             if (active) {
+                vmSaveCanvasState();
                 const objs = active.type === 'activeSelection' ? active.getObjects() : [active];
                 objs.forEach(obj => {
                     if (obj.type === 'textbox') {
@@ -7083,7 +7084,9 @@ function setupVenueMap() {
                             obj.set('fill', state.vmCurrentColor);
                         }
                     }
+                    obj.dirty = true;
                 });
+                if (active.type === 'activeSelection') active.dirty = true;
                 state.vmCanvas.renderAll();
                 vmTriggerSave();
             }
@@ -7102,12 +7105,15 @@ function setupVenueMap() {
             // Apply stroke width to selected object(s) (not text)
             const active = state.vmCanvas?.getActiveObject();
             if (active) {
+                vmSaveCanvasState();
                 const objs = active.type === 'activeSelection' ? active.getObjects() : [active];
                 objs.forEach(obj => {
                     if (obj.type !== 'textbox') {
                         obj.set('strokeWidth', state.vmStrokeWidth);
+                        obj.dirty = true;
                     }
                 });
+                if (active.type === 'activeSelection') active.dirty = true;
                 state.vmCanvas.renderAll();
                 vmTriggerSave();
             }
@@ -7120,10 +7126,19 @@ function setupVenueMap() {
         fillToggle.addEventListener('change', (e) => {
             state.vmFillShape = e.target.checked;
             const active = state.vmCanvas?.getActiveObject();
-            if (active && (active.type === 'rect' || active.type === 'ellipse')) {
-                active.set('fill', state.vmFillShape ? active.stroke : 'transparent');
-                state.vmCanvas.renderAll();
-                vmTriggerSave();
+            if (active) {
+                const objs = active.type === 'activeSelection' ? active.getObjects() : [active];
+                const fillable = objs.filter(o => o.type === 'rect' || o.type === 'ellipse');
+                if (fillable.length) {
+                    vmSaveCanvasState();
+                    fillable.forEach(obj => {
+                        obj.set('fill', state.vmFillShape ? obj.stroke : 'transparent');
+                        obj.dirty = true;
+                    });
+                    if (active.type === 'activeSelection') active.dirty = true;
+                    state.vmCanvas.renderAll();
+                    vmTriggerSave();
+                }
             }
         });
     }
@@ -7339,7 +7354,17 @@ function vmSetupDrawingEvents() {
         const pointer = c.getPointer(opt.e);
 
         if (state.vmCurrentTool === 'line') {
-            state.vmDrawingObj.set({ x2: pointer.x, y2: pointer.y });
+            let x2 = pointer.x, y2 = pointer.y;
+            if (opt.e.shiftKey) {
+                const dx = pointer.x - state.vmDrawStart.x;
+                const dy = pointer.y - state.vmDrawStart.y;
+                const angle = Math.atan2(dy, dx);
+                const snapped = Math.round(angle / (Math.PI / 4)) * (Math.PI / 4);
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                x2 = state.vmDrawStart.x + dist * Math.cos(snapped);
+                y2 = state.vmDrawStart.y + dist * Math.sin(snapped);
+            }
+            state.vmDrawingObj.set({ x2, y2 });
         } else if (state.vmCurrentTool === 'rect') {
             const left = Math.min(state.vmDrawStart.x, pointer.x);
             const top = Math.min(state.vmDrawStart.y, pointer.y);
@@ -7436,6 +7461,7 @@ function vmUndo() {
 
     const prev = state.vmUndoStack.pop();
     state.vmIsUndoRedoing = true;
+    c.renderOnAddRemove = false;
     c.loadFromJSON(prev, () => {
         // Re-apply background image since loadFromJSON replaces it
         if (state.vmBgImage) {
@@ -7446,9 +7472,10 @@ function vmUndo() {
                     originX: 'left',
                     originY: 'top'
                 }),
-                c.renderAll.bind(c)
+                () => {}
             );
         }
+        c.renderOnAddRemove = true;
         c.renderAll();
         state.vmIsUndoRedoing = false;
         vmUpdateUndoRedoButtons();
@@ -7466,6 +7493,7 @@ function vmRedo() {
 
     const next = state.vmRedoStack.pop();
     state.vmIsUndoRedoing = true;
+    c.renderOnAddRemove = false;
     c.loadFromJSON(next, () => {
         if (state.vmBgImage) {
             c.setBackgroundImage(
@@ -7475,9 +7503,10 @@ function vmRedo() {
                     originX: 'left',
                     originY: 'top'
                 }),
-                c.renderAll.bind(c)
+                () => {}
             );
         }
+        c.renderOnAddRemove = true;
         c.renderAll();
         state.vmIsUndoRedoing = false;
         vmUpdateUndoRedoButtons();
@@ -7514,6 +7543,7 @@ function vmContextAction(action) {
     const obj = state.vmCanvas && state.vmCanvas.getActiveObject();
     if (!obj) return;
 
+    vmSaveCanvasState();
     state.vmCanvas[action](obj);
     state.vmCanvas.renderAll();
     vmHideContextMenu();
