@@ -7462,7 +7462,18 @@ function vmUndo() {
     const prev = state.vmUndoStack.pop();
     state.vmIsUndoRedoing = true;
     c.renderOnAddRemove = false;
+
+    // Suppress ALL renders during async loadFromJSON reconstruction
+    const origRenderAll = c.renderAll.bind(c);
+    const origRequestRenderAll = c.requestRenderAll.bind(c);
+    c.renderAll = function() {};
+    c.requestRenderAll = function() {};
+
     c.loadFromJSON(prev, () => {
+        // Restore render methods
+        c.renderAll = origRenderAll;
+        c.requestRenderAll = origRequestRenderAll;
+
         // Re-apply background image since loadFromJSON replaces it
         if (state.vmBgImage) {
             c.setBackgroundImage(
@@ -7494,7 +7505,18 @@ function vmRedo() {
     const next = state.vmRedoStack.pop();
     state.vmIsUndoRedoing = true;
     c.renderOnAddRemove = false;
+
+    // Suppress ALL renders during async loadFromJSON reconstruction
+    const origRenderAll = c.renderAll.bind(c);
+    const origRequestRenderAll = c.requestRenderAll.bind(c);
+    c.renderAll = function() {};
+    c.requestRenderAll = function() {};
+
     c.loadFromJSON(next, () => {
+        // Restore render methods
+        c.renderAll = origRenderAll;
+        c.requestRenderAll = origRequestRenderAll;
+
         if (state.vmBgImage) {
             c.setBackgroundImage(
                 new fabric.Image(state.vmBgImage, {
