@@ -56,6 +56,9 @@ const state = {
     deletedObjectIds: new Set(),  // Object IDs that were deleted
     isReceivingRemote: false,     // Flag to suppress re-saving during remote updates
     plotObjectsUnsubscribe: null, // Firestore listener unsubscribe function
+    vmUndoStack: [],  // Undo history for venue map canvas
+    vmRedoStack: [],  // Redo history for venue map canvas
+    vmIsUndoRedoing: false,  // Flag to prevent history recording during undo/redo
     timelineUndoStack: [],  // Undo history for timeline actions
     timelineFilter: 'all',  // Current timeline filter: 'all', 'production', 'run-of-show'
     timelineAnimateRows: true,  // Only animate rows on day/filter switch, not data updates
@@ -7070,14 +7073,17 @@ function setupVenueMap() {
             // Apply color to selected object(s)
             const active = state.vmCanvas?.getActiveObject();
             if (active) {
-                if (active.type === 'textbox') {
-                    active.set('fill', state.vmCurrentColor);
-                } else {
-                    active.set('stroke', state.vmCurrentColor);
-                    if (active.fill && active.fill !== 'transparent') {
-                        active.set('fill', state.vmCurrentColor);
+                const objs = active.type === 'activeSelection' ? active.getObjects() : [active];
+                objs.forEach(obj => {
+                    if (obj.type === 'textbox') {
+                        obj.set('fill', state.vmCurrentColor);
+                    } else {
+                        obj.set('stroke', state.vmCurrentColor);
+                        if (obj.fill && obj.fill !== 'transparent') {
+                            obj.set('fill', state.vmCurrentColor);
+                        }
                     }
-                }
+                });
                 state.vmCanvas.renderAll();
                 vmTriggerSave();
             }
@@ -7093,10 +7099,15 @@ function setupVenueMap() {
             if (state.vmCanvas && state.vmCanvas.isDrawingMode) {
                 state.vmCanvas.freeDrawingBrush.width = state.vmStrokeWidth;
             }
-            // Apply stroke width to selected object (not text)
+            // Apply stroke width to selected object(s) (not text)
             const active = state.vmCanvas?.getActiveObject();
-            if (active && active.type !== 'textbox') {
-                active.set('strokeWidth', state.vmStrokeWidth);
+            if (active) {
+                const objs = active.type === 'activeSelection' ? active.getObjects() : [active];
+                objs.forEach(obj => {
+                    if (obj.type !== 'textbox') {
+                        obj.set('strokeWidth', state.vmStrokeWidth);
+                    }
+                });
                 state.vmCanvas.renderAll();
                 vmTriggerSave();
             }
@@ -7143,6 +7154,12 @@ function setupVenueMap() {
     if (printBtn) printBtn.addEventListener('click', vmPrintMap);
     if (exportBtn) exportBtn.addEventListener('click', vmExportPNG);
 
+    // Undo/Redo buttons
+    const undoBtn = document.getElementById('vm-undo-btn');
+    const redoBtn = document.getElementById('vm-redo-btn');
+    if (undoBtn) undoBtn.addEventListener('click', vmUndo);
+    if (redoBtn) redoBtn.addEventListener('click', vmRedo);
+
     // Keyboard shortcuts for venue map
     document.addEventListener('keydown', (e) => {
         if (state.currentPage !== 'venue-map' || !state.vmCanvas) return;
@@ -7152,6 +7169,17 @@ function setupVenueMap() {
             if (state.vmCanvas.getActiveObject()?.isEditing) return;
             vmDeleteSelected();
             e.preventDefault();
+        }
+
+        // Undo: Ctrl+Z / Cmd+Z
+        if (e.key === 'z' && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
+            e.preventDefault();
+            vmUndo();
+        }
+        // Redo: Ctrl+Shift+Z / Cmd+Shift+Z
+        if (e.key === 'z' && (e.ctrlKey || e.metaKey) && e.shiftKey) {
+            e.preventDefault();
+            vmRedo();
         }
     });
 }
@@ -7205,7 +7233,10 @@ function vmInitCanvas() {
     state.vmCanvas.calcOffset();
 
     vmSetupDrawingEvents();
-    vmLoadLayers();
+    vmLoadLayers().then(() => {
+        // Save initial state so the first action is undoable
+        setTimeout(() => vmSaveCanvasState(), 500);
+    });
 }
 
 function vmUpdateCanvasMode() {
@@ -7376,10 +7407,89 @@ function vmSetupDrawingEvents() {
         });
     });
 
-    // Auto-save on object modifications
-    c.on('object:modified', () => vmTriggerSave());
-    c.on('object:removed', () => vmTriggerSave());
+    // Auto-save on object modifications and capture undo state
+    c.on('object:added', () => { if (!state.vmIsUndoRedoing) vmSaveCanvasState(); });
+    c.on('object:modified', () => { if (!state.vmIsUndoRedoing) vmSaveCanvasState(); vmTriggerSave(); });
+    c.on('object:removed', () => { if (!state.vmIsUndoRedoing) vmSaveCanvasState(); vmTriggerSave(); });
     c.on('text:changed', () => vmTriggerSave());
+}
+
+// --- Venue Map Undo/Redo ---
+
+function vmSaveCanvasState() {
+    const c = state.vmCanvas;
+    if (!c || state.vmIsUndoRedoing) return;
+    const json = JSON.stringify(c.toJSON(['_vmLayerId', '_vmBackground']));
+    state.vmUndoStack.push(json);
+    if (state.vmUndoStack.length > 30) state.vmUndoStack.shift();
+    state.vmRedoStack = [];
+    vmUpdateUndoRedoButtons();
+}
+
+function vmUndo() {
+    const c = state.vmCanvas;
+    if (!c || state.vmUndoStack.length === 0) return;
+
+    // Save current state to redo stack
+    const current = JSON.stringify(c.toJSON(['_vmLayerId', '_vmBackground']));
+    state.vmRedoStack.push(current);
+
+    const prev = state.vmUndoStack.pop();
+    state.vmIsUndoRedoing = true;
+    c.loadFromJSON(prev, () => {
+        // Re-apply background image since loadFromJSON replaces it
+        if (state.vmBgImage) {
+            c.setBackgroundImage(
+                new fabric.Image(state.vmBgImage, {
+                    scaleX: state.vmBgScale,
+                    scaleY: state.vmBgScale,
+                    originX: 'left',
+                    originY: 'top'
+                }),
+                c.renderAll.bind(c)
+            );
+        }
+        c.renderAll();
+        state.vmIsUndoRedoing = false;
+        vmUpdateUndoRedoButtons();
+        vmTriggerSave();
+    });
+}
+
+function vmRedo() {
+    const c = state.vmCanvas;
+    if (!c || state.vmRedoStack.length === 0) return;
+
+    // Save current state to undo stack
+    const current = JSON.stringify(c.toJSON(['_vmLayerId', '_vmBackground']));
+    state.vmUndoStack.push(current);
+
+    const next = state.vmRedoStack.pop();
+    state.vmIsUndoRedoing = true;
+    c.loadFromJSON(next, () => {
+        if (state.vmBgImage) {
+            c.setBackgroundImage(
+                new fabric.Image(state.vmBgImage, {
+                    scaleX: state.vmBgScale,
+                    scaleY: state.vmBgScale,
+                    originX: 'left',
+                    originY: 'top'
+                }),
+                c.renderAll.bind(c)
+            );
+        }
+        c.renderAll();
+        state.vmIsUndoRedoing = false;
+        vmUpdateUndoRedoButtons();
+        vmTriggerSave();
+    });
+}
+
+function vmUpdateUndoRedoButtons() {
+    const undoBtn = document.getElementById('vm-undo-btn');
+    const redoBtn = document.getElementById('vm-redo-btn');
+    if (undoBtn) undoBtn.disabled = state.vmUndoStack.length === 0;
+    if (redoBtn) redoBtn.disabled = state.vmRedoStack.length === 0;
 }
 
 // --- Right-click context menu for z-order ---
