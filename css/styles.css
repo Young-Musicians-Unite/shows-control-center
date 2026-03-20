@@ -1773,6 +1773,7 @@ body {
 .timeline-table.hide-event .event-col { display: none; }
 .timeline-table.hide-prod .prod-col { display: none; }
 .timeline-table.hide-andi .andi-col { display: none; }
+.timeline-table.hide-pedro .pedro-col { display: none; }
 .timeline-table.hide-responsible .responsible-col { display: none; }
 .timeline-table.hide-staff .staff-col { display: none; }
 .timeline-table.hide-setlist .setlist-col { display: none; }
@@ -1803,7 +1804,8 @@ body {
 
 /* Prod & Andi checkbox columns */
 .prod-col,
-.andi-col {
+.andi-col,
+.pedro-col {
     width: 50px;
     text-align: center;
 }

@@ -1100,6 +1100,8 @@ function renderTimeline() {
         filteredTimeline = filteredTimeline.filter(item => item.production === true || item.tag === 'production');
     } else if (state.timelineFilter === 'andi') {
         filteredTimeline = filteredTimeline.filter(item => item.andi === true);
+    } else if (state.timelineFilter === 'pedro') {
+        filteredTimeline = filteredTimeline.filter(item => item.pedro === true);
     } else if (state.timelineFilter === 'run-of-show') {
         filteredTimeline = filteredTimeline.filter(item => {
             if (!item.time) return false;
@@ -1133,6 +1135,7 @@ function renderTimeline() {
                 <td class="event-col" data-field="event" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ event</span></td>
                 <td class="prod-col"></td>
                 <td class="andi-col"></td>
+                <td class="pedro-col"></td>
                 <td class="responsible-col" data-field="responsible" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ responsible</span></td>
                 <td class="staff-col" data-field="staff" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ staff</span></td>
                 <td class="setlist-col"></td>
@@ -1174,6 +1177,7 @@ function renderTimeline() {
                 <td class="event-col" data-field="event" data-original="${escapeHtml(item.event || '')}" onclick="editTimelineCell(this)">${escapeHtml(item.event || '')}</td>
                 <td class="prod-col"><input type="checkbox" class="tl-checkbox" ${item.production === true || item.tag === 'production' ? 'checked' : ''} onchange="toggleTimelineField('${item.id}', 'production', this.checked)"></td>
                 <td class="andi-col"><input type="checkbox" class="tl-checkbox" ${item.andi === true ? 'checked' : ''} onchange="toggleTimelineField('${item.id}', 'andi', this.checked)"></td>
+                <td class="pedro-col"><input type="checkbox" class="tl-checkbox" ${item.pedro === true ? 'checked' : ''} onchange="toggleTimelineField('${item.id}', 'pedro', this.checked)"></td>
                 <td class="responsible-col" data-field="responsible" data-original="${escapeHtml(item.responsible || '')}" onclick="editTimelineCell(this)">${escapeHtml(item.responsible || '')}</td>
                 <td class="staff-col" data-field="staff" data-original="${escapeHtml(item.staff || '')}" onclick="editTimelineCell(this)">${escapeHtml(item.staff || '')}</td>
                 <td class="setlist-col">
@@ -1234,6 +1238,7 @@ function renderTimeline() {
             <td class="event-col" data-field="event" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ event</span></td>
             <td class="prod-col"></td>
             <td class="andi-col"></td>
+            <td class="pedro-col"></td>
             <td class="responsible-col" data-field="responsible" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ responsible</span></td>
             <td class="staff-col" data-field="staff" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ staff</span></td>
             <td class="setlist-col"></td>
@@ -1260,6 +1265,7 @@ function renderTimeline() {
                 const badges = [];
                 if (item.production === true || item.tag === 'production') badges.push('<span class="mobile-card-badge prod">Prod</span>');
                 if (item.andi === true) badges.push('<span class="mobile-card-badge andi">Andi</span>');
+                if (item.pedro === true) badges.push('<span class="mobile-card-badge pedro">Pedro</span>');
 
                 return `
                     <div class="mobile-card ${isComplete ? 'completed' : ''}" style="${borderStyle}">
@@ -1432,6 +1438,7 @@ function openTimelineModal(itemId = null) {
             'timeline-staff': 'staff',
             'timeline-production': 'production',
             'timeline-andi': 'andi',
+            'timeline-pedro': 'pedro',
             'timeline-notes': 'notes',
             'timeline-performer': 'performer',
             'timeline-stage-plot': 'stagePlotId'
@@ -1581,6 +1588,7 @@ async function handleTimelineSubmit(e) {
             'timeline-staff': 'staff',
             'timeline-production': 'production',
             'timeline-andi': 'andi',
+            'timeline-pedro': 'pedro',
             'timeline-notes': 'notes',
             'timeline-performer': 'performer',
             'timeline-stage-plot': 'stagePlotId'
