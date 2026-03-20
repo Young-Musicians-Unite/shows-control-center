@@ -2668,7 +2668,13 @@ function editBudgetCell(cell) {
                     restoreBudgetCellDisplay(cell, isPhantom);
                     if (!row.querySelector('.inline-edit-input')) {
                         row.classList.remove('editing');
-                        clearBudgetEditingFlag();
+                        // Focus left the phantom row entirely — commit if any field has data
+                        const hasData = BUDGET_FIELD_ORDER.some(f => state.pendingNewBudgetRow[f] && String(state.pendingNewBudgetRow[f]).trim());
+                        if (hasData) {
+                            commitNewBudgetRow(row);
+                        } else {
+                            clearBudgetEditingFlag();
+                        }
                     }
                 } else {
                     saveSingleBudgetCell(cell, row);
@@ -2849,8 +2855,9 @@ function navigateBudgetNextRowSameColumn(row, field) {
 async function commitNewBudgetRow(phantomRow) {
     const data = { ...state.pendingNewBudgetRow };
 
-    // Need at least vendor or description
-    if (!data.vendor && !data.description) {
+    // Need at least one field populated
+    const hasAnyData = BUDGET_FIELD_ORDER.some(f => data[f] && String(data[f]).trim());
+    if (!hasAnyData) {
         state.pendingNewBudgetRow = {};
         clearBudgetEditingFlag();
         renderBudget();
