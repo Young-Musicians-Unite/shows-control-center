@@ -4074,280 +4074,314 @@ body.menu-open::after {
    Canvas-based stage plot builder
    ============================================= */
 
-/* Plot Controls */
-.plot-controls {
-    display: flex;
-    gap: 2rem;
-    align-items: center;
-    padding: 1.5rem;
-    background: #f8f9fa;
-    border-radius: 8px;
-    margin-bottom: 1.5rem;
-    flex-wrap: wrap;
-    justify-content: space-between;
-}
-
-.controls-left,
-.controls-center,
-.controls-right {
+/* Header: Title + Stage Tabs + Print */
+.sp-header {
     display: flex;
     align-items: center;
-    gap: 1rem;
-    flex-wrap: wrap;
+    gap: 1.5rem;
+    margin-bottom: 0.5rem;
 }
 
-.controls-left {
-    flex: 0 1 auto;
-}
-
-.controls-center {
-    flex: 1 1 auto;
-    justify-content: center;
-}
-
-.controls-right {
-    flex: 0 1 auto;
-    margin-left: auto;
-}
-
-.plot-selector {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-}
-
-.plot-selector label {
-    font-weight: 600;
-    color: #2c3e50;
-}
-
-.plot-dropdown {
-    min-width: 200px;
-    padding: 0.5rem;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    font-size: 0.95rem;
-}
-
-.plot-name-control {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.plot-name-control label {
-    font-weight: 600;
-    color: #2c3e50;
-}
-
-.plot-name-input {
-    min-width: 200px;
-    padding: 0.5rem;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    font-size: 0.95rem;
-}
-
-.plot-name-input:disabled {
-    background: #f5f5f5;
-    color: #999;
-}
-
-.drawing-controls {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-}
-
-.drawing-controls .btn {
-    min-width: auto;
+.sp-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #1a2332;
+    margin: 0;
     white-space: nowrap;
 }
 
-.tool-mode-toggle {
+.sp-stage-tabs {
     display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin-left: 1rem;
-    padding: 0.5rem;
-    background: rgba(201, 169, 97, 0.1);
-    border-radius: 4px;
+    background: #e8eaed;
+    border-radius: 6px;
+    padding: 3px;
+    gap: 2px;
 }
 
-.tool-mode-label {
+.sp-tab {
+    padding: 0.4rem 1.25rem;
+    border: none;
+    background: transparent;
+    border-radius: 4px;
     font-size: 0.85rem;
     font-weight: 600;
-    color: #2c3e50;
-    margin: 0;
+    color: #5f6368;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
 }
 
-.tool-mode-btn {
-    min-width: 70px !important;
-    padding: 0.4rem 0.8rem;
-    font-size: 0.85rem;
-    font-weight: bold;
-    background: white;
-    border: 2px solid #ddd;
-    color: #666;
-    transition: all 0.2s ease;
+.sp-tab:hover {
+    color: #1a2332;
+    background: rgba(255,255,255,0.5);
 }
 
-.tool-mode-btn:hover {
+.sp-tab.active {
+    background: #1a3a2a;
+    color: #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}
+
+.sp-icon-btn {
+    margin-left: auto;
+    padding: 6px;
+    border: 1px solid #ddd;
+    background: #fff;
+    border-radius: 6px;
+    cursor: pointer;
+    color: #5f6368;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+}
+
+.sp-icon-btn:hover {
     border-color: #c9a961;
     color: #c9a961;
 }
 
-.tool-mode-btn.active {
-    background: #c9a961;
+/* Single Toolbar Row */
+.sp-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 8px;
+    background: #f5f6f7;
+    border: 1px solid #e0e2e6;
+    border-radius: 8px;
+    margin-bottom: 0.5rem;
+    min-height: 38px;
+}
+
+.sp-toolbar-section {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.sp-toolbar-divider {
+    width: 1px;
+    height: 22px;
+    background: #d0d3d8;
+    flex-shrink: 0;
+    margin: 0 2px;
+}
+
+.sp-toolbar-spacer {
+    flex: 1;
+    min-width: 4px;
+}
+
+/* Plot selector & name */
+.sp-select {
+    padding: 4px 24px 4px 8px;
+    border: 1px solid #d0d3d8;
+    border-radius: 5px;
+    font-size: 0.8rem;
+    background: #fff;
+    color: #1a2332;
+    max-width: 180px;
+    height: 28px;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%235f6368' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+}
+
+.sp-select:focus {
+    outline: none;
     border-color: #c9a961;
-    color: white;
+    box-shadow: 0 0 0 2px rgba(201,169,97,0.15);
 }
 
-.zoom-controls {
+.sp-name-input {
+    padding: 4px 8px;
+    border: 1px solid #d0d3d8;
+    border-radius: 5px;
+    font-size: 0.8rem;
+    color: #1a2332;
+    width: 140px;
+    height: 28px;
+}
+
+.sp-name-input:focus {
+    outline: none;
+    border-color: #c9a961;
+    box-shadow: 0 0 0 2px rgba(201,169,97,0.15);
+}
+
+.sp-name-input:disabled {
+    background: #f0f0f0;
+    color: #999;
+}
+
+/* Tool buttons (icon-only) */
+.sp-tool-btn {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem;
-    background: rgba(52, 152, 219, 0.1);
-    border-radius: 4px;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid #d0d3d8;
+    background: #fff;
+    border-radius: 5px;
+    cursor: pointer;
+    color: #5f6368;
+    transition: all 0.12s ease;
+    flex-shrink: 0;
 }
 
-.zoom-level {
-    font-size: 0.85rem;
-    min-width: 45px;  /* Prevent width changes between 50% and 250% */
-    text-align: center;
-    display: inline-block;
-    font-weight: 600;
-    color: #2c3e50;
-    min-width: 50px;
-    text-align: center;
+.sp-tool-btn:hover:not(:disabled) {
+    border-color: #b0b3b8;
+    color: #1a2332;
+    background: #ecedef;
 }
 
-.zoom-controls .btn {
-    min-width: 50px !important;
-    padding: 0.4rem 0.6rem;
-    font-size: 0.85rem;
-    background: white;
-    border: 2px solid #ddd;
-    color: #666;
-    transition: all 0.2s ease;
-}
-
-.zoom-controls .btn:hover {
-    border-color: #3498db;
-    color: #3498db;
-    background: #e8f4f8;
-}
-
-.undo-redo-controls {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem;
-    background: rgba(149, 165, 166, 0.1);
-    border-radius: 4px;
-}
-
-.undo-redo-controls .btn {
-    min-width: auto;
-    padding: 0.4rem 0.6rem;
-    font-size: 0.85rem;
-    background: white;
-    border: 2px solid #ddd;
-    color: #666;
-    transition: all 0.2s ease;
-}
-
-.undo-redo-controls .btn:hover:not(:disabled) {
-    border-color: #95a5a6;
-    color: #2c3e50;
-    background: #ecf0f1;
-}
-
-.undo-redo-controls .btn:disabled {
-    opacity: 0.4;
+.sp-tool-btn:disabled {
+    opacity: 0.35;
     cursor: not-allowed;
 }
 
-.save-status {
-    font-size: 0.9rem;
-    color: #666;
-    white-space: nowrap;
-    width: 120px;  /* Fixed width - never changes */
-    text-align: right;
-    overflow: hidden;
-    text-overflow: ellipsis;
+.sp-tool-btn.active {
+    background: #e8d5a3;
+    border-color: #c9a961;
+    color: #6b5620;
 }
 
-.save-status.saving .status-text::before {
-    content: "⏳ Saving...";
-    color: #f39c12;
+.sp-tool-btn.sp-primary {
+    background: #c9a961;
+    border-color: #b8963d;
+    color: #fff;
 }
 
-.save-status.saved .status-text::before {
-    content: "✓ Saved";
-    color: #27ae60;
+.sp-tool-btn.sp-primary:hover {
+    background: #b8963d;
+    border-color: #a6852e;
+    color: #fff;
 }
 
-.btn-sm {
-    padding: 0.4rem 0.8rem;
-    font-size: 0.85rem;
+.sp-tool-btn.sp-danger:hover {
+    border-color: #e74c3c;
+    color: #e74c3c;
+    background: #fdf0ef;
 }
 
-/* Properties Panel */
-.properties-panel {
+/* Draw/Move toggle group */
+.sp-toggle-group {
+    display: flex;
+    background: #e8eaed;
+    border-radius: 5px;
+    padding: 2px;
+    gap: 1px;
+}
+
+.sp-toggle {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    padding: 0.6rem 1.5rem;
-    background: #f8f9fa;
-    border: 1px solid #e0e0e0;
-    border-radius: 8px;
-    margin-bottom: 0.75rem;
-    flex-wrap: wrap;
-}
-
-.properties-panel .prop-label {
-    font-size: 0.85rem;
+    gap: 4px;
+    padding: 3px 10px;
+    border: none;
+    background: transparent;
+    border-radius: 4px;
+    font-size: 0.75rem;
     font-weight: 600;
-    color: #2c3e50;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
+    color: #5f6368;
+    cursor: pointer;
+    transition: all 0.12s ease;
+    white-space: nowrap;
+    height: 24px;
 }
 
-.properties-panel input[type="color"] {
-    width: 32px;
-    height: 28px;
+.sp-toggle:hover {
+    color: #1a2332;
+}
+
+.sp-toggle.active {
+    background: #fff;
+    color: #1a2332;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+
+/* Inline properties */
+.sp-props {
+    transition: opacity 0.15s ease;
+}
+
+.sp-props.hidden {
+    visibility: hidden;
+    pointer-events: none;
+    opacity: 0;
+    width: 0;
+    overflow: hidden;
+    gap: 0;
+    margin: 0;
     padding: 0;
-    border: 2px solid #ddd;
+}
+
+.sp-color-input {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 2px solid #d0d3d8;
     border-radius: 4px;
     cursor: pointer;
     background: none;
 }
 
-.properties-panel input[type="color"]::-webkit-color-swatch-wrapper {
+.sp-color-input::-webkit-color-swatch-wrapper {
     padding: 1px;
 }
 
-.properties-panel input[type="color"]::-webkit-color-swatch {
+.sp-color-input::-webkit-color-swatch {
     border: none;
     border-radius: 2px;
 }
 
-.properties-panel select {
-    padding: 0.3rem 0.5rem;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    font-size: 0.85rem;
-    background: white;
+.sp-fill-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
 }
 
-.properties-panel input[type="checkbox"] {
+.sp-checkbox {
     margin: 0;
     cursor: pointer;
 }
+
+.sp-mini-select {
+    padding: 2px 4px;
+    border: 1px solid #d0d3d8;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    background: #fff;
+    height: 24px;
+}
+
+/* Zoom */
+.sp-zoom-level {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #5f6368;
+    min-width: 38px;
+    text-align: center;
+}
+
+/* Save status */
+.sp-save-status {
+    font-size: 0.75rem;
+    color: #5f6368;
+    white-space: nowrap;
+    min-width: 50px;
+    text-align: right;
+}
+
+.save-status-saved { color: #38a169; }
+.save-status-saving { color: #d69e2e; }
+.save-status-error { color: #e53e3e; font-weight: 600; }
+.save-status-draft { color: #718096; font-style: italic; }
 
 /* ========================================
    Venue Map Page
@@ -4680,6 +4714,12 @@ body.menu-open::after {
 }
 .vm-context-menu button:hover {
     background: #334155;
+}
+
+.context-menu-divider {
+    border: none;
+    border-top: 1px solid #334155;
+    margin: 4px 0;
 }
 
 /* Save status */

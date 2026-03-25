@@ -2,7 +2,7 @@
 const CUSTOM_FABRIC_PROPS = [
     'objectId', 'rectId', 'isRectDimension', 'dimensionType',
     'isStageElement', 'elementType', 'pixelsPerFoot', 'gridLine',
-    'fillEnabled', 'fillColor', 'fillOpacity'
+    'fillEnabled', 'fillColor', 'fillOpacity', 'locked'
 ];
 
 // Generate a unique client session ID for multi-user collaboration
@@ -157,6 +157,50 @@ function initializeApp() {
     setupPropertiesPanel();
     setupVenueMap();
     setupSetListPage();
+
+    // Flush pending saves on page unload
+    window.addEventListener('beforeunload', () => {
+        if (state.autoSaveTimeout) {
+            clearTimeout(state.autoSaveTimeout);
+            state.autoSaveTimeout = null;
+        }
+
+        // Save draft canvas to localStorage for recovery
+        if (state.isDraftPlot && state.canvas) {
+            const nonGridObjects = state.canvas.getObjects().filter(o => !o.gridLine);
+            if (nonGridObjects.length > 0) {
+                try {
+                    const canvasJSON = state.canvas.toJSON(CUSTOM_FABRIC_PROPS);
+                    localStorage.setItem('stagePlot_draftCanvas', JSON.stringify(canvasJSON));
+                    localStorage.setItem('stagePlot_draftStageType', state.currentStagePlotType);
+                    const plotNameInput = document.getElementById('plot-name-input');
+                    localStorage.setItem('stagePlot_draftName', plotNameInput?.value || 'Untitled Plot');
+                } catch (e) {
+                    console.error('Error saving draft to localStorage:', e);
+                }
+            }
+        }
+
+        // For saved plots with dirty objects, flush the save
+        if (!state.isDraftPlot && state.currentPlotId &&
+            (state.dirtyObjectIds.size > 0 || state.deletedObjectIds.size > 0)) {
+            savePlot();
+        }
+    });
+
+    // Also flush on visibility change (more reliable on mobile)
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') {
+            if (state.autoSaveTimeout) {
+                clearTimeout(state.autoSaveTimeout);
+                state.autoSaveTimeout = null;
+            }
+            if (!state.isDraftPlot && state.currentPlotId &&
+                (state.dirtyObjectIds.size > 0 || state.deletedObjectIds.size > 0)) {
+                savePlot();
+            }
+        }
+    });
 
     // Restore page from URL hash (or default to dashboard)
     const hash = location.hash.replace('#', '');
@@ -4401,7 +4445,6 @@ function initializeStagePlots() {
     if (!state.canvas) {
         setupCanvas();
     }
-    updatePlotSelector();
 
     // Mobile: make element library collapsible
     if (window.innerWidth <= 768) {
@@ -4417,13 +4460,111 @@ function initializeStagePlots() {
         }
     }
 
-    // Show a local draft canvas if no plot is selected (no Firestore write)
-    setTimeout(() => {
-        if (!state.currentPlotId) {
-            console.log('No plot selected - creating local draft');
+    // Restore persisted stage type and plot from localStorage
+    const persistedPlotId = localStorage.getItem('stagePlot_currentPlotId');
+    const persistedStageType = localStorage.getItem('stagePlot_currentStagePlotType');
+
+    if (persistedStageType) {
+        state.currentStagePlotType = persistedStageType;
+        // Update tab UI to match
+        const tabs = document.querySelectorAll('.sp-tab[data-stage-type]');
+        tabs.forEach(tab => {
+            tab.classList.toggle('active', tab.dataset.stageType === persistedStageType);
+        });
+    }
+
+    updatePlotSelector();
+
+    // Check for draft recovery from localStorage
+    const draftCanvas = localStorage.getItem('stagePlot_draftCanvas');
+    if (draftCanvas) {
+        try {
+            state.isDraftPlot = true;
+            state.currentPlotId = null;
+            const draftStageType = localStorage.getItem('stagePlot_draftStageType') || 'main';
+            const draftName = localStorage.getItem('stagePlot_draftName') || 'Untitled Plot';
+            state.currentStagePlotType = draftStageType;
+
+            // Update tab UI
+            const tabs = document.querySelectorAll('.sp-tab[data-stage-type]');
+            tabs.forEach(tab => {
+                tab.classList.toggle('active', tab.dataset.stageType === draftStageType);
+            });
+
+            state.isReceivingRemote = true;
+            state.canvas.loadFromJSON(JSON.parse(draftCanvas), () => {
+                state.canvas.renderAll();
+                drawGrid();
+                rebuildStageRectangles();
+                sendStageRectsToBack();
+                state.isReceivingRemote = false;
+
+                const plotNameInput = document.getElementById('plot-name-input');
+                if (plotNameInput) {
+                    plotNameInput.value = draftName;
+                    plotNameInput.disabled = false;
+                }
+                updateSaveStatus('Draft recovered - make an edit to save');
+                saveCanvasState();
+            });
+
+            localStorage.removeItem('stagePlot_draftCanvas');
+            localStorage.removeItem('stagePlot_draftStageType');
+            localStorage.removeItem('stagePlot_draftName');
+            updatePlotSelector();
+            return;
+        } catch (e) {
+            console.error('Error recovering draft:', e);
+            localStorage.removeItem('stagePlot_draftCanvas');
+            localStorage.removeItem('stagePlot_draftStageType');
+            localStorage.removeItem('stagePlot_draftName');
+        }
+    }
+
+    // If we have a persisted plot ID, wait for Firestore data and load it
+    if (persistedPlotId) {
+        waitForPlotAndLoad(persistedPlotId);
+        return;
+    }
+
+    // No persisted plot - wait for Firestore data then create a draft
+    let attempts = 0;
+    const interval = setInterval(() => {
+        attempts++;
+        if (state.stagePlots.length > 0 || attempts > 20) {
+            clearInterval(interval);
+            if (!state.currentPlotId) {
+                console.log('No plot selected - creating local draft');
+                createDraftPlot();
+            }
+        }
+    }, 100);
+}
+
+// Wait for a specific plot to appear in state.stagePlots, then load it
+function waitForPlotAndLoad(plotId) {
+    if (state.stagePlots.find(p => p.id === plotId)) {
+        updatePlotSelector();
+        const plotSelect = document.getElementById('plot-select');
+        if (plotSelect) plotSelect.value = plotId;
+        loadPlot(plotId);
+        return;
+    }
+    let attempts = 0;
+    const interval = setInterval(() => {
+        attempts++;
+        if (state.stagePlots.find(p => p.id === plotId)) {
+            clearInterval(interval);
+            updatePlotSelector();
+            const plotSelect = document.getElementById('plot-select');
+            if (plotSelect) plotSelect.value = plotId;
+            loadPlot(plotId);
+        } else if (attempts > 20) {
+            clearInterval(interval);
+            localStorage.removeItem('stagePlot_currentPlotId');
             createDraftPlot();
         }
-    }, 200);
+    }, 100);
 }
 
 // Setup Fabric.js Canvas
@@ -4497,10 +4638,22 @@ function setupCanvas() {
 
     // Add double-click handler for editing element labels and dimension labels
     state.canvas.on('mouse:dblclick', (e) => {
+        // Plain text IText objects handle their own editing natively
+        if (e.target && e.target.elementType === 'plain-text') {
+            return;  // Fabric.js IText enters edit mode automatically on dblclick
+        }
         if (e.target && e.target.isStageElement) {
             editElementLabel(e.target);
         } else if (e.target && e.target.isRectDimension) {
             editRectangleDimension(e.target);
+        }
+    });
+
+    // Alt-click to duplicate objects
+    state.canvas.on('mouse:down', (e) => {
+        if (e.e.altKey && e.target && !e.target.gridLine && !e.target.isRectDimension) {
+            e.e.preventDefault();
+            duplicateObject(e.target);
         }
     });
 
@@ -4516,9 +4669,9 @@ function setupCanvas() {
     });
 
     // Properties panel: show/hide on selection
-    state.canvas.on('selection:created', (e) => { showPropertiesPanel(e.selected); });
-    state.canvas.on('selection:updated', (e) => { showPropertiesPanel(e.selected); });
-    state.canvas.on('selection:cleared', () => { hidePropertiesPanel(); });
+    state.canvas.on('selection:created', (e) => { showPropertiesPanel(e.selected); updateLockButton(e.selected?.[0]); });
+    state.canvas.on('selection:updated', (e) => { showPropertiesPanel(e.selected); updateLockButton(e.selected?.[0]); });
+    state.canvas.on('selection:cleared', () => { hidePropertiesPanel(); updateLockButton(null); });
 
     // Track user interaction to prevent canvas resize during mouse operations
     state.canvas.on('mouse:down', () => {
@@ -4658,7 +4811,7 @@ function drawGrid() {
 
 // Setup Stage Plot Tab Switching
 function setupStagePlotTabs() {
-    const stagePlotTabs = document.querySelectorAll('.day-tab[data-stage-type]');
+    const stagePlotTabs = document.querySelectorAll('.sp-tab[data-stage-type]');
 
     stagePlotTabs.forEach(tab => {
         tab.addEventListener('click', () => {
@@ -4679,6 +4832,7 @@ function setupStagePlotTabs() {
 
             // Reset plot selection and update selector
             state.currentPlotId = null;
+            localStorage.removeItem('stagePlot_currentPlotId');
             state.dirtyObjectIds.clear();
             state.deletedObjectIds.clear();
             updatePlotSelector();
@@ -4838,6 +4992,7 @@ function createDraftPlot() {
     }
 
     state.currentPlotId = null;
+    localStorage.removeItem('stagePlot_currentPlotId');
     state.isDraftPlot = true;
     state.undoStack = [];
     state.redoStack = [];
@@ -4894,6 +5049,8 @@ async function promoteDraftPlot() {
         const docRef = await collections.stagePlots.add(plotData);
         state.currentPlotId = docRef.id;
         state.isDraftPlot = false;
+        localStorage.setItem('stagePlot_currentPlotId', docRef.id);
+        localStorage.setItem('stagePlot_currentStagePlotType', state.currentStagePlotType);
 
         // Reload data to update dropdown
         await loadAllData();
@@ -4937,6 +5094,8 @@ async function createNewPlot() {
     try {
         const docRef = await collections.stagePlots.add(plotData);
         state.currentPlotId = docRef.id;
+        localStorage.setItem('stagePlot_currentPlotId', docRef.id);
+        localStorage.setItem('stagePlot_currentStagePlotType', state.currentStagePlotType);
 
         // Reload all data to update the dropdown
         await loadAllData();
@@ -5084,6 +5243,8 @@ async function duplicatePlot() {
 
         // Load the new duplicated plot
         state.currentPlotId = docRef.id;
+        localStorage.setItem('stagePlot_currentPlotId', docRef.id);
+        localStorage.setItem('stagePlot_currentStagePlotType', state.currentStagePlotType);
 
         // Reload all plots to update dropdown
         await loadAllData();
@@ -5117,6 +5278,8 @@ async function loadPlot(plotId) {
     }
 
     state.currentPlotId = plotId;
+    localStorage.setItem('stagePlot_currentPlotId', plotId);
+    localStorage.setItem('stagePlot_currentStagePlotType', state.currentStagePlotType);
 
     // Clear undo/redo stacks when loading a different plot
     state.undoStack = [];
@@ -5134,6 +5297,11 @@ async function loadPlot(plotId) {
 
     // Clear canvas and delete existing stage
     if (state.canvas) {
+        // Disable interactions during load to prevent accidental edits
+        state.canvas.selection = false;
+        state.canvas.forEachObject(obj => { obj.evented = false; });
+        updateSaveStatus('Loading...');
+
         deleteStage();
         state.canvas.clear();
         state.canvas.backgroundColor = '#ffffff';
@@ -5150,6 +5318,10 @@ async function loadPlot(plotId) {
             setTool('draw');
             setTimeout(() => saveCanvasState(), 100);
         }
+
+        // Re-enable interactions after load
+        state.canvas.selection = true;
+        state.canvas.forEachObject(obj => { obj.evented = true; });
 
         // Setup real-time listener
         setupPlotObjectsListener(plotId);
@@ -5195,6 +5367,7 @@ async function loadPlotFromSubcollection(plotId) {
     fabric.util.enlivenObjects(fabricObjects, (objects) => {
         objects.forEach(obj => {
             state.canvas.add(obj);
+            applyLockState(obj);
         });
         state.canvas.renderAll();
         drawGrid();
@@ -5279,8 +5452,13 @@ function triggerAutoSave() {
 }
 
 // Save Plot to Firestore (per-object batch write)
+let isSavingPlot = false;
+
 async function savePlot() {
     if (state.isDraftPlot || !state.currentPlotId || !state.canvas) return;
+    if (isSavingPlot) return;
+
+    isSavingPlot = true;
 
     const dirtyIds = new Set(state.dirtyObjectIds);
     const deletedIds = new Set(state.deletedObjectIds);
@@ -5289,6 +5467,7 @@ async function savePlot() {
 
     if (dirtyIds.size === 0 && deletedIds.size === 0) {
         updateSaveStatus('Saved');
+        isSavingPlot = false;
         return;
     }
 
@@ -5336,24 +5515,38 @@ async function savePlot() {
         dirtyIds.forEach(id => state.dirtyObjectIds.add(id));
         deletedIds.forEach(id => state.deletedObjectIds.add(id));
         updateSaveStatus('Error saving');
+    } finally {
+        isSavingPlot = false;
     }
 }
 
 // Update Save Status Indicator
 function updateSaveStatus(status) {
     const saveStatus = document.getElementById('save-status');
-    if (saveStatus) {
-        saveStatus.textContent = status;
+    if (!saveStatus) return;
 
-        // Auto-clear most messages after 2 seconds (except Saving... which gets replaced)
-        if (status && status !== 'Saving...') {
-            setTimeout(() => {
-                // Only clear if the status hasn't changed to something else
-                if (saveStatus.textContent === status) {
-                    saveStatus.textContent = '';
-                }
-            }, 2000);
-        }
+    saveStatus.textContent = status;
+    saveStatus.className = 'sp-save-status';
+
+    if (status === 'Saved' || status === 'Loaded') {
+        saveStatus.classList.add('save-status-saved');
+    } else if (status === 'Saving...') {
+        saveStatus.classList.add('save-status-saving');
+    } else if (status === 'Loading...') {
+        saveStatus.classList.add('save-status-saving');
+    } else if (status && status.includes('Error')) {
+        saveStatus.classList.add('save-status-error');
+    } else if (status && (status.includes('Draft') || status.includes('draft'))) {
+        saveStatus.classList.add('save-status-draft');
+    }
+
+    // Auto-clear transient messages after 3 seconds (keep draft/error visible)
+    if (status === 'Saved' || status === 'Loaded') {
+        setTimeout(() => {
+            if (saveStatus.textContent === status) {
+                saveStatus.textContent = '';
+            }
+        }, 3000);
     }
 }
 
@@ -5385,8 +5578,63 @@ function addElementToCanvas(elementType) {
     }
 }
 
+// Duplicate a canvas object
+function duplicateObject(obj) {
+    if (!obj || obj.gridLine || obj.isRectDimension) return;
+    obj.clone((cloned) => {
+        cloned.set({
+            left: obj.left + 20,
+            top: obj.top + 20,
+            objectId: null  // Will get new ID from assignObjectId via object:added event
+        });
+        // Copy custom properties that clone might miss
+        CUSTOM_FABRIC_PROPS.forEach(prop => {
+            if (obj[prop] !== undefined && prop !== 'objectId') {
+                cloned[prop] = obj[prop];
+            }
+        });
+        cloned.locked = false;  // Duplicates start unlocked
+        cloned.lockMovementX = false;
+        cloned.lockMovementY = false;
+        cloned.lockScalingX = false;
+        cloned.lockScalingY = false;
+        cloned.lockRotation = false;
+        cloned.hasControls = true;
+        cloned.borderDashArray = null;
+        cloned.borderColor = '#c9a961';
+        state.canvas.add(cloned);
+        // Defer selection to after Fabric.js finishes its mouse:down selection
+        setTimeout(() => {
+            state.canvas.setActiveObject(cloned);
+            state.canvas.renderAll();
+        }, 0);
+    }, CUSTOM_FABRIC_PROPS);
+}
+window.duplicateObject = duplicateObject;
+
 // Create Stage Element (Factory Function) - Using Emojis
 function createStageElement(type) {
+    // Special case: plain text element (no icon)
+    if (type === 'plain-text') {
+        const textObj = new fabric.IText('Text', {
+            fontSize: 20,
+            fontFamily: 'Arial, sans-serif',
+            fill: '#2c3e50',
+            textAlign: 'center',
+            originX: 'center',
+            originY: 'center',
+            isStageElement: true,
+            elementType: 'plain-text',
+            cornerStyle: 'circle',
+            transparentCorners: false,
+            cornerColor: '#c9a961',
+            cornerStrokeColor: '#000',
+            borderColor: '#c9a961',
+            editable: true
+        });
+        return textObj;
+    }
+
     const elementDefinitions = {
         // Audio
         'drum-kit': { emoji: '🥁', label: 'Drums' },
@@ -5751,8 +5999,10 @@ function setupKeyboardShortcuts() {
             // Only delete if we're not in an input field
             if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
                 const activeObjects = state.canvas.getActiveObjects();
-                if (activeObjects.length > 0) {
-                    activeObjects.forEach(obj => {
+                const deletableObjects = activeObjects.filter(obj => !obj.locked);
+                const lockedCount = activeObjects.length - deletableObjects.length;
+                if (deletableObjects.length > 0) {
+                    deletableObjects.forEach(obj => {
                         // If this is a stage rectangle, also remove its dimension labels
                         if (obj.rectId) {
                             const rectDataIndex = state.stageRectangles.findIndex(r => r.id === obj.rectId);
@@ -5769,6 +6019,20 @@ function setupKeyboardShortcuts() {
                     state.canvas.discardActiveObject();
                     state.canvas.renderAll();
                     triggerAutoSave();
+                }
+                if (lockedCount > 0) {
+                    showToast('Locked objects cannot be deleted', 'warning');
+                }
+            }
+        }
+
+        // Duplicate with Cmd+D or Ctrl+D
+        if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
+            e.preventDefault();
+            if (state.canvas && state.currentPage === 'stage-plots') {
+                const active = state.canvas.getActiveObject();
+                if (active && !active.gridLine) {
+                    duplicateObject(active);
                 }
             }
         }
@@ -5939,6 +6203,9 @@ function rebuildStageRectangles() {
     state.stageRectangles.forEach(rectData => {
         rectData.widthLabel.set({ evented: true, hoverCursor: 'pointer', visible: state.dimensionsVisible });
         rectData.heightLabel.set({ evented: true, hoverCursor: 'pointer', visible: state.dimensionsVisible });
+        if (rectData.rect.locked) {
+            applyLockState(rectData.rect);
+        }
     });
 }
 
@@ -6794,6 +7061,7 @@ function applyRemoteObject(data) {
         const fabricData = data.fabricData;
         existing.set(fabricData);
         existing.setCoords();
+        applyLockState(existing);
     } else {
         // Create new object from fabric data
         const objData = { ...data.fabricData, objectId: data.objectId };
@@ -6812,6 +7080,7 @@ function applyRemoteObject(data) {
                 } else {
                     state.canvas.add(obj);
                 }
+                applyLockState(obj);
             });
             // Rebuild stage rectangles if rect-related
             if (data.rectId) {
@@ -6900,6 +7169,56 @@ function rgbaToHex(rgba) {
     return `#${r}${g}${b}`;
 }
 
+function toggleLockObject(obj) {
+    if (!obj || obj.gridLine) return;
+    const newLocked = !obj.locked;
+    obj.set({
+        locked: newLocked,
+        lockMovementX: newLocked,
+        lockMovementY: newLocked,
+        lockScalingX: newLocked,
+        lockScalingY: newLocked,
+        lockRotation: newLocked,
+        hasControls: !newLocked,
+        selectable: true,
+        evented: true,
+        borderDashArray: newLocked ? [5, 5] : null,
+        borderColor: newLocked ? '#999' : '#c9a961'
+    });
+
+    trackDirtyObject(obj);
+    state.canvas.renderAll();
+    triggerAutoSave();
+    updateLockButton(obj);
+}
+window.toggleLockObject = toggleLockObject;
+
+function applyLockState(obj) {
+    if (!obj || !obj.locked) return;
+    obj.set({
+        lockMovementX: true,
+        lockMovementY: true,
+        lockScalingX: true,
+        lockScalingY: true,
+        lockRotation: true,
+        hasControls: false,
+        borderDashArray: [5, 5],
+        borderColor: '#999'
+    });
+}
+
+function updateLockButton(obj) {
+    const lockBtn = document.getElementById('prop-lock-btn');
+    if (!lockBtn) return;
+    if (obj && obj.locked) {
+        lockBtn.classList.add('active');
+        lockBtn.title = 'Unlock';
+    } else {
+        lockBtn.classList.remove('active');
+        lockBtn.title = 'Lock';
+    }
+}
+
 function showPropertiesPanel(selectedObjects) {
     const panel = document.getElementById('properties-panel');
     if (!panel || !selectedObjects || selectedObjects.length === 0) return;
@@ -6926,7 +7245,7 @@ function showPropertiesPanel(selectedObjects) {
 
     // Show/hide fill controls
     if (fillControls) {
-        fillControls.style.display = isRect ? 'contents' : 'none';
+        fillControls.style.display = isRect ? 'inline-flex' : 'none';
     }
 
     if (isRect) {
@@ -6946,12 +7265,12 @@ function showPropertiesPanel(selectedObjects) {
         }
     }
 
-    panel.style.display = 'flex';
+    panel.classList.remove('hidden');
 }
 
 function hidePropertiesPanel() {
     const panel = document.getElementById('properties-panel');
-    if (panel) panel.style.display = 'none';
+    if (panel) panel.classList.add('hidden');
 }
 
 function setupPropertiesPanel() {
@@ -7027,7 +7346,59 @@ function setupPropertiesPanel() {
             triggerAutoSave();
         });
     }
+
+    // Lock button
+    document.getElementById('prop-lock-btn')?.addEventListener('click', () => {
+        const obj = state.canvas?.getActiveObject();
+        if (obj) toggleLockObject(obj);
+    });
+
+    // Right-click context menu for stage plots (z-order, duplicate, lock)
+    const canvasWrapper = document.getElementById('canvas-wrapper');
+    if (canvasWrapper) {
+        canvasWrapper.addEventListener('contextmenu', spShowContextMenu);
+        document.addEventListener('click', spHideContextMenu);
+    }
 }
+
+// Stage Plot Right-Click Context Menu (matches venue map pattern)
+function spShowContextMenu(e) {
+    const activeObj = state.canvas && state.canvas.getActiveObject();
+    if (!activeObj || activeObj.gridLine || activeObj.isRectDimension) return;
+
+    e.preventDefault();
+    const menu = document.getElementById('sp-context-menu');
+    if (!menu) return;
+    menu.style.display = 'block';
+    menu.style.left = e.clientX + 'px';
+    menu.style.top = e.clientY + 'px';
+}
+
+function spHideContextMenu() {
+    const menu = document.getElementById('sp-context-menu');
+    if (menu) menu.style.display = 'none';
+}
+
+function spContextAction(action) {
+    const obj = state.canvas && state.canvas.getActiveObject();
+    if (!obj) return;
+
+    if (action === 'duplicate') {
+        duplicateObject(obj);
+    } else if (action === 'lock') {
+        toggleLockObject(obj);
+    } else {
+        // Z-order: bringForward, bringToFront, sendBackwards, sendToBack
+        saveCanvasState();
+        state.canvas[action](obj);
+        sendStageRectsToBack();
+        state.canvas.renderAll();
+        trackDirtyObject(obj);
+        triggerAutoSave();
+    }
+    spHideContextMenu();
+}
+window.spContextAction = spContextAction;
 
 function applyFillToRect(rect) {
     if (rect.fillEnabled) {
