@@ -29,6 +29,8 @@ const state = {
     vendorFilter: 'all',  // For vendor page filtering (all/confirmed/pending/issues)
     vendorSearch: '',
     staffSearch: '',
+    staffView: 'team',
+    staffDay: 'saturday',
     currentStage: 'main',  // For stage input filtering
     currentStagePlotType: 'main',  // For stage plot tabs
     currentPlotId: null,  // Currently selected plot
@@ -3458,18 +3460,38 @@ function exportStageInputsToExcel() {
     XLSX.writeFile(wb, `Stage_Input_Lists_${today}.xlsx`);
 }
 
-// =============================================
-// STAFF FUNCTIONS
-// =============================================
+// ==========================================
+// STAFF PAGE
+// ==========================================
 
+const STAFF_TEAM_COLORS = {
+    'Check In': '#4a90a4',
+    'FOH Team': '#7b6cb0',
+    'Silent Auction': '#c9a961',
+    'Bathroom/FOH': '#8a8778',
+    'Marketing': '#d4795c',
+    'Mainstage Production Team': '#c9a961',
+    'Talent': '#e06b8a',
+    'Power 20 team': '#4aaa7a',
+    'Greenroom Team': '#6a9a6a'
+};
+
+function getTeamColor(teamName) {
+    if (STAFF_TEAM_COLORS[teamName]) return STAFF_TEAM_COLORS[teamName];
+    let hash = 0;
+    for (let i = 0; i < teamName.length; i++) hash = teamName.charCodeAt(i) + ((hash << 5) - hash);
+    const colors = ['#4a90a4', '#7b6cb0', '#d4795c', '#e06b8a', '#4aaa7a', '#6a9a6a', '#8a6a4a', '#5a7a9a'];
+    return colors[Math.abs(hash) % colors.length];
+}
 
 function staffItemMatchesSearch(member, query) {
     if (!query) return true;
     const tokens = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
     if (tokens.length === 0) return true;
     const fields = [
-        member.name || '', member.role || '', member.responsibilities || '',
-        member.email || '', member.phone || ''
+        member.name || '',
+        member.role || '',
+        ...(member.teams || [])
     ];
     const text = fields.join(' ').toLowerCase();
     return tokens.every(t => text.includes(t));
@@ -3493,79 +3515,169 @@ function clearStaffSearch() {
 window.handleStaffSearch = handleStaffSearch;
 window.clearStaffSearch = clearStaffSearch;
 
-function renderStaff() {
-    const container = document.getElementById('staff-grid');
+function setStaffView(view) {
+    state.staffView = view;
+    document.getElementById('staff-team-view-btn').classList.toggle('active', view === 'team');
+    document.getElementById('staff-schedule-view-btn').classList.toggle('active', view === 'schedule');
+    document.getElementById('staff-team-view').style.display = view === 'team' ? '' : 'none';
+    document.getElementById('staff-schedule-view').style.display = view === 'schedule' ? '' : 'none';
+    renderStaff();
+}
 
-    // Update stat cards
+function setStaffDay(day) {
+    state.staffDay = day;
+    document.querySelectorAll('.staff-day-tab').forEach(tab => {
+        tab.classList.toggle('active', tab.dataset.day === day);
+    });
+    renderStaffGantt();
+}
+
+window.setStaffView = setStaffView;
+window.setStaffDay = setStaffDay;
+
+function formatScheduleShort(timeStr) {
+    if (!timeStr) return null;
+    return timeStr
+        .replace(/:00/g, '')
+        .replace(/\s*-\s*/g, '-')
+        .replace(/12:30:00 PM/gi, '12:30p')
+        .replace(/(\d{1,2})(:\d{2})?(am)/gi, '$1$2a')
+        .replace(/(\d{1,2})(:\d{2})?(pm)/gi, '$1$2p')
+        .replace(/ /g, '');
+}
+
+function renderStaff() {
     const total = state.staff.length;
-    const uniqueRoles = new Set(state.staff.map(m => m.role || 'Unassigned')).size;
-    const withContact = state.staff.filter(m => m.phone || m.email).length;
-    const missingContact = total - withContact;
+    const allTeams = new Set();
+    state.staff.forEach(m => (m.teams || []).forEach(t => allTeams.add(t)));
+    const unfilled = state.staff.filter(m => m.isPlaceholder).length;
+    const satCount = state.staff.filter(m => m.schedule && m.schedule.saturday).length;
 
     const setStat = (id, val) => { const e = document.getElementById(id); if (e) e.textContent = val; };
     setStat('staff-stat-total', total);
-    setStat('staff-stat-roles', uniqueRoles);
-    setStat('staff-stat-contact', withContact);
-    setStat('staff-stat-missing', missingContact);
+    setStat('staff-stat-teams', allTeams.size);
+    setStat('staff-stat-unfilled', unfilled);
+    setStat('staff-stat-saturday', satCount);
 
-    // Apply search
     const searchQuery = state.staffSearch;
     const isSearching = searchQuery && searchQuery.trim().length > 0;
-    let members = [...state.staff];
-    if (isSearching) {
-        members = members.filter(m => staffItemMatchesSearch(m, searchQuery));
+
+    const countEl = document.getElementById('staff-search-count');
+    const clearBtn = document.getElementById('staff-search-clear');
+
+    if (state.staffView === 'team') {
+        renderStaffTeamView(isSearching, searchQuery);
+    } else {
+        renderStaffGantt();
     }
 
-    // Update search count
-    const countEl = document.getElementById('staff-search-count');
+    const filteredCount = state.staff.filter(m => staffItemMatchesSearch(m, searchQuery)).length;
     if (countEl) {
-        countEl.textContent = isSearching
-            ? `${members.length} of ${total} staff`
-            : `${total} staff`;
+        countEl.textContent = isSearching ? `${filteredCount} of ${total} staff` : `${total} staff`;
         countEl.style.display = total > 0 ? '' : 'none';
     }
-    const clearBtn = document.getElementById('staff-search-clear');
     if (clearBtn) clearBtn.style.display = isSearching ? '' : 'none';
+}
 
+function renderStaffTeamView(isSearching, searchQuery) {
+    const container = document.getElementById('staff-team-grid');
+    if (!container) return;
+
+    const total = state.staff.length;
     if (total === 0) {
-        container.innerHTML = '<div class="staff-empty-state">No staff members added yet. Click "+ Add Staff Member" to get started.</div>';
+        container.innerHTML = '<div class="staff-empty-state">No staff members added yet. Click "+ Add Staff" to get started.</div>';
         return;
     }
+
+    const teamMap = new Map();
+    const members = isSearching
+        ? state.staff.filter(m => staffItemMatchesSearch(m, searchQuery))
+        : state.staff;
 
     if (members.length === 0) {
-        container.innerHTML = `<div class="staff-empty-state">No staff match "${escapeHtml(searchQuery)}"</div>`;
+        container.innerHTML = '<div class="staff-empty-state">No staff match "' + escapeHtml(searchQuery) + '"</div>';
         return;
     }
 
-    container.innerHTML = '<div class="staff-grid">' + members.map((member, idx) => `
-        <div class="staff-card" style="animation-delay: ${idx * 40}ms">
-            <div class="staff-card-header">
-                <div class="staff-name">${escapeHtml(member.name || '')}</div>
-                <div class="staff-role">${escapeHtml(member.role || '')}</div>
-            </div>
-            ${member.responsibilities ? `
-                <div class="staff-responsibilities">${escapeHtml(member.responsibilities)}</div>
-            ` : ''}
-            <div class="staff-contact">
-                ${member.phone ? `
-                    <div class="staff-contact-item">
-                        <span class="staff-contact-icon">📞</span>
-                        <a href="tel:${escapeHtml(member.phone)}">${escapeHtml(member.phone)}</a>
-                    </div>
-                ` : ''}
-                ${member.email ? `
-                    <div class="staff-contact-item">
-                        <span class="staff-contact-icon">✉️</span>
-                        <a href="mailto:${escapeHtml(member.email)}">${escapeHtml(member.email)}</a>
-                    </div>
-                ` : ''}
-            </div>
-            <div class="staff-actions">
-                <button class="btn btn-edit" onclick="openStaffModal('${member.id}')">Edit</button>
-                <button class="btn btn-danger" onclick="deleteStaff('${member.id}')">Delete</button>
-            </div>
-        </div>
-    `).join('') + '</div>';
+    for (const member of members) {
+        const teams = member.teams && member.teams.length > 0 ? member.teams : ['Unassigned'];
+        for (const team of teams) {
+            if (!teamMap.has(team)) teamMap.set(team, []);
+            teamMap.get(team).push(member);
+        }
+    }
+
+    const teamOrder = [
+        'Mainstage Production Team', 'Check In', 'FOH Team', 'Silent Auction',
+        'Bathroom/FOH', 'Marketing', 'Talent', 'Power 20 team',
+        'Greenroom Team', 'Unassigned'
+    ];
+    const sortedTeams = [...teamMap.keys()].sort((a, b) => {
+        const ai = teamOrder.indexOf(a);
+        const bi = teamOrder.indexOf(b);
+        if (ai !== -1 && bi !== -1) return ai - bi;
+        if (ai !== -1) return -1;
+        if (bi !== -1) return 1;
+        return a.localeCompare(b);
+    });
+
+    let cardIndex = 0;
+    const days = ['thursday', 'friday', 'saturday', 'sunday'];
+    const dayLabels = ['Thu', 'Fri', 'Sat', 'Sun'];
+
+    container.innerHTML = sortedTeams.map(teamName => {
+        const teamMembers = teamMap.get(teamName).sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+        const color = getTeamColor(teamName);
+
+        const cardsHtml = teamMembers.map(member => {
+            const idx = cardIndex++;
+            const otherTeams = (member.teams || []).filter(t => t !== teamName);
+            const badgesHtml = otherTeams.map(t =>
+                '<span class="staff-team-badge">+' + escapeHtml(t) + '</span>'
+            ).join('');
+            const budgetHtml = member.price ? '<span class="staff-budget-badge">$</span>' : '';
+
+            const schedHtml = days.map((day, i) => {
+                const val = member.schedule && member.schedule[day];
+                const short = formatScheduleShort(val);
+                return '<div class="staff-sched-day' + (val ? '' : ' off') + '">' +
+                    '<span class="staff-sched-day-label">' + dayLabels[i] + '</span>' +
+                    '<span class="staff-sched-day-time">' + (short ? escapeHtml(short) : '\u2014') + '</span>' +
+                '</div>';
+            }).join('');
+
+            return '<div class="staff-card' + (member.isPlaceholder ? ' placeholder' : '') + '"' +
+                ' style="--team-color: ' + color + '; animation-delay: ' + (idx * 30) + 'ms"' +
+                ' onclick="openStaffModal(\'' + member.id + '\')">' +
+                '<div class="staff-card-name">' + escapeHtml(member.name || '') + '</div>' +
+                '<div class="staff-card-role">' + escapeHtml(member.role || '') + '</div>' +
+                ((badgesHtml || budgetHtml) ? '<div class="staff-card-badges">' + badgesHtml + budgetHtml + '</div>' : '') +
+                '<div class="staff-card-schedule">' + schedHtml + '</div>' +
+            '</div>';
+        }).join('');
+
+        return '<div class="staff-team-section" id="staff-team-' + teamName.replace(/\s+/g, '-').toLowerCase() + '">' +
+            '<div class="staff-team-header" onclick="toggleStaffTeam(this)">' +
+                '<div>' +
+                    '<span class="staff-team-title">' + escapeHtml(teamName) + '</span>' +
+                    '<span class="staff-team-count">' + teamMembers.length + '</span>' +
+                '</div>' +
+                '<span class="staff-team-chevron">\u25BC</span>' +
+            '</div>' +
+            '<div class="staff-team-cards">' + cardsHtml + '</div>' +
+        '</div>';
+    }).join('');
+}
+
+function toggleStaffTeam(headerEl) {
+    headerEl.closest('.staff-team-section').classList.toggle('collapsed');
+}
+window.toggleStaffTeam = toggleStaffTeam;
+
+function renderStaffGantt() {
+    // Placeholder — Task 5 implements this
+    const container = document.getElementById('staff-gantt-container');
+    if (container) container.innerHTML = '<div class="staff-empty-state">Schedule view loading...</div>';
 }
 
 function openStaffModal(memberId = null) {
