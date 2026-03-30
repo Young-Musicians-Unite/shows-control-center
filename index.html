@@ -472,15 +472,19 @@
         <!-- Staff Page -->
         <div id="staff" class="page">
             <div class="page-header">
-                <h1>Staff Roles</h1>
+                <h1>Staff</h1>
                 <div class="header-actions">
+                    <div class="staff-view-toggle">
+                        <button class="staff-view-btn active" id="staff-team-view-btn" onclick="setStaffView('team')">Team View</button>
+                        <button class="staff-view-btn" id="staff-schedule-view-btn" onclick="setStaffView('schedule')">Schedule</button>
+                    </div>
                     <button class="btn btn-icon" id="print-staff-btn" title="Print" onclick="window.print()">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
                     </button>
                     <button class="btn btn-icon" id="export-staff-btn" title="Export to Excel">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                     </button>
-                    <button class="btn btn-primary-gold" id="add-staff-btn">+ Add Staff Member</button>
+                    <button class="btn btn-primary-gold" id="add-staff-btn">+ Add Staff</button>
                 </div>
             </div>
 
@@ -490,7 +494,7 @@
                     <svg class="page-search-icon" viewBox="0 0 20 20" fill="currentColor" width="18" height="18">
                         <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"/>
                     </svg>
-                    <input type="text" id="staff-search-input" class="search-input" placeholder="Search staff names, roles, responsibilities..." oninput="handleStaffSearch(this.value)">
+                    <input type="text" id="staff-search-input" class="search-input" placeholder="Search staff by name, role, or team..." oninput="handleStaffSearch(this.value)">
                     <button type="button" id="staff-search-clear" class="page-search-clear" onclick="clearStaffSearch()" style="display: none;">&times;</button>
                 </div>
                 <span id="staff-search-count" class="page-search-count"></span>
@@ -506,27 +510,39 @@
                 </div>
                 <div class="stat-card">
                     <div class="stat-content">
-                        <div class="stat-label">Roles</div>
-                        <div class="stat-value" id="staff-stat-roles">0</div>
+                        <div class="stat-label">Teams</div>
+                        <div class="stat-value" id="staff-stat-teams">0</div>
                     </div>
                 </div>
                 <div class="stat-card">
                     <div class="stat-content">
-                        <div class="stat-label">Contact Info</div>
-                        <div class="stat-value" id="staff-stat-contact">0</div>
+                        <div class="stat-label">Unfilled</div>
+                        <div class="stat-value" id="staff-stat-unfilled">0</div>
                     </div>
                 </div>
                 <div class="stat-card">
                     <div class="stat-content">
-                        <div class="stat-label">Missing Contact</div>
-                        <div class="stat-value" id="staff-stat-missing">0</div>
+                        <div class="stat-label">Saturday</div>
+                        <div class="stat-value" id="staff-stat-saturday">0</div>
                     </div>
                 </div>
             </div>
 
-            <!-- Staff Grid (grouped by role) -->
-            <div id="staff-grid">
-                <p class="empty-state">No staff members added</p>
+            <!-- Team View Container -->
+            <div id="staff-team-view">
+                <div id="staff-team-grid"></div>
+            </div>
+
+            <!-- Schedule (Gantt) View Container -->
+            <div id="staff-schedule-view" style="display: none;">
+                <div class="staff-day-tabs">
+                    <button class="staff-day-tab" data-day="thursday" onclick="setStaffDay('thursday')">Thu</button>
+                    <button class="staff-day-tab" data-day="friday" onclick="setStaffDay('friday')">Fri</button>
+                    <button class="staff-day-tab active" data-day="saturday" onclick="setStaffDay('saturday')">Sat</button>
+                    <button class="staff-day-tab" data-day="sunday" onclick="setStaffDay('sunday')">Sun</button>
+                    <span id="staff-day-count" class="staff-day-count"></span>
+                </div>
+                <div id="staff-gantt-container"></div>
             </div>
         </div>
 
@@ -1118,31 +1134,55 @@
             <div class="modal-body">
                 <form id="staff-form">
                     <input type="hidden" id="staff-id">
-                    <div class="form-group">
-                        <label for="staff-name">Name *</label>
-                        <input type="text" id="staff-name" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="staff-role">Role/Title *</label>
-                        <input type="text" id="staff-role" placeholder="e.g., Event Director, Sound Engineer" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="staff-responsibilities">Responsibilities</label>
-                        <textarea id="staff-responsibilities" rows="3" placeholder="Brief description of what they handle..."></textarea>
-                    </div>
                     <div class="form-row">
                         <div class="form-group">
-                            <label for="staff-phone">Phone</label>
-                            <input type="tel" id="staff-phone" placeholder="(555) 123-4567">
+                            <label for="staff-name">Name *</label>
+                            <input type="text" id="staff-name" required>
                         </div>
                         <div class="form-group">
-                            <label for="staff-email">Email</label>
-                            <input type="email" id="staff-email" placeholder="name@example.com">
+                            <label for="staff-role">Role *</label>
+                            <input type="text" id="staff-role" required>
                         </div>
                     </div>
+                    <div class="form-group">
+                        <label>Teams</label>
+                        <div class="staff-teams-input">
+                            <div id="staff-teams-tags" class="staff-teams-tags"></div>
+                            <input type="text" id="staff-team-input" placeholder="Type team name..." autocomplete="off">
+                            <div id="staff-team-suggestions" class="staff-team-suggestions"></div>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Schedule</label>
+                        <div class="staff-schedule-grid">
+                            <div class="staff-schedule-row">
+                                <span class="staff-schedule-day">Thu</span>
+                                <input type="text" id="staff-sched-thursday" placeholder="e.g. 10:00am - 6pm">
+                            </div>
+                            <div class="staff-schedule-row">
+                                <span class="staff-schedule-day">Fri</span>
+                                <input type="text" id="staff-sched-friday" placeholder="e.g. 10:00am - 6pm">
+                            </div>
+                            <div class="staff-schedule-row">
+                                <span class="staff-schedule-day">Sat</span>
+                                <input type="text" id="staff-sched-saturday" placeholder="e.g. 10:00am - 6pm">
+                            </div>
+                            <div class="staff-schedule-row">
+                                <span class="staff-schedule-day">Sun</span>
+                                <input type="text" id="staff-sched-sunday" placeholder="e.g. 10:00am - 6pm">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="staff-placeholder">
+                            Placeholder / TBD position
+                        </label>
+                    </div>
                     <div class="form-actions">
+                        <button type="button" class="btn btn-danger" id="staff-delete-btn" style="display:none; margin-right:auto;" onclick="deleteStaffFromModal()">Delete</button>
                         <button type="button" class="btn btn-secondary cancel-btn">Cancel</button>
-                        <button type="submit" class="btn btn-primary">Save Staff Member</button>
+                        <button type="submit" class="btn btn-primary">Save</button>
                     </div>
                 </form>
             </div>
