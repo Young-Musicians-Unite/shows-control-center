@@ -3546,6 +3546,39 @@ function formatScheduleShort(timeStr) {
         .replace(/ /g, '');
 }
 
+function parseStaffTime(timeStr) {
+    if (!timeStr) return null;
+    let s = timeStr.trim().toLowerCase().replace(/\s+/g, '');
+    s = s.replace(/(\d{1,2}:\d{2}):\d{2}(am|pm)/i, '$1$2');
+    const match = s.match(/^(\d{1,2})(?::(\d{2}))?(am|pm|a|p)?$/i);
+    if (!match) return null;
+    let hours = parseInt(match[1], 10);
+    const minutes = match[2] ? parseInt(match[2], 10) : 0;
+    const ampm = (match[3] || '').toLowerCase();
+    if (ampm === 'pm' || ampm === 'p') {
+        if (hours !== 12) hours += 12;
+    } else if (ampm === 'am' || ampm === 'a') {
+        if (hours === 12) hours = 0;
+    }
+    return hours + minutes / 60;
+}
+
+function parseStaffScheduleRange(schedStr) {
+    if (!schedStr) return [];
+    const parts = schedStr.split('/').map(p => p.trim());
+    const ranges = [];
+    for (const part of parts) {
+        const halves = part.split(/\s*-\s*/);
+        if (halves.length !== 2) continue;
+        let start = parseStaffTime(halves[0]);
+        let end = parseStaffTime(halves[1]);
+        if (start === null || end === null) continue;
+        if (end <= start) end += 24;
+        ranges.push({ start, end });
+    }
+    return ranges;
+}
+
 function renderStaff() {
     const total = state.staff.length;
     const allTeams = new Set();
@@ -4524,25 +4557,31 @@ function exportStaffToExcel() {
     const data = state.staff.map(member => ({
         'Name': member.name || '',
         'Role': member.role || '',
-        'Responsibilities': member.responsibilities || '',
-        'Phone': member.phone || '',
-        'Email': member.email || ''
+        'Teams': (member.teams || []).join(', '),
+        'Thursday': (member.schedule && member.schedule.thursday) || '',
+        'Friday': (member.schedule && member.schedule.friday) || '',
+        'Saturday': (member.schedule && member.schedule.saturday) || '',
+        'Sunday': (member.schedule && member.schedule.sunday) || '',
+        'Placeholder': member.isPlaceholder ? 'Yes' : ''
     }));
 
     const ws = XLSX.utils.json_to_sheet(data);
     ws['!cols'] = [
-        { wch: 20 },  // Name
-        { wch: 25 },  // Role
-        { wch: 50 },  // Responsibilities
-        { wch: 15 },  // Phone
-        { wch: 30 }   // Email
+        { wch: 22 },
+        { wch: 28 },
+        { wch: 30 },
+        { wch: 18 },
+        { wch: 18 },
+        { wch: 18 },
+        { wch: 18 },
+        { wch: 10 }
     ];
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Staff');
 
     const today = new Date().toISOString().split('T')[0];
-    XLSX.writeFile(wb, `Staff_Contact_List_${today}.xlsx`);
+    XLSX.writeFile(wb, 'Staff_List_' + today + '.xlsx');
 }
 
 // =============================================
