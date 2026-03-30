@@ -3708,9 +3708,145 @@ function toggleStaffTeam(headerEl) {
 window.toggleStaffTeam = toggleStaffTeam;
 
 function renderStaffGantt() {
-    // Placeholder — Task 5 implements this
     const container = document.getElementById('staff-gantt-container');
-    if (container) container.innerHTML = '<div class="staff-empty-state">Schedule view loading...</div>';
+    if (!container) return;
+
+    const day = state.staffDay;
+    const searchQuery = state.staffSearch;
+    const isSearching = searchQuery && searchQuery.trim().length > 0;
+
+    let members = state.staff.filter(m => m.schedule && m.schedule[day]);
+    if (isSearching) {
+        members = members.filter(m => staffItemMatchesSearch(m, searchQuery));
+    }
+
+    const dayCountEl = document.getElementById('staff-day-count');
+    if (dayCountEl) {
+        dayCountEl.textContent = members.length + ' staff';
+    }
+
+    const dayCounts = {};
+    for (const d of ['thursday', 'friday', 'saturday', 'sunday']) {
+        dayCounts[d] = state.staff.filter(m => m.schedule && m.schedule[d]).length;
+    }
+    const dayNames = ['Thu', 'Fri', 'Sat', 'Sun'];
+    const dayKeys = ['thursday', 'friday', 'saturday', 'sunday'];
+    document.querySelectorAll('.staff-day-tab').forEach(tab => {
+        const d = tab.dataset.day;
+        const idx = dayKeys.indexOf(d);
+        if (idx !== -1) tab.textContent = dayNames[idx] + ' (' + dayCounts[d] + ')';
+    });
+
+    if (members.length === 0) {
+        container.innerHTML = '<div class="staff-empty-state">No staff scheduled for this day</div>';
+        return;
+    }
+
+    const teamMap = new Map();
+    for (const member of members) {
+        const teams = member.teams && member.teams.length > 0 ? member.teams : ['Unassigned'];
+        const team = teams[0];
+        if (!teamMap.has(team)) teamMap.set(team, []);
+        teamMap.get(team).push(member);
+    }
+
+    const axisStart = 7;
+    const axisEnd = 27;
+    const axisRange = axisEnd - axisStart;
+
+    const axisLabels = [];
+    for (let h = axisStart; h < axisEnd; h++) {
+        const displayH = h > 24 ? h - 24 : h;
+        const suffix = displayH < 12 || displayH === 24 ? 'a' : 'p';
+        const label = displayH === 0 ? '12a' : displayH === 12 ? '12p' : (displayH > 12 ? displayH - 12 : displayH) + suffix;
+        axisLabels.push(label);
+    }
+
+    const timeAxisHtml = '<div class="staff-gantt-time-axis">' +
+        axisLabels.map(l => '<span class="staff-gantt-time-label">' + l + '</span>').join('') +
+        '</div>';
+
+    function collapseTeamMembers(teamMembers) {
+        const result = [];
+        const placeholderGroups = new Map();
+        for (const m of teamMembers) {
+            if (m.isPlaceholder) {
+                const key = m.schedule[day] || '';
+                if (placeholderGroups.has(key)) {
+                    placeholderGroups.get(key).count++;
+                } else {
+                    placeholderGroups.set(key, { member: m, count: 1 });
+                }
+            } else {
+                result.push({ member: m, count: 1 });
+            }
+        }
+        for (const { member, count } of placeholderGroups.values()) {
+            result.push({ member, count });
+        }
+        return result;
+    }
+
+    const teamOrder = [
+        'Mainstage Production Team', 'Check In', 'FOH Team', 'Silent Auction',
+        'Bathroom/FOH', 'Marketing', 'Talent', 'Power 20 team',
+        'Greenroom Team', 'Unassigned'
+    ];
+    const sortedTeams = [...teamMap.keys()].sort((a, b) => {
+        const ai = teamOrder.indexOf(a);
+        const bi = teamOrder.indexOf(b);
+        if (ai !== -1 && bi !== -1) return ai - bi;
+        if (ai !== -1) return -1;
+        if (bi !== -1) return 1;
+        return a.localeCompare(b);
+    });
+
+    let html = timeAxisHtml;
+
+    for (const teamName of sortedTeams) {
+        const color = getTeamColor(teamName);
+        const teamMembers = teamMap.get(teamName).sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+        const collapsed = collapseTeamMembers(teamMembers);
+
+        html += '<div class="staff-gantt-team">';
+        html += '<div class="staff-gantt-team-header">' + escapeHtml(teamName) + '</div>';
+
+        for (const { member, count } of collapsed) {
+            const otherTeams = (member.teams || []).filter(t => t !== teamName);
+            const multiTag = otherTeams.length > 0
+                ? '<span class="multi-team-tag">+' + escapeHtml(otherTeams[0]) + '</span>' : '';
+            const budgetTag = member.price ? '<span class="budget-tag">$</span>' : '';
+            const nameDisplay = member.isPlaceholder && count > 1
+                ? '<span class="placeholder-name">' + escapeHtml(member.name) + ' \u00d7' + count + '</span>'
+                : member.isPlaceholder
+                ? '<span class="placeholder-name">' + escapeHtml(member.name) + '</span>'
+                : escapeHtml(member.name);
+
+            const ranges = parseStaffScheduleRange(member.schedule[day]);
+            const barsHtml = ranges.map(r => {
+                const left = Math.max(0, (r.start - axisStart) / axisRange * 100);
+                const width = Math.min(100 - left, (r.end - r.start) / axisRange * 100);
+                const label = formatScheduleShort(member.schedule[day]) || '';
+                return '<div class="staff-gantt-bar' + (member.isPlaceholder ? ' placeholder-bar' : '') + '"' +
+                    ' style="left:' + left + '%;width:' + width + '%;background:' + color + '"' +
+                    ' onclick="openStaffModal(\'' + member.id + '\')"' +
+                    ' title="' + escapeHtml(member.name) + ': ' + escapeHtml(member.schedule[day]) + '">' +
+                    (ranges.length === 1 ? escapeHtml(label) : '') +
+                '</div>';
+            }).join('');
+
+            html += '<div class="staff-gantt-row">' +
+                '<div class="staff-gantt-name" onclick="openStaffModal(\'' + member.id + '\')">' +
+                    nameDisplay + multiTag + budgetTag +
+                '</div>' +
+                '<div class="staff-gantt-bar-area">' + barsHtml + '</div>' +
+            '</div>';
+        }
+
+        html += '</div>';
+    }
+
+    container.innerHTML = html;
 }
 
 function openStaffModal(memberId = null) {
