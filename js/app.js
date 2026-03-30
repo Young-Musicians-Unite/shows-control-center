@@ -1537,6 +1537,7 @@ function setupFormHandlers() {
     document.getElementById('budget-form').addEventListener('submit', handleBudgetSubmit);
     document.getElementById('timeline-form').addEventListener('submit', handleTimelineSubmit);
     document.getElementById('staff-form').addEventListener('submit', handleStaffSubmit);
+    setupStaffTeamInput();
     document.getElementById('setlist-form').addEventListener('submit', handleSetListSubmit);
     document.getElementById('packing-form').addEventListener('submit', handlePackingSubmit);
     document.getElementById('menu-form').addEventListener('submit', handleMenuSubmit);
@@ -3849,12 +3850,16 @@ function renderStaffGantt() {
     container.innerHTML = html;
 }
 
+let staffModalTeams = [];
+
 function openStaffModal(memberId = null) {
     const modal = document.getElementById('staff-modal');
     const form = document.getElementById('staff-form');
     const title = document.getElementById('staff-modal-title');
+    const deleteBtn = document.getElementById('staff-delete-btn');
 
     form.reset();
+    staffModalTeams = [];
 
     if (memberId) {
         const member = state.staff.find(s => s.id === memberId);
@@ -3863,17 +3868,101 @@ function openStaffModal(memberId = null) {
             document.getElementById('staff-id').value = member.id;
             document.getElementById('staff-name').value = member.name || '';
             document.getElementById('staff-role').value = member.role || '';
-            document.getElementById('staff-responsibilities').value = member.responsibilities || '';
-            document.getElementById('staff-phone').value = member.phone || '';
-            document.getElementById('staff-email').value = member.email || '';
+            document.getElementById('staff-placeholder').checked = member.isPlaceholder || false;
+            staffModalTeams = [...(member.teams || [])];
+
+            const sched = member.schedule || {};
+            document.getElementById('staff-sched-thursday').value = sched.thursday || '';
+            document.getElementById('staff-sched-friday').value = sched.friday || '';
+            document.getElementById('staff-sched-saturday').value = sched.saturday || '';
+            document.getElementById('staff-sched-sunday').value = sched.sunday || '';
+
+            deleteBtn.style.display = '';
         }
     } else {
         title.textContent = 'Add Staff Member';
         document.getElementById('staff-id').value = '';
+        document.getElementById('staff-sched-thursday').value = '';
+        document.getElementById('staff-sched-friday').value = '';
+        document.getElementById('staff-sched-saturday').value = '';
+        document.getElementById('staff-sched-sunday').value = '';
+        deleteBtn.style.display = 'none';
     }
 
+    renderStaffTeamTags();
     modal.classList.add('active');
 }
+
+function renderStaffTeamTags() {
+    const container = document.getElementById('staff-teams-tags');
+    container.innerHTML = staffModalTeams.map(t =>
+        '<span class="staff-team-tag">' + escapeHtml(t) +
+        '<span class="staff-team-tag-remove" onclick="removeStaffTeam(\'' + escapeHtml(t).replace(/'/g, "\\'") + '\')">\u00d7</span></span>'
+    ).join('');
+}
+
+function removeStaffTeam(teamName) {
+    staffModalTeams = staffModalTeams.filter(t => t !== teamName);
+    renderStaffTeamTags();
+}
+window.removeStaffTeam = removeStaffTeam;
+
+function setupStaffTeamInput() {
+    const input = document.getElementById('staff-team-input');
+    const sugBox = document.getElementById('staff-team-suggestions');
+    if (!input || !sugBox) return;
+
+    input.addEventListener('input', () => {
+        const val = input.value.trim().toLowerCase();
+        if (!val) { sugBox.style.display = 'none'; return; }
+
+        const allTeams = new Set();
+        state.staff.forEach(m => (m.teams || []).forEach(t => allTeams.add(t)));
+
+        const matches = [...allTeams]
+            .filter(t => t.toLowerCase().includes(val) && !staffModalTeams.includes(t));
+
+        if (matches.length === 0 && val.length > 1) {
+            sugBox.innerHTML = '<div class="staff-team-suggestion" onclick="addStaffTeam(\'' + escapeHtml(input.value.trim()).replace(/'/g, "\\'") + '\')">' +
+                'Create "' + escapeHtml(input.value.trim()) + '"</div>';
+            sugBox.style.display = '';
+        } else if (matches.length > 0) {
+            sugBox.innerHTML = matches.map(t =>
+                '<div class="staff-team-suggestion" onclick="addStaffTeam(\'' + escapeHtml(t).replace(/'/g, "\\'") + '\')">' + escapeHtml(t) + '</div>'
+            ).join('');
+            sugBox.style.display = '';
+        } else {
+            sugBox.style.display = 'none';
+        }
+    });
+
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            const val = input.value.trim();
+            if (val && !staffModalTeams.includes(val)) {
+                addStaffTeam(val);
+            }
+        }
+    });
+
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.staff-teams-input')) {
+            sugBox.style.display = 'none';
+        }
+    });
+}
+
+function addStaffTeam(teamName) {
+    if (!staffModalTeams.includes(teamName)) {
+        staffModalTeams.push(teamName);
+        renderStaffTeamTags();
+    }
+    const input = document.getElementById('staff-team-input');
+    input.value = '';
+    document.getElementById('staff-team-suggestions').style.display = 'none';
+}
+window.addStaffTeam = addStaffTeam;
 
 async function handleStaffSubmit(e) {
     e.preventDefault();
@@ -3881,9 +3970,14 @@ async function handleStaffSubmit(e) {
     const staffData = {
         name: document.getElementById('staff-name').value,
         role: document.getElementById('staff-role').value,
-        responsibilities: document.getElementById('staff-responsibilities').value,
-        phone: document.getElementById('staff-phone').value,
-        email: document.getElementById('staff-email').value,
+        teams: [...staffModalTeams],
+        schedule: {
+            thursday: document.getElementById('staff-sched-thursday').value.trim() || null,
+            friday: document.getElementById('staff-sched-friday').value.trim() || null,
+            saturday: document.getElementById('staff-sched-saturday').value.trim() || null,
+            sunday: document.getElementById('staff-sched-sunday').value.trim() || null
+        },
+        isPlaceholder: document.getElementById('staff-placeholder').checked,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
 
@@ -3895,6 +3989,8 @@ async function handleStaffSubmit(e) {
             showToast('Staff member updated');
         } else {
             staffData.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+            staffData.sortOrder = state.staff.length;
+            staffData.price = null;
             await collections.staff.add(staffData);
             showToast('Staff member added');
         }
@@ -3907,6 +4003,15 @@ async function handleStaffSubmit(e) {
 
 window.deleteStaff = createDeleteHandler('staff', 'staff member');
 window.openStaffModal = openStaffModal;
+
+function deleteStaffFromModal() {
+    const staffId = document.getElementById('staff-id').value;
+    if (staffId) {
+        closeAllModals();
+        deleteStaff(staffId);
+    }
+}
+window.deleteStaffFromModal = deleteStaffFromModal;
 
 // ==========================================
 // PACKING LIST
