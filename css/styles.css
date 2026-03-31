@@ -5868,6 +5868,174 @@ body.menu-open::after {
     }
 }
 
+/* ==================== PRINTED MATERIALS PAGE ==================== */
+
+.print-materials-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.print-materials-table thead {
+    background: #f5f3ee;
+    border-bottom: 2px solid #e8e6df;
+}
+
+.print-materials-table th {
+    padding: 10px 12px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: #6b6b6b;
+    white-space: nowrap;
+    user-select: none;
+}
+
+.print-materials-table th.print-sortable {
+    cursor: pointer;
+}
+
+.print-materials-table th.print-sortable:hover {
+    color: #1a3a35;
+}
+
+.print-materials-table .sort-indicator {
+    font-size: 0.7rem;
+}
+
+.print-materials-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #eee;
+    vertical-align: middle;
+}
+
+.print-materials-table tbody tr {
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.print-materials-table tbody tr:hover {
+    background: #f9f7f2;
+}
+
+.print-name-cell {
+    font-weight: 500;
+    color: #1a3a35;
+    max-width: 220px;
+}
+
+.print-notes-cell {
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #888;
+    font-size: 0.85rem;
+}
+
+.print-link-cell {
+    text-align: center;
+    width: 50px;
+}
+
+.print-link-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 4px;
+    color: #1a3a35;
+    background: #f0ede6;
+    border: 1px solid #e0ddd6;
+    transition: background 0.15s, color 0.15s;
+    text-decoration: none;
+}
+
+.print-link-btn:hover {
+    background: #c9a961;
+    color: #fff;
+    border-color: #c9a961;
+}
+
+.print-no-link {
+    color: #ccc;
+    font-size: 0.8rem;
+}
+
+.print-status-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 0.78rem;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.print-status-pending {
+    background: #f0ede6;
+    color: #888;
+}
+
+.print-status-ordered {
+    background: #e3edf7;
+    color: #2a6cb6;
+}
+
+.print-status-received {
+    background: #fdf6e3;
+    color: #b8941f;
+}
+
+.print-status-done {
+    background: #e6f5ec;
+    color: #2a8a4b;
+}
+
+.table-responsive {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+#printed-materials .form-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+}
+
+#printed-materials .form-actions .form-actions-right,
+#print-modal .form-actions .form-actions-right {
+    display: flex;
+    gap: 8px;
+    margin-left: auto;
+}
+
+#print-modal .form-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+}
+
+@media (max-width: 768px) {
+    .print-materials-table {
+        font-size: 0.82rem;
+    }
+    .print-materials-table th,
+    .print-materials-table td {
+        padding: 8px 8px;
+    }
+    .print-name-cell {
+        max-width: 140px;
+    }
+    .print-notes-cell {
+        max-width: 100px;
+    }
+}
+
 /* ==================== MENU PAGE ==================== */
 
 /* View bar */

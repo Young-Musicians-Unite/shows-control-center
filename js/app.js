@@ -98,7 +98,12 @@ const state = {
     menuSearch: '',
     menuCategoryFilter: 'all',
     menuStatusFilter: 'all',
-    menuViewMode: 'category'
+    menuViewMode: 'category',
+    // Printed materials state
+    printedMaterials: [],
+    printSearch: '',
+    printStatusFilter: 'all',
+    printSort: { field: null, direction: 'asc' }
 };
 
 // Toast notification system
@@ -413,6 +418,15 @@ function switchPage(pageName) {
                 vmInitCanvas();
             }
         }
+        if (pageName === 'printed-materials') {
+            state.printSearch = '';
+            state.printStatusFilter = 'all';
+            const printSearchInput = document.getElementById('print-search-input');
+            if (printSearchInput) printSearchInput.value = '';
+            const printStatusSelect = document.getElementById('print-status-filter');
+            if (printStatusSelect) printStatusSelect.value = 'all';
+            renderPrintedMaterials();
+        }
     }
 }
 
@@ -471,6 +485,7 @@ function loadAllData() {
     setupCollectionListener('setLists', 'setLists', [renderSetLists, updateDashboard, renderTimeline]);
     setupCollectionListener('packingList', 'packingList', [renderPackingList]);
     setupCollectionListener('menuItems', 'menuItems', [renderMenu, updateDashboard]);
+    setupCollectionListener('printedMaterials', 'printedMaterials', [renderPrintedMaterials]);
 }
 
 // Dashboard
@@ -1376,6 +1391,7 @@ function setupModals() {
     document.getElementById('add-staff-btn').addEventListener('click', () => openStaffModal());
     document.getElementById('add-packing-item-btn').addEventListener('click', () => openPackingModal());
     document.getElementById('add-menu-item-btn').addEventListener('click', () => openMenuModal());
+    document.getElementById('add-print-item-btn').addEventListener('click', () => openPrintModal());
 }
 
 function closeAllModals() {
@@ -1541,6 +1557,7 @@ function setupFormHandlers() {
     document.getElementById('setlist-form').addEventListener('submit', handleSetListSubmit);
     document.getElementById('packing-form').addEventListener('submit', handlePackingSubmit);
     document.getElementById('menu-form').addEventListener('submit', handleMenuSubmit);
+    document.getElementById('print-form').addEventListener('submit', handlePrintSubmit);
 }
 
 // Generic form submission handler
@@ -4792,6 +4809,243 @@ window.clearPackingSearch = clearPackingSearch;
 window.handlePackingCategoryFilter = handlePackingCategoryFilter;
 window.handlePackingStatusFilter = handlePackingStatusFilter;
 window.togglePackingCategory = togglePackingCategory;
+
+// =============================================
+// PRINTED MATERIALS FUNCTIONS
+// =============================================
+
+const PRINT_FIELD_MAP = {
+    'print-name': 'name',
+    'print-quantity': 'quantity',
+    'print-fileLink': 'fileLink',
+    'print-size': 'size',
+    'print-material': 'material',
+    'print-holder': 'holder',
+    'print-vendor': 'vendor',
+    'print-notes': 'notes',
+    'print-status': 'status'
+};
+
+function renderPrintedMaterials() {
+    const tbody = document.getElementById('print-materials-tbody');
+    if (!tbody) return;
+
+    const items = state.printedMaterials;
+    const total = items.length;
+    const pending = items.filter(i => i.status === 'pending' || !i.status).length;
+    const ordered = items.filter(i => i.status === 'ordered').length;
+    const received = items.filter(i => i.status === 'received').length;
+    const done = items.filter(i => i.status === 'done').length;
+
+    // Update stat cards
+    const statTotal = document.getElementById('print-stat-total');
+    const statPending = document.getElementById('print-stat-pending');
+    const statOrdered = document.getElementById('print-stat-ordered');
+    const statReceived = document.getElementById('print-stat-received');
+    if (statTotal) statTotal.textContent = total;
+    if (statPending) statPending.textContent = pending;
+    if (statOrdered) statOrdered.textContent = ordered;
+    if (statReceived) statReceived.textContent = received + done;
+
+    // Apply filters
+    let filtered = [...items];
+    if (state.printSearch) {
+        const q = state.printSearch.toLowerCase();
+        filtered = filtered.filter(i =>
+            (i.name || '').toLowerCase().includes(q) ||
+            (i.material || '').toLowerCase().includes(q) ||
+            (i.vendor || '').toLowerCase().includes(q) ||
+            (i.notes || '').toLowerCase().includes(q)
+        );
+    }
+    if (state.printStatusFilter !== 'all') {
+        filtered = filtered.filter(i => (i.status || 'pending') === state.printStatusFilter);
+    }
+
+    // Update search count
+    const searchCount = document.getElementById('print-search-count');
+    if (searchCount) {
+        if (state.printSearch || state.printStatusFilter !== 'all') {
+            searchCount.textContent = `${filtered.length} of ${total} items`;
+        } else {
+            searchCount.textContent = '';
+        }
+    }
+
+    // Sort
+    if (state.printSort.field) {
+        const { field, direction } = state.printSort;
+        filtered.sort((a, b) => {
+            const aVal = (a[field] || '').toString().toLowerCase();
+            const bVal = (b[field] || '').toString().toLowerCase();
+            const cmp = aVal.localeCompare(bVal, undefined, { numeric: true });
+            return direction === 'asc' ? cmp : -cmp;
+        });
+    } else {
+        // Default sort by sortOrder then name
+        filtered.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0) || (a.name || '').localeCompare(b.name || ''));
+    }
+
+    // Update sort indicators
+    document.querySelectorAll('.print-materials-table .sort-indicator').forEach(el => el.textContent = '');
+    if (state.printSort.field) {
+        const indicator = document.getElementById(`print-sort-${state.printSort.field}`);
+        if (indicator) indicator.textContent = state.printSort.direction === 'asc' ? ' \u25B2' : ' \u25BC';
+    }
+
+    if (filtered.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="9" class="empty-state">${total === 0 ? 'No printed materials added' : 'No items match your filters'}</td></tr>`;
+        return;
+    }
+
+    const statusLabels = { pending: 'Pending', ordered: 'Ordered', received: 'Received', done: 'Done' };
+    const statusClasses = { pending: 'print-status-pending', ordered: 'print-status-ordered', received: 'print-status-received', done: 'print-status-done' };
+
+    tbody.innerHTML = filtered.map(item => {
+        const status = item.status || 'pending';
+        const linkBtn = item.fileLink
+            ? `<a href="${escapeHtml(item.fileLink)}" target="_blank" rel="noopener" class="print-link-btn" title="Open file" onclick="event.stopPropagation()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+               </a>`
+            : '<span class="print-no-link">--</span>';
+        const notesText = item.notes || '';
+        return `<tr onclick="openPrintModal('${item.id}')">
+            <td class="print-name-cell">${escapeHtml(item.name || '')}</td>
+            <td>${escapeHtml(item.quantity || '')}</td>
+            <td>${escapeHtml(item.size || '')}</td>
+            <td>${escapeHtml(item.material || '')}</td>
+            <td>${escapeHtml(item.holder || '')}</td>
+            <td>${escapeHtml(item.vendor || '')}</td>
+            <td><span class="print-status-badge ${statusClasses[status]}">${statusLabels[status]}</span></td>
+            <td class="print-link-cell">${linkBtn}</td>
+            <td class="print-notes-cell" title="${escapeHtml(notesText)}">${escapeHtml(notesText)}</td>
+        </tr>`;
+    }).join('');
+}
+
+function sortPrintedMaterials(field) {
+    if (state.printSort.field === field) {
+        state.printSort.direction = state.printSort.direction === 'asc' ? 'desc' : 'asc';
+    } else {
+        state.printSort.field = field;
+        state.printSort.direction = 'asc';
+    }
+    renderPrintedMaterials();
+}
+
+function openPrintModal(itemId = null) {
+    openModal({
+        modalId: 'print-modal',
+        formId: 'print-form',
+        title: 'Printed Material',
+        stateKey: 'printedMaterials',
+        itemId: itemId,
+        idFieldId: 'print-id',
+        fieldMap: PRINT_FIELD_MAP,
+        defaultValues: {
+            'print-status': 'pending',
+            'print-quantity': ''
+        }
+    });
+
+    // Show/hide delete button
+    const deleteBtn = document.getElementById('print-delete-btn');
+    if (deleteBtn) {
+        deleteBtn.style.display = itemId ? 'inline-flex' : 'none';
+        if (itemId) {
+            deleteBtn.onclick = () => deletePrintedMaterial(itemId);
+        }
+    }
+}
+
+async function handlePrintSubmit(e) {
+    const result = await handleFormSubmit(e, {
+        collection: 'printedMaterials',
+        fieldMap: PRINT_FIELD_MAP,
+        idFieldId: 'print-id',
+        itemName: 'printed material'
+    });
+    // For new items, set a sortOrder based on current count
+    if (result && result.isNew && result.docId) {
+        try {
+            await collections.printedMaterials.doc(result.docId).update({
+                sortOrder: state.printedMaterials.length
+            });
+        } catch (e) {
+            // Not critical
+        }
+    }
+}
+
+async function deletePrintedMaterial(itemId) {
+    const id = itemId || document.getElementById('print-id').value;
+    if (!id) return;
+    if (confirm('Are you sure you want to delete this printed material?')) {
+        try {
+            await collections.printedMaterials.doc(id).delete();
+            showToast('Printed material deleted');
+            closeAllModals();
+        } catch (error) {
+            console.error('Error deleting printed material:', error);
+            showToast('Error deleting printed material', 'error');
+        }
+    }
+}
+
+function handlePrintSearch(value) {
+    state.printSearch = value;
+    const clearBtn = document.getElementById('print-search-clear');
+    if (clearBtn) clearBtn.style.display = value ? 'block' : 'none';
+    renderPrintedMaterials();
+}
+
+function clearPrintSearch() {
+    state.printSearch = '';
+    const input = document.getElementById('print-search-input');
+    if (input) input.value = '';
+    const clearBtn = document.getElementById('print-search-clear');
+    if (clearBtn) clearBtn.style.display = 'none';
+    renderPrintedMaterials();
+}
+
+function handlePrintStatusFilter(value) {
+    state.printStatusFilter = value;
+    renderPrintedMaterials();
+}
+
+function exportPrintedMaterialsToExcel() {
+    const data = state.printedMaterials.map(item => ({
+        'Name': item.name || '',
+        'Quantity': item.quantity || '',
+        'Size': item.size || '',
+        'Material': item.material || '',
+        'Holder': item.holder || '',
+        'Vendor': item.vendor || '',
+        'Status': (item.status || 'pending').charAt(0).toUpperCase() + (item.status || 'pending').slice(1),
+        'File Link': item.fileLink || '',
+        'Notes': item.notes || ''
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(data);
+    ws['!cols'] = [
+        { wch: 30 }, { wch: 8 }, { wch: 10 }, { wch: 15 },
+        { wch: 18 }, { wch: 15 }, { wch: 10 }, { wch: 35 }, { wch: 25 }
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Printed Materials');
+
+    const today = new Date().toISOString().split('T')[0];
+    XLSX.writeFile(wb, 'Printed_Materials_' + today + '.xlsx');
+}
+
+window.openPrintModal = openPrintModal;
+window.deletePrintedMaterial = deletePrintedMaterial;
+window.handlePrintSearch = handlePrintSearch;
+window.clearPrintSearch = clearPrintSearch;
+window.handlePrintStatusFilter = handlePrintStatusFilter;
+window.sortPrintedMaterials = sortPrintedMaterials;
+window.exportPrintedMaterialsToExcel = exportPrintedMaterialsToExcel;
 
 // Export Staff to Excel
 function exportStaffToExcel() {
