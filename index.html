@@ -1271,6 +1271,19 @@
                         <label for="setlist-notes">Notes for Crew</label>
                         <textarea id="setlist-notes" rows="3" placeholder="Changeover needs, special requests..."></textarea>
                     </div>
+                    <div class="form-group">
+                        <label>Stage Plot</label>
+                        <div id="stage-plot-upload-area">
+                            <div id="stage-plot-current" style="display:none">
+                                <a id="stage-plot-link" href="#" target="_blank" class="btn btn-sm btn-secondary">View Stage Plot</a>
+                                <button type="button" class="btn btn-sm btn-danger" onclick="removeStagePlotFile()">Remove</button>
+                            </div>
+                            <div id="stage-plot-input-area">
+                                <input type="file" id="stage-plot-file" accept=".pdf,.png,.jpg,.jpeg" onchange="handleStagePlotFileSelect(this)">
+                                <span id="stage-plot-upload-status" class="upload-status"></span>
+                            </div>
+                        </div>
+                    </div>
                     <div class="form-actions">
                         <button type="button" class="btn btn-secondary cancel-btn">Cancel</button>
                         <button type="submit" class="btn btn-primary">Save Set List</button>

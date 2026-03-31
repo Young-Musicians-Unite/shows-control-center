@@ -3999,6 +3999,39 @@ body.menu-open::after {
     border-radius: 6px;
 }
 
+/* Stage Plot Upload */
+#stage-plot-upload-area {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+#stage-plot-current {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.setlist-stage-plot-link {
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid #e5e0d5;
+}
+
+.upload-status {
+    font-size: 0.85rem;
+    color: #666;
+    margin-left: 0.5rem;
+}
+
+.upload-error {
+    color: #c0392b;
+}
+
+.upload-success {
+    color: #27ae60;
+}
+
 /* Stats row with expand controls */
 .setlist-stats-row {
     display: flex;

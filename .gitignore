@@ -50,3 +50,4 @@ deploy.sh
 *.bak
 service-account-key.json
 config/firebase-credentials.json
+.superpowers/

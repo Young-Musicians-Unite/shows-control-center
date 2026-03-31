@@ -9217,6 +9217,7 @@ function renderSetLists() {
             <div class="setlist-accordion-body" id="setlist-songs-${sl.id}" style="display:none">
                 ${songs.length > 0 ? `<div class="setlist-songs-list">${songListHtml}</div>` : ''}
                 ${sl.generalNotes ? `<div class="setlist-notes">${escapeHtml(sl.generalNotes)}</div>` : ''}
+                ${sl.stagePlotUrl ? `<div class="setlist-stage-plot-link"><a href="${escapeHtml(sl.stagePlotUrl)}" target="_blank" class="btn btn-sm btn-secondary">View Stage Plot</a></div>` : ''}
             </div>
         </div>`;
     }).join('') + '</div>';
@@ -9244,8 +9245,10 @@ function openSetListModal(itemId = null) {
         document.getElementById('setlist-duration').value = data.estimatedDuration || '';
         document.getElementById('setlist-notes').value = data.generalNotes || '';
         renderSongRows(data.songs || []);
+        updateStagePlotUI(data.stagePlotUrl || null);
     } else {
         renderSongRows([{ title: '', duration: '', notes: '' }]);
+        updateStagePlotUI(null);
     }
 
     modal.classList.add('active');
@@ -9305,6 +9308,15 @@ async function handleSetListSubmit(e) {
     };
 
     const id = document.getElementById('setlist-id').value;
+
+    // Pick up stage plot URL if uploaded during new setlist creation
+    if (!id) {
+        const fileInput = document.getElementById('stage-plot-file');
+        if (fileInput && fileInput.dataset.uploadedUrl) {
+            data.stagePlotUrl = fileInput.dataset.uploadedUrl;
+            data.stagePlotPath = fileInput.dataset.uploadedPath;
+        }
+    }
 
     try {
         if (id) {
@@ -9416,6 +9428,114 @@ function exportSetListToExcel() {
     XLSX.writeFile(wb, `Set_Lists_${today}.xlsx`);
 }
 
+// Stage Plot PDF Upload
+function updateStagePlotUI(url) {
+    const currentDiv = document.getElementById('stage-plot-current');
+    const inputArea = document.getElementById('stage-plot-input-area');
+    const link = document.getElementById('stage-plot-link');
+    const fileInput = document.getElementById('stage-plot-file');
+    const status = document.getElementById('stage-plot-upload-status');
+
+    if (fileInput) fileInput.value = '';
+    if (status) status.textContent = '';
+
+    if (url) {
+        currentDiv.style.display = 'flex';
+        link.href = url;
+        inputArea.querySelector('#stage-plot-file').value = '';
+    } else {
+        currentDiv.style.display = 'none';
+    }
+}
+
+function handleStagePlotFileSelect(input) {
+    const file = input.files[0];
+    if (!file) return;
+
+    const status = document.getElementById('stage-plot-upload-status');
+    const maxSize = 10 * 1024 * 1024; // 10MB
+    const allowed = ['application/pdf', 'image/png', 'image/jpeg'];
+
+    if (!allowed.includes(file.type)) {
+        status.textContent = 'Only PDF, PNG, or JPG files allowed.';
+        status.className = 'upload-status upload-error';
+        input.value = '';
+        return;
+    }
+    if (file.size > maxSize) {
+        status.textContent = 'File too large (max 10MB).';
+        status.className = 'upload-status upload-error';
+        input.value = '';
+        return;
+    }
+
+    const setlistId = document.getElementById('setlist-id').value;
+    const performer = document.getElementById('setlist-performer').value || 'unknown';
+    const ext = file.name.split('.').pop();
+    const path = `stagePlots/${performer.replace(/[^a-zA-Z0-9]/g, '_')}.${ext}`;
+
+    status.textContent = 'Uploading...';
+    status.className = 'upload-status';
+
+    const ref = storage.ref(path);
+    const task = ref.put(file);
+
+    task.on('state_changed',
+        (snapshot) => {
+            const pct = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+            status.textContent = `Uploading... ${pct}%`;
+        },
+        (error) => {
+            console.error('Upload error:', error);
+            status.textContent = 'Upload failed.';
+            status.className = 'upload-status upload-error';
+        },
+        async () => {
+            const url = await task.snapshot.ref.getDownloadURL();
+            status.textContent = 'Uploaded!';
+            status.className = 'upload-status upload-success';
+
+            // Save URL to Firestore immediately if editing existing setlist
+            if (setlistId) {
+                await collections.setLists.doc(setlistId).update({
+                    stagePlotUrl: url,
+                    stagePlotPath: path,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+            } else {
+                // Store on a temp property so handleSetListSubmit can pick it up
+                document.getElementById('stage-plot-file').dataset.uploadedUrl = url;
+                document.getElementById('stage-plot-file').dataset.uploadedPath = path;
+            }
+            updateStagePlotUI(url);
+        }
+    );
+}
+
+async function removeStagePlotFile() {
+    const setlistId = document.getElementById('setlist-id').value;
+    if (!setlistId) return;
+
+    const sl = state.setLists.find(s => s.id === setlistId);
+    if (!sl) return;
+
+    try {
+        if (sl.stagePlotPath) {
+            await storage.ref(sl.stagePlotPath).delete();
+        }
+        await collections.setLists.doc(setlistId).update({
+            stagePlotUrl: firebase.firestore.FieldValue.delete(),
+            stagePlotPath: firebase.firestore.FieldValue.delete(),
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        updateStagePlotUI(null);
+        showToast('Stage plot removed');
+    } catch (error) {
+        console.error('Error removing stage plot:', error);
+        showToast('Error removing stage plot', 'error');
+    }
+}
+
 window.openSetListModal = openSetListModal;
 window.deleteSetList = createDeleteHandler('setLists', 'set list');
 window.addSongRow = addSongRow;
@@ -9425,6 +9545,8 @@ window.expandAllSetLists = expandAllSetLists;
 window.collapseAllSetLists = collapseAllSetLists;
 window.handleSetListSearch = handleSetListSearch;
 window.clearSetListSearch = clearSetListSearch;
+window.handleStagePlotFileSelect = handleStagePlotFileSelect;
+window.removeStagePlotFile = removeStagePlotFile;
 
 // Make functions globally accessible
 window.toggleCategorySection = toggleCategorySection;
