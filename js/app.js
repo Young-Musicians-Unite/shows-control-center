@@ -9431,7 +9431,6 @@ function exportSetListToExcel() {
 // Stage Plot PDF Upload
 function updateStagePlotUI(url) {
     const currentDiv = document.getElementById('stage-plot-current');
-    const inputArea = document.getElementById('stage-plot-input-area');
     const link = document.getElementById('stage-plot-link');
     const fileInput = document.getElementById('stage-plot-file');
     const status = document.getElementById('stage-plot-upload-status');
@@ -9442,13 +9441,18 @@ function updateStagePlotUI(url) {
     if (url) {
         currentDiv.style.display = 'flex';
         link.href = url;
-        inputArea.querySelector('#stage-plot-file').value = '';
     } else {
         currentDiv.style.display = 'none';
     }
 }
 
-function handleStagePlotFileSelect(input) {
+function showUploadError(status, message, detail) {
+    console.error('Stage plot upload:', message, detail || '');
+    status.textContent = message;
+    status.className = 'upload-status upload-error';
+}
+
+async function handleStagePlotFileSelect(input) {
     const file = input.files[0];
     if (!file) return;
 
@@ -9457,14 +9461,19 @@ function handleStagePlotFileSelect(input) {
     const allowed = ['application/pdf', 'image/png', 'image/jpeg'];
 
     if (!allowed.includes(file.type)) {
-        status.textContent = 'Only PDF, PNG, or JPG files allowed.';
-        status.className = 'upload-status upload-error';
+        showUploadError(status, 'Only PDF, PNG, or JPG files allowed.');
         input.value = '';
         return;
     }
     if (file.size > maxSize) {
-        status.textContent = 'File too large (max 10MB).';
-        status.className = 'upload-status upload-error';
+        showUploadError(status, 'File too large (max 10MB).');
+        input.value = '';
+        return;
+    }
+
+    // Check Firebase Storage is available before attempting upload
+    if (typeof storage === 'undefined' || !storage) {
+        showUploadError(status, 'Firebase Storage not configured. Check console.');
         input.value = '';
         return;
     }
@@ -9476,38 +9485,91 @@ function handleStagePlotFileSelect(input) {
 
     status.textContent = 'Uploading...';
     status.className = 'upload-status';
+    input.disabled = true;
 
-    const ref = storage.ref(path);
-    const task = ref.put(file);
+    let uploadTimedOut = false;
+    let progressReceived = false;
+
+    // Timeout: if no progress after 15s, the bucket likely doesn't exist or rules block access
+    const timeout = setTimeout(() => {
+        if (!progressReceived) {
+            uploadTimedOut = true;
+            try { task.cancel(); } catch (e) { /* ignore */ }
+            showUploadError(status,
+                'Upload timed out — Firebase Storage may not be enabled.',
+                'Go to Firebase Console → Storage → Get Started to enable it.'
+            );
+            showToast('Upload failed: Firebase Storage may not be enabled. Check Firebase Console → Storage.', 'error');
+            input.disabled = false;
+            input.value = '';
+        }
+    }, 15000);
+
+    let task;
+    try {
+        const ref = storage.ref(path);
+        task = ref.put(file);
+    } catch (error) {
+        clearTimeout(timeout);
+        showUploadError(status, 'Upload failed: ' + (error.message || 'Unknown error'));
+        input.disabled = false;
+        input.value = '';
+        return;
+    }
 
     task.on('state_changed',
         (snapshot) => {
+            if (uploadTimedOut) return;
+            progressReceived = true;
+            clearTimeout(timeout);
             const pct = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
             status.textContent = `Uploading... ${pct}%`;
         },
         (error) => {
-            console.error('Upload error:', error);
-            status.textContent = 'Upload failed.';
-            status.className = 'upload-status upload-error';
+            if (uploadTimedOut) return;
+            clearTimeout(timeout);
+            input.disabled = false;
+            input.value = '';
+
+            if (error.code === 'storage/canceled') return;
+
+            let userMsg = 'Upload failed.';
+            if (error.code === 'storage/unauthorized' || error.code === 'storage/unauthenticated') {
+                userMsg = 'Upload denied — check Firebase Storage rules.';
+            } else if (error.code === 'storage/bucket-not-found') {
+                userMsg = 'Storage bucket not found — enable Storage in Firebase Console.';
+            } else if (error.code === 'storage/retry-limit-exceeded') {
+                userMsg = 'Upload failed — check your internet connection.';
+            }
+            showUploadError(status, userMsg, error.code + ': ' + error.message);
+            showToast(userMsg, 'error');
         },
         async () => {
-            const url = await task.snapshot.ref.getDownloadURL();
-            status.textContent = 'Uploaded!';
-            status.className = 'upload-status upload-success';
+            if (uploadTimedOut) return;
+            clearTimeout(timeout);
+            input.disabled = false;
 
-            // Save URL to Firestore immediately if editing existing setlist
-            if (setlistId) {
-                await collections.setLists.doc(setlistId).update({
-                    stagePlotUrl: url,
-                    stagePlotPath: path,
-                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                });
-            } else {
-                // Store on a temp property so handleSetListSubmit can pick it up
-                document.getElementById('stage-plot-file').dataset.uploadedUrl = url;
-                document.getElementById('stage-plot-file').dataset.uploadedPath = path;
+            try {
+                const url = await task.snapshot.ref.getDownloadURL();
+                status.textContent = 'Uploaded!';
+                status.className = 'upload-status upload-success';
+
+                if (setlistId) {
+                    await collections.setLists.doc(setlistId).update({
+                        stagePlotUrl: url,
+                        stagePlotPath: path,
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                } else {
+                    document.getElementById('stage-plot-file').dataset.uploadedUrl = url;
+                    document.getElementById('stage-plot-file').dataset.uploadedPath = path;
+                }
+                updateStagePlotUI(url);
+                showToast('Stage plot uploaded');
+            } catch (error) {
+                showUploadError(status, 'Upload succeeded but failed to save URL.', error.message);
+                showToast('Error saving stage plot link', 'error');
             }
-            updateStagePlotUI(url);
         }
     );
 }
@@ -9521,7 +9583,12 @@ async function removeStagePlotFile() {
 
     try {
         if (sl.stagePlotPath) {
-            await storage.ref(sl.stagePlotPath).delete();
+            try {
+                await storage.ref(sl.stagePlotPath).delete();
+            } catch (storageErr) {
+                // File may already be deleted from Storage — still clear Firestore reference
+                console.warn('Could not delete storage file (may already be removed):', storageErr.code);
+            }
         }
         await collections.setLists.doc(setlistId).update({
             stagePlotUrl: firebase.firestore.FieldValue.delete(),
