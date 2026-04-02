@@ -29,6 +29,7 @@ const state = {
     vendorFilter: 'all',  // For vendor page filtering (all/confirmed/pending/issues)
     vendorSearch: '',
     staffSearch: '',
+    staffFilter: 'all',  // 'all' or 'unfilled'
     staffView: 'team',
     staffDay: 'saturday',
     currentStage: 'main',  // For stage input filtering
@@ -363,8 +364,10 @@ function switchPage(pageName) {
         }
         if (pageName === 'staff') {
             state.staffSearch = '';
+            state.staffFilter = 'all';
             const staffSearchInput = document.getElementById('staff-search-input');
             if (staffSearchInput) staffSearchInput.value = '';
+            updateStaffUnfilledCard();
             renderStaff();
         }
         if (pageName === 'budget') renderBudget();
@@ -556,8 +559,10 @@ function getVendorIssues(item) {
     if (!item.vendor) issues.push('vendor/item');
     if (!item.description) issues.push('description');
     if (!item.budgeted) issues.push('budgeted');
-    if (!item.phone) issues.push('phone');
-    if (!item.email) issues.push('email');
+    if (!item.noContactNeeded) {
+        if (!item.phone) issues.push('phone');
+        if (!item.email) issues.push('email');
+    }
     return issues;
 }
 
@@ -693,6 +698,7 @@ function renderVendors() {
                     ${item.description ? `<div class="vendor-card-description">${escapeHtml(item.description)}</div>` : ''}
                     <div class="vendor-card-category">${escapeHtml(itemCategory)}</div>
                     <div class="vendor-card-details">
+                        ${item.noContactNeeded ? `<div class="vendor-detail"><span class="vendor-detail-icon">🌐</span> Online vendor</div>` : ''}
                         ${item.contact ? `<div class="vendor-detail"><span class="vendor-detail-icon">👤</span> ${escapeHtml(item.contact)}</div>` : ''}
                         ${item.phone ? `<div class="vendor-detail"><span class="vendor-detail-icon">📞</span> <a href="tel:${escapeHtml(item.phone)}">${escapeHtml(item.phone)}</a></div>` : ''}
                         ${item.email ? `<div class="vendor-detail"><span class="vendor-detail-icon">✉</span> <a href="mailto:${escapeHtml(item.email)}">${escapeHtml(item.email)}</a></div>` : ''}
@@ -1469,6 +1475,7 @@ function openBudgetModal(itemId = null) {
             'budget-description': 'description',
             'budget-category': 'category',
             'budget-owner': 'owner',
+            'budget-no-contact-needed': 'noContactNeeded',
             'budget-contact': 'contact',
             'budget-phone': 'phone',
             'budget-email': 'email',
@@ -1482,6 +1489,9 @@ function openBudgetModal(itemId = null) {
             'budget-payment-status': 'not-paid'
         }
     });
+    // Sync contact fields visibility with checkbox state
+    const noContact = document.getElementById('budget-no-contact-needed').checked;
+    document.getElementById('budget-contact-fields').style.display = noContact ? 'none' : '';
 }
 
 function openTimelineModal(itemId = null) {
@@ -1551,6 +1561,9 @@ function populateTimelineLinkedDropdowns() {
 // Form Handlers
 function setupFormHandlers() {
     document.getElementById('budget-form').addEventListener('submit', handleBudgetSubmit);
+    document.getElementById('budget-no-contact-needed').addEventListener('change', function() {
+        document.getElementById('budget-contact-fields').style.display = this.checked ? 'none' : '';
+    });
     document.getElementById('timeline-form').addEventListener('submit', handleTimelineSubmit);
     document.getElementById('staff-form').addEventListener('submit', handleStaffSubmit);
     setupStaffTeamInput();
@@ -1615,6 +1628,7 @@ async function handleBudgetSubmit(e) {
             'budget-description': 'description',
             'budget-category': 'category',
             'budget-owner': 'owner',
+            'budget-no-contact-needed': 'noContactNeeded',
             'budget-contact': 'contact',
             'budget-phone': 'phone',
             'budget-email': 'email',
@@ -3553,6 +3567,19 @@ function setStaffDay(day) {
 window.setStaffView = setStaffView;
 window.setStaffDay = setStaffDay;
 
+function toggleStaffUnfilledFilter() {
+    state.staffFilter = state.staffFilter === 'unfilled' ? 'all' : 'unfilled';
+    updateStaffUnfilledCard();
+    renderStaff();
+}
+
+function updateStaffUnfilledCard() {
+    const card = document.getElementById('staff-stat-unfilled-card');
+    if (card) card.classList.toggle('active', state.staffFilter === 'unfilled');
+}
+
+window.toggleStaffUnfilledFilter = toggleStaffUnfilledFilter;
+
 function formatScheduleShort(timeStr) {
     if (!timeStr) return null;
     return timeStr
@@ -3602,13 +3629,12 @@ function renderStaff() {
     const allTeams = new Set();
     state.staff.forEach(m => (m.teams || []).forEach(t => allTeams.add(t)));
     const unfilled = state.staff.filter(m => m.isPlaceholder).length;
-    const satCount = state.staff.filter(m => m.schedule && m.schedule.saturday).length;
 
     const setStat = (id, val) => { const e = document.getElementById(id); if (e) e.textContent = val; };
     setStat('staff-stat-total', total);
     setStat('staff-stat-teams', allTeams.size);
     setStat('staff-stat-unfilled', unfilled);
-    setStat('staff-stat-saturday', satCount);
+    updateStaffUnfilledCard();
 
     const searchQuery = state.staffSearch;
     const isSearching = searchQuery && searchQuery.trim().length > 0;
@@ -3641,12 +3667,20 @@ function renderStaffTeamView(isSearching, searchQuery) {
     }
 
     const teamMap = new Map();
-    const members = isSearching
+    let members = isSearching
         ? state.staff.filter(m => staffItemMatchesSearch(m, searchQuery))
         : state.staff;
 
+    if (state.staffFilter === 'unfilled') {
+        members = members.filter(m => m.isPlaceholder);
+    }
+
     if (members.length === 0) {
-        container.innerHTML = '<div class="staff-empty-state">No staff match "' + escapeHtml(searchQuery) + '"</div>';
+        if (state.staffFilter === 'unfilled') {
+            container.innerHTML = '<div class="staff-empty-state">No unfilled positions — all roles are assigned!</div>';
+        } else {
+            container.innerHTML = '<div class="staff-empty-state">No staff match "' + escapeHtml(searchQuery) + '"</div>';
+        }
         return;
     }
 
@@ -3691,18 +3725,28 @@ function renderStaffTeamView(isSearching, searchQuery) {
             const schedHtml = days.map((day, i) => {
                 const val = member.schedule && member.schedule[day];
                 const short = formatScheduleShort(val);
+                let timeHtml;
+                if (!short) {
+                    timeHtml = '\u2014';
+                } else if (short.includes('-')) {
+                    const parts = short.split('-');
+                    timeHtml = escapeHtml(parts[0]) + '<br>' + escapeHtml(parts.slice(1).join('-'));
+                } else {
+                    timeHtml = escapeHtml(short);
+                }
                 return '<div class="staff-sched-day' + (val ? '' : ' off') + '">' +
                     '<span class="staff-sched-day-label">' + dayLabels[i] + '</span>' +
-                    '<span class="staff-sched-day-time">' + (short ? escapeHtml(short) : '\u2014') + '</span>' +
+                    '<span class="staff-sched-day-time">' + timeHtml + '</span>' +
                 '</div>';
             }).join('');
 
             return '<div class="staff-card' + (member.isPlaceholder ? ' placeholder' : '') + '"' +
                 ' style="--team-color: ' + color + '; animation-delay: ' + (idx * 30) + 'ms"' +
                 ' onclick="openStaffModal(\'' + member.id + '\')">' +
+                (budgetHtml ? '<span class="staff-budget-badge staff-budget-corner">' + '$' + '</span>' : '') +
                 '<div class="staff-card-name">' + escapeHtml(member.name || '') + '</div>' +
                 '<div class="staff-card-role">' + escapeHtml(member.role || '') + '</div>' +
-                ((badgesHtml || budgetHtml) ? '<div class="staff-card-badges">' + badgesHtml + budgetHtml + '</div>' : '') +
+                (badgesHtml ? '<div class="staff-card-badges">' + badgesHtml + '</div>' : '') +
                 '<div class="staff-card-schedule">' + schedHtml + '</div>' +
             '</div>';
         }).join('');
@@ -3929,29 +3973,35 @@ function setupStaffTeamInput() {
     const sugBox = document.getElementById('staff-team-suggestions');
     if (!input || !sugBox) return;
 
-    input.addEventListener('input', () => {
+    function showTeamSuggestions() {
         const val = input.value.trim().toLowerCase();
-        if (!val) { sugBox.style.display = 'none'; return; }
 
         const allTeams = new Set();
         state.staff.forEach(m => (m.teams || []).forEach(t => allTeams.add(t)));
 
-        const matches = [...allTeams]
-            .filter(t => t.toLowerCase().includes(val) && !staffModalTeams.includes(t));
+        const matches = [...allTeams].sort()
+            .filter(t => (!val || t.toLowerCase().includes(val)) && !staffModalTeams.includes(t));
 
-        if (matches.length === 0 && val.length > 1) {
-            sugBox.innerHTML = '<div class="staff-team-suggestion" onclick="addStaffTeam(\'' + escapeHtml(input.value.trim()).replace(/'/g, "\\'") + '\')">' +
-                'Create "' + escapeHtml(input.value.trim()) + '"</div>';
-            sugBox.style.display = '';
-        } else if (matches.length > 0) {
-            sugBox.innerHTML = matches.map(t =>
+        let html = '';
+        if (matches.length > 0) {
+            html = matches.map(t =>
                 '<div class="staff-team-suggestion" onclick="addStaffTeam(\'' + escapeHtml(t).replace(/'/g, "\\'") + '\')">' + escapeHtml(t) + '</div>'
             ).join('');
-            sugBox.style.display = '';
+        }
+        if (val.length > 1 && !matches.some(t => t.toLowerCase() === val)) {
+            html += '<div class="staff-team-suggestion staff-team-suggestion-create" onclick="addStaffTeam(\'' + escapeHtml(input.value.trim()).replace(/'/g, "\\'") + '\')">' +
+                '+ Create "' + escapeHtml(input.value.trim()) + '"</div>';
+        }
+        if (html) {
+            sugBox.innerHTML = html;
+            sugBox.style.display = 'block';
         } else {
             sugBox.style.display = 'none';
         }
-    });
+    }
+
+    input.addEventListener('input', showTeamSuggestions);
+    input.addEventListener('focus', showTeamSuggestions);
 
     input.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
@@ -3964,7 +4014,7 @@ function setupStaffTeamInput() {
     });
 
     document.addEventListener('click', (e) => {
-        if (!e.target.closest('.staff-teams-input')) {
+        if (!e.target.closest('.staff-teams-input') && !e.target.closest('.staff-team-suggestions')) {
             sugBox.style.display = 'none';
         }
     });
@@ -3983,6 +4033,13 @@ window.addStaffTeam = addStaffTeam;
 
 async function handleStaffSubmit(e) {
     e.preventDefault();
+
+    // Auto-add any typed-but-uncommitted team name
+    const teamInput = document.getElementById('staff-team-input');
+    const pendingTeam = teamInput.value.trim();
+    if (pendingTeam && !staffModalTeams.includes(pendingTeam)) {
+        staffModalTeams.push(pendingTeam);
+    }
 
     const staffData = {
         name: document.getElementById('staff-name').value,

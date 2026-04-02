@@ -450,6 +450,21 @@ body {
     box-shadow: 0 6px 16px rgba(201, 169, 97, 0.12);
 }
 
+.staff-stat-clickable {
+    cursor: pointer;
+    transition: transform 0.3s, box-shadow 0.3s, border-color 0.2s, background 0.2s;
+}
+
+.staff-stat-clickable:hover {
+    border-left-color: #e8a87c;
+}
+
+.staff-stat-clickable.active {
+    border-left-color: #e8a87c;
+    background: #fdf5ee;
+    box-shadow: 0 4px 12px rgba(232, 168, 124, 0.2);
+}
+
 .stat-icon {
     width: 60px;
     height: 60px;
@@ -3465,6 +3480,7 @@ body.menu-open::after {
 }
 
 .staff-card {
+    position: relative;
     background: #faf8f3;
     border-radius: 10px;
     padding: 1rem 1.1rem;
@@ -3524,6 +3540,12 @@ body.menu-open::after {
     color: #4a7a4a;
 }
 
+.staff-budget-corner {
+    position: absolute;
+    top: 6px;
+    right: 8px;
+}
+
 /* Schedule at a glance on cards */
 .staff-card-schedule {
     display: flex;
@@ -3537,10 +3559,10 @@ body.menu-open::after {
     align-items: center;
     flex: 1;
     min-width: 0;
-    padding: 4px 2px;
+    padding: 4px 1px;
     border-radius: 4px;
     background: #f5f1e8;
-    font-size: 0.65rem;
+    font-size: 0.6rem;
     line-height: 1.2;
 }
 
@@ -3559,10 +3581,7 @@ body.menu-open::after {
     color: #1a3a35;
     font-weight: 500;
     text-align: center;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 100%;
+    line-height: 1.3;
 }
 
 /* Empty states */
@@ -3780,18 +3799,13 @@ body.menu-open::after {
 }
 
 .staff-team-suggestions {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    right: 0;
-    background: #fff;
-    border: 1px solid #ddd;
+    width: 100%;
+    background: #f9f7f2;
+    border: 1px solid #e0dcd3;
     border-radius: 8px;
     margin-top: 4px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-    z-index: 10;
     display: none;
-    max-height: 200px;
+    max-height: 180px;
     overflow-y: auto;
 }
 
@@ -3803,6 +3817,12 @@ body.menu-open::after {
 
 .staff-team-suggestion:hover {
     background: #f5f1e8;
+}
+
+.staff-team-suggestion-create {
+    color: #8a7a4a;
+    font-style: italic;
+    border-top: 1px solid #eee;
 }
 
 /* Modal schedule grid */

@@ -518,16 +518,10 @@
                         <div class="stat-value" id="staff-stat-teams">0</div>
                     </div>
                 </div>
-                <div class="stat-card">
+                <div class="stat-card staff-stat-clickable" id="staff-stat-unfilled-card" onclick="toggleStaffUnfilledFilter()" title="Click to filter">
                     <div class="stat-content">
                         <div class="stat-label">Unfilled</div>
                         <div class="stat-value" id="staff-stat-unfilled">0</div>
-                    </div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-content">
-                        <div class="stat-label">Saturday</div>
-                        <div class="stat-value" id="staff-stat-saturday">0</div>
                     </div>
                 </div>
             </div>
@@ -1318,8 +1312,8 @@
                         <div class="staff-teams-input">
                             <div id="staff-teams-tags" class="staff-teams-tags"></div>
                             <input type="text" id="staff-team-input" placeholder="Type team name..." autocomplete="off">
-                            <div id="staff-team-suggestions" class="staff-team-suggestions"></div>
                         </div>
+                        <div id="staff-team-suggestions" class="staff-team-suggestions"></div>
                     </div>
                     <div class="form-group">
                         <label>Schedule</label>
@@ -1538,19 +1532,27 @@
                         <label for="budget-owner">Owner (Internal)</label>
                         <input type="text" id="budget-owner">
                     </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="budget-contact">Contact Person</label>
-                            <input type="text" id="budget-contact">
-                        </div>
-                        <div class="form-group">
-                            <label for="budget-phone">Phone</label>
-                            <input type="tel" id="budget-phone">
-                        </div>
+                    <div class="form-group" style="margin-bottom: 0.5rem;">
+                        <label class="checkbox-label" style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                            <input type="checkbox" id="budget-no-contact-needed" style="width: auto;">
+                            <span>Online vendor / no contact info needed</span>
+                        </label>
                     </div>
-                    <div class="form-group">
-                        <label for="budget-email">Email</label>
-                        <input type="email" id="budget-email">
+                    <div id="budget-contact-fields">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="budget-contact">Contact Person</label>
+                                <input type="text" id="budget-contact">
+                            </div>
+                            <div class="form-group">
+                                <label for="budget-phone">Phone</label>
+                                <input type="tel" id="budget-phone">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="budget-email">Email</label>
+                            <input type="email" id="budget-email">
+                        </div>
                     </div>
                     <div class="form-row">
                         <div class="form-group">
