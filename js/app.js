@@ -8861,6 +8861,11 @@ function vmBuildExport(callback) {
     const h = state.vmBaseHeight;
     const prevZoom = state.vmZoom;
 
+    // Export at original image resolution for full quality
+    const origW = state.vmBgImage ? state.vmBgImage.naturalWidth : w;
+    const origH = state.vmBgImage ? state.vmBgImage.naturalHeight : h;
+    const exportScale = origW / w;
+
     // Reset to base dimensions for export
     c.setZoom(1);
     c.setWidth(w);
@@ -8877,7 +8882,7 @@ function vmBuildExport(callback) {
     // Direct export works only if the background was loaded with CORS
     if (state.vmBgCORS) {
         try {
-            const dataURL = c.toDataURL({ format: 'png' });
+            const dataURL = c.toDataURL({ format: 'png', multiplier: exportScale });
             restoreZoom();
             callback(dataURL);
             return;
@@ -8895,7 +8900,7 @@ function vmBuildExport(callback) {
         c.backgroundImage = null;
         c.renderAll();
         try {
-            annotationDataURL = c.toDataURL({ format: 'png' });
+            annotationDataURL = c.toDataURL({ format: 'png', multiplier: exportScale });
         } catch (err) {
             console.error('Annotation export failed:', err);
         }
@@ -8910,15 +8915,15 @@ function vmBuildExport(callback) {
     corsImg.crossOrigin = 'anonymous';
     corsImg.onload = () => {
         const offscreen = document.createElement('canvas');
-        offscreen.width = w;
-        offscreen.height = h;
+        offscreen.width = origW;
+        offscreen.height = origH;
         const ctx = offscreen.getContext('2d');
-        ctx.drawImage(corsImg, 0, 0, w, h);
+        ctx.drawImage(corsImg, 0, 0, origW, origH);
 
         if (annotationDataURL) {
             const annotImg = new Image();
             annotImg.onload = () => {
-                ctx.drawImage(annotImg, 0, 0);
+                ctx.drawImage(annotImg, 0, 0, origW, origH);
                 callback(offscreen.toDataURL('image/png'));
             };
             annotImg.src = annotationDataURL;
