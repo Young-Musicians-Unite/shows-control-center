@@ -107,6 +107,43 @@ const state = {
     printSort: { field: null, direction: 'asc' }
 };
 
+// --- Staff-Budget linking helpers ---
+function getLinkedBudget(member) {
+    if (!member || !member.linkedBudgetId) return null;
+    return state.budget.find(b => b.id === member.linkedBudgetId) || null;
+}
+
+function getLinkedStaff(budgetItem) {
+    if (!budgetItem || !budgetItem.linkedStaffId) return null;
+    return state.staff.find(s => s.id === budgetItem.linkedStaffId) || null;
+}
+
+function findBudgetSuggestions(staffName) {
+    if (!staffName) return [];
+    const name = staffName.toLowerCase().trim();
+    const nameWords = name.split(/\s+/).filter(w => w.length > 2);
+    if (nameWords.length === 0) return [];
+    return state.budget.filter(b => {
+        if (b.linkedStaffId) return false;
+        const vendor = (b.vendor || '').toLowerCase();
+        const vendorWords = vendor.split(/\s+/).filter(w => w.length > 2);
+        return nameWords.some(w => vendor.includes(w)) || vendorWords.some(w => name.includes(w));
+    });
+}
+
+function findStaffSuggestions(vendorName) {
+    if (!vendorName) return [];
+    const vendor = vendorName.toLowerCase().trim();
+    const vendorWords = vendor.split(/\s+/).filter(w => w.length > 2);
+    if (vendorWords.length === 0) return [];
+    return state.staff.filter(s => {
+        if (s.linkedBudgetId) return false;
+        const name = (s.name || '').toLowerCase();
+        const nameWords = name.split(/\s+/).filter(w => w.length > 2);
+        return vendorWords.some(w => name.includes(w)) || nameWords.some(w => vendor.includes(w));
+    });
+}
+
 // Toast notification system
 function showToast(message, type = 'success', duration = 3000) {
     const container = document.getElementById('toast-container');
@@ -479,11 +516,11 @@ function setupCollectionListener(collectionKey, stateKey, renderCallbacks = []) 
 
 // Load all data from Firestore
 function loadAllData() {
-    setupCollectionListener('budget', 'budget', [renderBudget, renderVendors, updateDashboard]);
+    setupCollectionListener('budget', 'budget', [renderBudget, renderVendors, updateDashboard, renderStaff]);
     setupCollectionListener('timeline', 'timeline', [renderTimeline, updateDashboard]);
     setupCollectionListener('mainStageInputs', 'mainStageInputs', [renderStageInputs]);
     setupCollectionListener('cocktailStageInputs', 'cocktailStageInputs', [renderStageInputs]);
-    setupCollectionListener('staff', 'staff', [renderStaff]);
+    setupCollectionListener('staff', 'staff', [renderStaff, renderVendors]);
     setupCollectionListener('stagePlots', 'stagePlots', [updatePlotSelector, renderTimeline]);
     setupCollectionListener('setLists', 'setLists', [renderSetLists, updateDashboard, renderTimeline]);
     setupCollectionListener('packingList', 'packingList', [renderPackingList]);
@@ -613,6 +650,15 @@ function renderVendors() {
     const container = document.getElementById('vendor-grid');
     if (!container) return;
 
+    // Capture expanded categories and scroll position before re-render
+    const expandedCategories = new Set();
+    container.querySelectorAll('.vendor-category-content').forEach(el => {
+        if (el.style.display !== 'none') {
+            expandedCategories.add(el.id);
+        }
+    });
+    const scrollY = window.scrollY;
+
     let items = [...state.budget];
 
     // Apply status filter
@@ -679,6 +725,8 @@ function renderVendors() {
             let statusClass = isConfirmed ? 'vendor-confirmed' : 'vendor-pending';
             if (hasIssues) statusClass = 'vendor-has-issues';
 
+            const linkedStaff = getLinkedStaff(item);
+
             const issuePills = hasIssues ? `
                 <div class="vendor-issues">
                     <span class="vendor-issues-label">Missing:</span>
@@ -697,6 +745,7 @@ function renderVendors() {
                     </div>
                     ${item.description ? `<div class="vendor-card-description">${escapeHtml(item.description)}</div>` : ''}
                     <div class="vendor-card-category">${escapeHtml(itemCategory)}</div>
+                    ${linkedStaff ? `<div class="vendor-linked-staff"><span class="vendor-detail-icon">👥</span> Staff: ${escapeHtml(linkedStaff.name)}${linkedStaff.role ? ' (' + escapeHtml(linkedStaff.role) + ')' : ''}</div>` : ''}
                     <div class="vendor-card-details">
                         ${item.noContactNeeded ? `<div class="vendor-detail"><span class="vendor-detail-icon">🌐</span> Online vendor</div>` : ''}
                         ${item.contact ? `<div class="vendor-detail"><span class="vendor-detail-icon">👤</span> ${escapeHtml(item.contact)}</div>` : ''}
@@ -741,6 +790,17 @@ function renderVendors() {
             </div>
         `;
     }).join('');
+
+    // Restore expanded categories and scroll position after re-render
+    expandedCategories.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.style.display = 'block';
+            const arrow = document.getElementById(id.replace('vendor-content-', 'vendor-arrow-'));
+            if (arrow) arrow.textContent = '▼';
+        }
+    });
+    requestAnimationFrame(() => window.scrollTo(0, scrollY));
 }
 
 function setupVendorFilters() {
@@ -1492,6 +1552,55 @@ function openBudgetModal(itemId = null) {
     // Sync contact fields visibility with checkbox state
     const noContact = document.getElementById('budget-no-contact-needed').checked;
     document.getElementById('budget-contact-fields').style.display = noContact ? 'none' : '';
+
+    // Populate staff link dropdown
+    const item = itemId ? state.budget.find(b => b.id === itemId) : null;
+    const staffSelect = document.getElementById('budget-linked-staff');
+    const unlinkedStaff = state.staff.filter(s => !s.linkedBudgetId || (item && s.id === item.linkedStaffId));
+    staffSelect.innerHTML = '<option value="">— None —</option>' +
+        unlinkedStaff.map(s =>
+            '<option value="' + s.id + '"' + (item && item.linkedStaffId === s.id ? ' selected' : '') + '>' +
+            escapeHtml(s.name) + (s.role ? ' (' + escapeHtml(s.role) + ')' : '') +
+            '</option>'
+        ).join('');
+
+    // Show auto-suggestion if unlinked
+    const suggestionDiv = document.getElementById('budget-staff-suggestion');
+    const infoPanel = document.getElementById('budget-linked-staff-info');
+    if (item && !item.linkedStaffId) {
+        const suggestions = findStaffSuggestions(item.vendor);
+        if (suggestions.length > 0) {
+            suggestionDiv.innerHTML = '<strong>Suggested match:</strong> ' +
+                suggestions.map(s =>
+                    '<button type="button" class="btn-link-suggest" onclick="document.getElementById(\'budget-linked-staff\').value=\'' + s.id + '\'; this.parentElement.style.display=\'none\';">' +
+                    escapeHtml(s.name) + (s.role ? ' (' + escapeHtml(s.role) + ')' : '') + '</button>'
+                ).join(' ');
+            suggestionDiv.style.display = '';
+        } else {
+            suggestionDiv.style.display = 'none';
+        }
+    } else {
+        suggestionDiv.style.display = 'none';
+    }
+
+    // Show linked staff info panel
+    if (item && item.linkedStaffId) {
+        const ls = getLinkedStaff(item);
+        if (ls) {
+            const teams = (ls.teams || []).join(', ');
+            infoPanel.innerHTML = '<div class="linked-info-summary">' +
+                '<strong>' + escapeHtml(ls.name) + '</strong>' +
+                (ls.role ? ' — ' + escapeHtml(ls.role) : '') +
+                (teams ? '<br>Teams: ' + escapeHtml(teams) : '') +
+                '<br><button type="button" class="btn btn-sm" onclick="closeAllModals(); setTimeout(function(){ openStaffModal(\'' + ls.id + '\'); }, 200);">View Staff Entry</button>' +
+                '</div>';
+            infoPanel.style.display = '';
+        } else {
+            infoPanel.style.display = 'none';
+        }
+    } else {
+        infoPanel.style.display = 'none';
+    }
 }
 
 function openTimelineModal(itemId = null) {
@@ -1619,7 +1728,13 @@ async function handleFormSubmit(e, config) {
 }
 
 async function handleBudgetSubmit(e) {
-    await handleFormSubmit(e, {
+    const newVendorName = document.getElementById('budget-vendor').value;
+    const newLinkedStaffId = document.getElementById('budget-linked-staff').value || null;
+    const budgetId = document.getElementById('budget-id').value;
+    const oldItem = budgetId ? state.budget.find(b => b.id === budgetId) : null;
+    const oldStaffId = oldItem ? oldItem.linkedStaffId : null;
+
+    const result = await handleFormSubmit(e, {
         collection: 'budget',
         idFieldId: 'budget-id',
         itemName: 'budget item',
@@ -1640,6 +1755,28 @@ async function handleBudgetSubmit(e) {
         },
         numericFields: ['budgeted', 'actual']
     });
+
+    if (result) {
+        const resolvedBudgetId = result.docId;
+
+        // Save linkedStaffId on the budget doc (not in fieldMap to keep generic handler clean)
+        try {
+            await collections.budget.doc(resolvedBudgetId).update({ linkedStaffId: newLinkedStaffId });
+        } catch (err) {
+            console.error('Error saving budget link:', err);
+        }
+
+        // Clear old staff link if it changed
+        if (oldStaffId && oldStaffId !== newLinkedStaffId) {
+            try { await collections.staff.doc(oldStaffId).update({ linkedBudgetId: null }); } catch (e) { /* staff may be deleted */ }
+        }
+        // Set new staff link + sync name
+        if (newLinkedStaffId) {
+            const staffUpdate = { linkedBudgetId: resolvedBudgetId };
+            if (newVendorName) staffUpdate.name = newVendorName;
+            try { await collections.staff.doc(newLinkedStaffId).update(staffUpdate); } catch (e) { console.error('Error syncing to staff:', e); }
+        }
+    }
 }
 
 async function handleTimelineSubmit(e) {
@@ -1779,7 +1916,14 @@ function createDeleteHandler(collectionKey, itemName) {
     };
 }
 
-window.deleteBudgetItem = createDeleteHandler('budget', 'budget item');
+const _baseDeleteBudgetItem = createDeleteHandler('budget', 'budget item');
+window.deleteBudgetItem = async function(id) {
+    const item = state.budget.find(b => b.id === id);
+    if (item && item.linkedStaffId) {
+        try { await collections.staff.doc(item.linkedStaffId).update({ linkedBudgetId: null }); } catch (e) { /* staff may be deleted */ }
+    }
+    return _baseDeleteBudgetItem(id);
+};
 window.toggleBudgetConfirmed = toggleBudgetConfirmed;
 window.deleteTimelineItem = async (id) => {
     const item = state.timeline.find(i => i.id === id);
@@ -3720,7 +3864,8 @@ function renderStaffTeamView(isSearching, searchQuery) {
             const badgesHtml = otherTeams.map(t =>
                 '<span class="staff-team-badge">+' + escapeHtml(t) + '</span>'
             ).join('');
-            const budgetHtml = member.price ? '<span class="staff-budget-badge">$</span>' : '';
+            const linkedBudget = getLinkedBudget(member);
+            const budgetHtml = linkedBudget ? '<span class="staff-budget-badge">$</span>' : '';
 
             const schedHtml = days.map((day, i) => {
                 const val = member.schedule && member.schedule[day];
@@ -3877,7 +4022,7 @@ function renderStaffGantt() {
             const otherTeams = (member.teams || []).filter(t => t !== teamName);
             const multiTag = otherTeams.length > 0
                 ? '<span class="multi-team-tag">+' + escapeHtml(otherTeams[0]) + '</span>' : '';
-            const budgetTag = member.price ? '<span class="budget-tag">$</span>' : '';
+            const budgetTag = getLinkedBudget(member) ? '<span class="budget-tag">$</span>' : '';
             const nameDisplay = member.isPlaceholder && count > 1
                 ? '<span class="placeholder-name">' + escapeHtml(member.name) + ' \u00d7' + count + '</span>'
                 : member.isPlaceholder
@@ -3951,6 +4096,57 @@ function openStaffModal(memberId = null) {
     }
 
     renderStaffTeamTags();
+
+    // Populate budget link dropdown
+    const member = memberId ? state.staff.find(s => s.id === memberId) : null;
+    const budgetSelect = document.getElementById('staff-linked-budget');
+    const unlinkedBudgets = state.budget.filter(b => !b.linkedStaffId || (member && b.id === member.linkedBudgetId));
+    budgetSelect.innerHTML = '<option value="">— None —</option>' +
+        unlinkedBudgets.map(b =>
+            '<option value="' + b.id + '"' + (member && member.linkedBudgetId === b.id ? ' selected' : '') + '>' +
+            escapeHtml(b.vendor || 'Unnamed') + ' (' + formatCurrency(b.budgeted) + ')' +
+            '</option>'
+        ).join('');
+
+    // Show auto-suggestion if unlinked
+    const suggestionDiv = document.getElementById('staff-budget-suggestion');
+    const infoPanel = document.getElementById('staff-linked-budget-info');
+    if (member && !member.linkedBudgetId) {
+        const suggestions = findBudgetSuggestions(member.name);
+        if (suggestions.length > 0) {
+            suggestionDiv.innerHTML = '<strong>Suggested match:</strong> ' +
+                suggestions.map(s =>
+                    '<button type="button" class="btn-link-suggest" onclick="document.getElementById(\'staff-linked-budget\').value=\'' + s.id + '\'; this.parentElement.style.display=\'none\';">' +
+                    escapeHtml(s.vendor) + ' (' + formatCurrency(s.budgeted) + ')</button>'
+                ).join(' ');
+            suggestionDiv.style.display = '';
+        } else {
+            suggestionDiv.style.display = 'none';
+        }
+    } else {
+        suggestionDiv.style.display = 'none';
+    }
+
+    // Show linked budget info panel
+    if (member && member.linkedBudgetId) {
+        const lb = getLinkedBudget(member);
+        if (lb) {
+            const cat = (lb.category || '').replace(/^6811[a-g] - /, '');
+            infoPanel.innerHTML = '<div class="linked-info-summary">' +
+                '<strong>' + escapeHtml(lb.vendor) + '</strong> — ' + escapeHtml(cat) +
+                (lb.contact ? '<br>Contact: ' + escapeHtml(lb.contact) : '') +
+                (lb.phone ? ' | ' + escapeHtml(lb.phone) : '') +
+                (lb.email ? ' | ' + escapeHtml(lb.email) : '') +
+                '<br><button type="button" class="btn btn-sm" onclick="closeAllModals(); setTimeout(function(){ editBudgetItem(\'' + lb.id + '\'); }, 200);">View Budget Entry</button>' +
+                '</div>';
+            infoPanel.style.display = '';
+        } else {
+            infoPanel.style.display = 'none';
+        }
+    } else {
+        infoPanel.style.display = 'none';
+    }
+
     modal.classList.add('active');
 }
 
@@ -4041,8 +4237,11 @@ async function handleStaffSubmit(e) {
         staffModalTeams.push(pendingTeam);
     }
 
+    const newName = document.getElementById('staff-name').value;
+    const newLinkedBudgetId = document.getElementById('staff-linked-budget').value || null;
+
     const staffData = {
-        name: document.getElementById('staff-name').value,
+        name: newName,
         role: document.getElementById('staff-role').value,
         teams: [...staffModalTeams],
         schedule: {
@@ -4052,22 +4251,41 @@ async function handleStaffSubmit(e) {
             sunday: document.getElementById('staff-sched-sunday').value.trim() || null
         },
         isPlaceholder: document.getElementById('staff-placeholder').checked,
+        linkedBudgetId: newLinkedBudgetId,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
 
     const staffId = document.getElementById('staff-id').value;
 
     try {
+        let resolvedStaffId = staffId;
         if (staffId) {
             await collections.staff.doc(staffId).update(staffData);
             showToast('Staff member updated');
         } else {
             staffData.createdAt = firebase.firestore.FieldValue.serverTimestamp();
             staffData.sortOrder = state.staff.length;
-            staffData.price = null;
-            await collections.staff.add(staffData);
+            const docRef = await collections.staff.add(staffData);
+            resolvedStaffId = docRef.id;
             showToast('Staff member added');
         }
+
+        // Maintain bidirectional link
+        const oldMember = state.staff.find(s => s.id === staffId);
+        const oldBudgetId = oldMember ? oldMember.linkedBudgetId : null;
+
+        // Clear old budget link if it changed
+        if (oldBudgetId && oldBudgetId !== newLinkedBudgetId) {
+            await collections.budget.doc(oldBudgetId).update({ linkedStaffId: null });
+        }
+        // Set new budget link
+        if (newLinkedBudgetId) {
+            const budgetUpdate = { linkedStaffId: resolvedStaffId };
+            // Sync name to budget vendor field
+            if (newName) budgetUpdate.vendor = newName;
+            await collections.budget.doc(newLinkedBudgetId).update(budgetUpdate);
+        }
+
         closeAllModals();
     } catch (error) {
         console.error('Error saving staff member:', error);
@@ -4075,7 +4293,14 @@ async function handleStaffSubmit(e) {
     }
 }
 
-window.deleteStaff = createDeleteHandler('staff', 'staff member');
+const _baseDeleteStaff = createDeleteHandler('staff', 'staff member');
+window.deleteStaff = async function(id) {
+    const member = state.staff.find(s => s.id === id);
+    if (member && member.linkedBudgetId) {
+        try { await collections.budget.doc(member.linkedBudgetId).update({ linkedStaffId: null }); } catch (e) { /* budget may be deleted */ }
+    }
+    return _baseDeleteStaff(id);
+};
 window.openStaffModal = openStaffModal;
 
 function deleteStaffFromModal() {
