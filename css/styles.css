@@ -6027,24 +6027,34 @@ body.menu-open::after {
     white-space: nowrap;
 }
 
-.print-status-pending {
+.print-status-not-started {
     background: #f0ede6;
     color: #888;
 }
 
-.print-status-ordered {
+.print-status-in-progress {
     background: #e3edf7;
     color: #2a6cb6;
 }
 
-.print-status-received {
+.print-status-awaiting {
     background: #fdf6e3;
     color: #b8941f;
 }
 
-.print-status-done {
+.print-status-approved {
     background: #e6f5ec;
     color: #2a8a4b;
+}
+
+.print-status-ordered {
+    background: #ede3f7;
+    color: #6b2ab6;
+}
+
+.print-status-received {
+    background: #e0f0e6;
+    color: #1a7a3a;
 }
 
 .table-responsive {

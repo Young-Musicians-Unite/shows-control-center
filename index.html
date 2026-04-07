@@ -1099,10 +1099,12 @@
                 </div>
                 <select id="print-status-filter" class="filter-select" onchange="handlePrintStatusFilter(this.value)">
                     <option value="all">All Statuses</option>
-                    <option value="pending">Pending</option>
+                    <option value="not-started">Not Started</option>
+                    <option value="in-progress">In Progress</option>
+                    <option value="awaiting-approval">Awaiting Approval</option>
+                    <option value="approved">Approved</option>
                     <option value="ordered">Ordered</option>
                     <option value="received">Received</option>
-                    <option value="done">Done</option>
                 </select>
                 <span id="print-search-count" class="page-search-count"></span>
             </div>
@@ -1202,10 +1204,12 @@
                         <div class="form-group">
                             <label for="print-status">Status</label>
                             <select id="print-status">
-                                <option value="pending">Pending</option>
+                                <option value="not-started">Not Started</option>
+                                <option value="in-progress">In Progress</option>
+                                <option value="awaiting-approval">Awaiting Approval</option>
+                                <option value="approved">Approved</option>
                                 <option value="ordered">Ordered</option>
                                 <option value="received">Received</option>
-                                <option value="done">Done</option>
                             </select>
                         </div>
                     </div>
@@ -1219,6 +1223,7 @@
                     </div>
                     <div class="form-actions">
                         <button type="button" class="btn btn-danger delete-btn" id="print-delete-btn" style="display: none;" onclick="deletePrintedMaterial()">Delete</button>
+                        <button type="button" class="btn btn-secondary" id="print-duplicate-btn" style="display: none;">Duplicate</button>
                         <div class="form-actions-right">
                             <button type="button" class="btn btn-secondary cancel-btn">Cancel</button>
                             <button type="submit" class="btn btn-primary">Save Item</button>

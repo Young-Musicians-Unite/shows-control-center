@@ -5141,7 +5141,10 @@ function renderPrintedMaterials() {
         );
     }
     if (state.printStatusFilter !== 'all') {
-        filtered = filtered.filter(i => (i.status || 'pending') === state.printStatusFilter);
+        filtered = filtered.filter(i => {
+            const s = i.status || 'not-started';
+            return s === state.printStatusFilter || (state.printStatusFilter === 'not-started' && s === 'pending');
+        });
     }
 
     // Update search count
@@ -5180,11 +5183,11 @@ function renderPrintedMaterials() {
         return;
     }
 
-    const statusLabels = { pending: 'Pending', ordered: 'Ordered', received: 'Received', done: 'Done' };
-    const statusClasses = { pending: 'print-status-pending', ordered: 'print-status-ordered', received: 'print-status-received', done: 'print-status-done' };
+    const statusLabels = { 'not-started': 'Not Started', 'in-progress': 'In Progress', 'awaiting-approval': 'Awaiting Approval', approved: 'Approved', ordered: 'Ordered', received: 'Received', pending: 'Not Started' };
+    const statusClasses = { 'not-started': 'print-status-not-started', 'in-progress': 'print-status-in-progress', 'awaiting-approval': 'print-status-awaiting', approved: 'print-status-approved', ordered: 'print-status-ordered', received: 'print-status-received', pending: 'print-status-not-started' };
 
     tbody.innerHTML = filtered.map(item => {
-        const status = item.status || 'pending';
+        const status = item.status === 'pending' ? 'not-started' : (item.status || 'not-started');
         const linkBtn = item.fileLink
             ? `<a href="${escapeHtml(item.fileLink)}" target="_blank" rel="noopener" class="print-link-btn" title="Open file" onclick="event.stopPropagation()">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
@@ -5225,17 +5228,24 @@ function openPrintModal(itemId = null) {
         idFieldId: 'print-id',
         fieldMap: PRINT_FIELD_MAP,
         defaultValues: {
-            'print-status': 'pending',
+            'print-status': 'not-started',
             'print-quantity': ''
         }
     });
 
-    // Show/hide delete button
+    // Show/hide delete and duplicate buttons
     const deleteBtn = document.getElementById('print-delete-btn');
     if (deleteBtn) {
         deleteBtn.style.display = itemId ? 'inline-flex' : 'none';
         if (itemId) {
             deleteBtn.onclick = () => deletePrintedMaterial(itemId);
+        }
+    }
+    const dupBtn = document.getElementById('print-duplicate-btn');
+    if (dupBtn) {
+        dupBtn.style.display = itemId ? 'inline-flex' : 'none';
+        if (itemId) {
+            dupBtn.onclick = () => duplicatePrintedMaterial(itemId);
         }
     }
 }
@@ -5321,8 +5331,30 @@ function exportPrintedMaterialsToExcel() {
     XLSX.writeFile(wb, 'Printed_Materials_' + today + '.xlsx');
 }
 
+async function duplicatePrintedMaterial(itemId) {
+    const item = state.printedMaterials.find(i => i.id === itemId);
+    if (!item) return;
+    const { id, createdAt, updatedAt, sortOrder, ...data } = item;
+    data.name = (data.name || '') + ' (Copy)';
+    data.status = 'not-started';
+    data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+    data.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+    data.sortOrder = state.printedMaterials.length;
+    try {
+        const docRef = await collections.printedMaterials.add(data);
+        closeAllModals();
+        showToast('Item duplicated');
+        // Open the new copy for editing
+        setTimeout(() => openPrintModal(docRef.id), 300);
+    } catch (error) {
+        console.error('Error duplicating printed material:', error);
+        showToast('Error duplicating item', 'error');
+    }
+}
+
 window.openPrintModal = openPrintModal;
 window.deletePrintedMaterial = deletePrintedMaterial;
+window.duplicatePrintedMaterial = duplicatePrintedMaterial;
 window.handlePrintSearch = handlePrintSearch;
 window.clearPrintSearch = clearPrintSearch;
 window.handlePrintStatusFilter = handlePrintStatusFilter;
