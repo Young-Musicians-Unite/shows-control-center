@@ -5204,8 +5204,13 @@ function renderPrintedMaterials() {
     if (state.printSort.field) {
         const { field, direction } = state.printSort;
         filtered.sort((a, b) => {
-            const aVal = (a[field] || '').toString().toLowerCase();
-            const bVal = (b[field] || '').toString().toLowerCase();
+            let aVal = (a[field] || '').toString().toLowerCase();
+            let bVal = (b[field] || '').toString().toLowerCase();
+            // Normalize legacy 'pending' to 'not-started' for sorting
+            if (field === 'status') {
+                if (aVal === 'pending' || !aVal) aVal = 'not-started';
+                if (bVal === 'pending' || !bVal) bVal = 'not-started';
+            }
             const cmp = aVal.localeCompare(bVal, undefined, { numeric: true });
             return direction === 'asc' ? cmp : -cmp;
         });
