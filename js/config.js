@@ -37,5 +37,6 @@ const collections = {
     setLists: db.collection('setLists'),
     packingList: db.collection('packingList'),
     menuItems: db.collection('menuItems'),
-    printedMaterials: db.collection('printedMaterials')
+    printedMaterials: db.collection('printedMaterials'),
+    digitalAssets: db.collection('digitalAssets')
 };

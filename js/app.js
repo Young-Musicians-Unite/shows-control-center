@@ -104,7 +104,12 @@ const state = {
     printedMaterials: [],
     printSearch: '',
     printStatusFilter: 'all',
-    printSort: { field: null, direction: 'asc' }
+    printSort: { field: null, direction: 'asc' },
+    // Digital assets state
+    digitalAssets: [],
+    daSearch: '',
+    daStatusFilter: 'all',
+    daSort: { field: null, direction: 'asc' }
 };
 
 // --- Staff-Budget linking helpers ---
@@ -467,6 +472,15 @@ function switchPage(pageName) {
             if (printStatusSelect) printStatusSelect.value = 'all';
             renderPrintedMaterials();
         }
+        if (pageName === 'digital-assets') {
+            state.daSearch = '';
+            state.daStatusFilter = 'all';
+            const daSearchInput = document.getElementById('da-search-input');
+            if (daSearchInput) daSearchInput.value = '';
+            const daStatusSelect = document.getElementById('da-status-filter');
+            if (daStatusSelect) daStatusSelect.value = 'all';
+            renderDigitalAssets();
+        }
     }
 }
 
@@ -526,6 +540,7 @@ function loadAllData() {
     setupCollectionListener('packingList', 'packingList', [renderPackingList]);
     setupCollectionListener('menuItems', 'menuItems', [renderMenu, updateDashboard]);
     setupCollectionListener('printedMaterials', 'printedMaterials', [renderPrintedMaterials]);
+    setupCollectionListener('digitalAssets', 'digitalAssets', [renderDigitalAssets]);
 }
 
 // Dashboard
@@ -1458,6 +1473,7 @@ function setupModals() {
     document.getElementById('add-packing-item-btn').addEventListener('click', () => openPackingModal());
     document.getElementById('add-menu-item-btn').addEventListener('click', () => openMenuModal());
     document.getElementById('add-print-item-btn').addEventListener('click', () => openPrintModal());
+    document.getElementById('add-da-item-btn').addEventListener('click', () => openDAModal());
 }
 
 function closeAllModals() {
@@ -1680,6 +1696,7 @@ function setupFormHandlers() {
     document.getElementById('packing-form').addEventListener('submit', handlePackingSubmit);
     document.getElementById('menu-form').addEventListener('submit', handleMenuSubmit);
     document.getElementById('print-form').addEventListener('submit', handlePrintSubmit);
+    document.getElementById('da-form').addEventListener('submit', handleDASubmit);
 }
 
 // Generic form submission handler
@@ -5360,6 +5377,266 @@ window.clearPrintSearch = clearPrintSearch;
 window.handlePrintStatusFilter = handlePrintStatusFilter;
 window.sortPrintedMaterials = sortPrintedMaterials;
 window.exportPrintedMaterialsToExcel = exportPrintedMaterialsToExcel;
+
+// =============================================
+// DIGITAL ASSETS FUNCTIONS
+// =============================================
+
+const DA_FIELD_MAP = {
+    'da-name': 'name',
+    'da-format': 'format',
+    'da-resolution': 'resolution',
+    'da-destination': 'destination',
+    'da-creator': 'creator',
+    'da-duration': 'duration',
+    'da-fileLink': 'fileLink',
+    'da-notes': 'notes',
+    'da-status': 'status'
+};
+
+function renderDigitalAssets() {
+    const tbody = document.getElementById('da-materials-tbody');
+    if (!tbody) return;
+
+    const items = state.digitalAssets;
+    const total = items.length;
+    const pending = items.filter(i => i.status === 'pending' || i.status === 'not-started' || !i.status).length;
+    const ordered = items.filter(i => i.status === 'ordered').length;
+    const received = items.filter(i => i.status === 'received').length;
+    const done = items.filter(i => i.status === 'done').length;
+
+    const statTotal = document.getElementById('da-stat-total');
+    const statPending = document.getElementById('da-stat-pending');
+    const statOrdered = document.getElementById('da-stat-ordered');
+    const statReceived = document.getElementById('da-stat-received');
+    if (statTotal) statTotal.textContent = total;
+    if (statPending) statPending.textContent = pending;
+    if (statOrdered) statOrdered.textContent = ordered;
+    if (statReceived) statReceived.textContent = received + done;
+
+    let filtered = [...items];
+    if (state.daSearch) {
+        const q = state.daSearch.toLowerCase();
+        filtered = filtered.filter(i =>
+            (i.name || '').toLowerCase().includes(q) ||
+            (i.format || '').toLowerCase().includes(q) ||
+            (i.destination || '').toLowerCase().includes(q) ||
+            (i.creator || '').toLowerCase().includes(q) ||
+            (i.notes || '').toLowerCase().includes(q)
+        );
+    }
+    if (state.daStatusFilter !== 'all') {
+        filtered = filtered.filter(i => {
+            const s = i.status || 'not-started';
+            return s === state.daStatusFilter || (state.daStatusFilter === 'not-started' && s === 'pending');
+        });
+    }
+
+    const searchCount = document.getElementById('da-search-count');
+    if (searchCount) {
+        if (state.daSearch || state.daStatusFilter !== 'all') {
+            searchCount.textContent = `${filtered.length} of ${total} items`;
+        } else {
+            searchCount.textContent = '';
+        }
+    }
+
+    if (state.daSort.field) {
+        const { field, direction } = state.daSort;
+        filtered.sort((a, b) => {
+            const aVal = (a[field] || '').toString().toLowerCase();
+            const bVal = (b[field] || '').toString().toLowerCase();
+            const cmp = aVal.localeCompare(bVal, undefined, { numeric: true });
+            return direction === 'asc' ? cmp : -cmp;
+        });
+    } else {
+        filtered.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0) || (a.name || '').localeCompare(b.name || ''));
+    }
+
+    document.querySelectorAll('#da-materials-table .sort-indicator').forEach(el => el.textContent = '');
+    if (state.daSort.field) {
+        const indicator = document.getElementById(`da-sort-${state.daSort.field}`);
+        if (indicator) indicator.textContent = state.daSort.direction === 'asc' ? ' \u25B2' : ' \u25BC';
+    }
+
+    if (filtered.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="9" class="empty-state">${total === 0 ? 'No digital assets added' : 'No items match your filters'}</td></tr>`;
+        return;
+    }
+
+    const statusLabels = { 'not-started': 'Not Started', 'in-progress': 'In Progress', 'awaiting-approval': 'Awaiting Approval', approved: 'Approved', ordered: 'Ordered', received: 'Received', pending: 'Not Started' };
+    const statusClasses = { 'not-started': 'print-status-not-started', 'in-progress': 'print-status-in-progress', 'awaiting-approval': 'print-status-awaiting', approved: 'print-status-approved', ordered: 'print-status-ordered', received: 'print-status-received', pending: 'print-status-not-started' };
+
+    tbody.innerHTML = filtered.map(item => {
+        const status = item.status === 'pending' ? 'not-started' : (item.status || 'not-started');
+        const linkBtn = item.fileLink
+            ? `<a href="${escapeHtml(item.fileLink)}" target="_blank" rel="noopener" class="print-link-btn" title="Open file" onclick="event.stopPropagation()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+               </a>`
+            : '<span class="print-no-link">--</span>';
+        const notesText = item.notes || '';
+        return `<tr onclick="openDAModal('${item.id}')">
+            <td class="print-name-cell">${escapeHtml(item.name || '')}</td>
+            <td>${escapeHtml(item.format || '')}</td>
+            <td>${escapeHtml(item.resolution || '')}</td>
+            <td>${escapeHtml(item.destination || '')}</td>
+            <td>${escapeHtml(item.creator || '')}</td>
+            <td>${escapeHtml(item.duration || '')}</td>
+            <td><span class="print-status-badge ${statusClasses[status]}">${statusLabels[status]}</span></td>
+            <td class="print-link-cell">${linkBtn}</td>
+            <td class="print-notes-cell" title="${escapeHtml(notesText)}">${escapeHtml(notesText)}</td>
+        </tr>`;
+    }).join('');
+}
+
+function sortDigitalAssets(field) {
+    if (state.daSort.field === field) {
+        state.daSort.direction = state.daSort.direction === 'asc' ? 'desc' : 'asc';
+    } else {
+        state.daSort.field = field;
+        state.daSort.direction = 'asc';
+    }
+    renderDigitalAssets();
+}
+
+function openDAModal(itemId = null) {
+    openModal({
+        modalId: 'da-modal',
+        formId: 'da-form',
+        title: 'Digital Asset',
+        stateKey: 'digitalAssets',
+        itemId: itemId,
+        idFieldId: 'da-id',
+        fieldMap: DA_FIELD_MAP,
+        defaultValues: {
+            'da-status': 'not-started'
+        }
+    });
+
+    const deleteBtn = document.getElementById('da-delete-btn');
+    if (deleteBtn) {
+        deleteBtn.style.display = itemId ? 'inline-flex' : 'none';
+        if (itemId) {
+            deleteBtn.onclick = () => deleteDigitalAsset(itemId);
+        }
+    }
+    const dupBtn = document.getElementById('da-duplicate-btn');
+    if (dupBtn) {
+        dupBtn.style.display = itemId ? 'inline-flex' : 'none';
+        if (itemId) {
+            dupBtn.onclick = () => duplicateDigitalAsset(itemId);
+        }
+    }
+}
+
+async function handleDASubmit(e) {
+    const result = await handleFormSubmit(e, {
+        collection: 'digitalAssets',
+        fieldMap: DA_FIELD_MAP,
+        idFieldId: 'da-id',
+        itemName: 'digital asset'
+    });
+    if (result && result.isNew && result.docId) {
+        try {
+            await collections.digitalAssets.doc(result.docId).update({
+                sortOrder: state.digitalAssets.length
+            });
+        } catch (e) {
+            // Not critical
+        }
+    }
+}
+
+async function deleteDigitalAsset(itemId) {
+    const id = itemId || document.getElementById('da-id').value;
+    if (!id) return;
+    if (confirm('Are you sure you want to delete this digital asset?')) {
+        try {
+            await collections.digitalAssets.doc(id).delete();
+            showToast('Digital asset deleted');
+            closeAllModals();
+        } catch (error) {
+            console.error('Error deleting digital asset:', error);
+            showToast('Error deleting digital asset', 'error');
+        }
+    }
+}
+
+function handleDASearch(value) {
+    state.daSearch = value;
+    const clearBtn = document.getElementById('da-search-clear');
+    if (clearBtn) clearBtn.style.display = value ? 'block' : 'none';
+    renderDigitalAssets();
+}
+
+function clearDASearch() {
+    state.daSearch = '';
+    const input = document.getElementById('da-search-input');
+    if (input) input.value = '';
+    const clearBtn = document.getElementById('da-search-clear');
+    if (clearBtn) clearBtn.style.display = 'none';
+    renderDigitalAssets();
+}
+
+function handleDAStatusFilter(value) {
+    state.daStatusFilter = value;
+    renderDigitalAssets();
+}
+
+function exportDigitalAssetsToExcel() {
+    const data = state.digitalAssets.map(item => ({
+        'Name': item.name || '',
+        'Format': item.format || '',
+        'Resolution': item.resolution || '',
+        'Display/Destination': item.destination || '',
+        'Creator': item.creator || '',
+        'Duration': item.duration || '',
+        'Status': (item.status || 'not-started').charAt(0).toUpperCase() + (item.status || 'not-started').slice(1),
+        'File Link': item.fileLink || '',
+        'Notes': item.notes || ''
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(data);
+    ws['!cols'] = [
+        { wch: 30 }, { wch: 12 }, { wch: 14 }, { wch: 22 },
+        { wch: 18 }, { wch: 12 }, { wch: 14 }, { wch: 35 }, { wch: 25 }
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Digital Assets');
+
+    const today = new Date().toISOString().split('T')[0];
+    XLSX.writeFile(wb, 'Digital_Assets_' + today + '.xlsx');
+}
+
+async function duplicateDigitalAsset(itemId) {
+    const item = state.digitalAssets.find(i => i.id === itemId);
+    if (!item) return;
+    const { id, createdAt, updatedAt, sortOrder, ...data } = item;
+    data.name = (data.name || '') + ' (Copy)';
+    data.status = 'not-started';
+    data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+    data.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+    data.sortOrder = state.digitalAssets.length;
+    try {
+        const docRef = await collections.digitalAssets.add(data);
+        closeAllModals();
+        showToast('Item duplicated');
+        setTimeout(() => openDAModal(docRef.id), 300);
+    } catch (error) {
+        console.error('Error duplicating digital asset:', error);
+        showToast('Error duplicating item', 'error');
+    }
+}
+
+window.openDAModal = openDAModal;
+window.deleteDigitalAsset = deleteDigitalAsset;
+window.duplicateDigitalAsset = duplicateDigitalAsset;
+window.handleDASearch = handleDASearch;
+window.clearDASearch = clearDASearch;
+window.handleDAStatusFilter = handleDAStatusFilter;
+window.sortDigitalAssets = sortDigitalAssets;
+window.exportDigitalAssetsToExcel = exportDigitalAssetsToExcel;
 
 // Export Staff to Excel
 function exportStaffToExcel() {
