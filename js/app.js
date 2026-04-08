@@ -105,6 +105,8 @@ const state = {
     printSearch: '',
     printStatusFilter: 'all',
     printSort: { field: null, direction: 'asc' },
+    printVendorFilter: 'all',
+    printColumns: { name: true, quantity: true, size: true, material: true, holder: true, vendor: true, status: true, link: true, notes: true },
     // Digital assets state
     digitalAssets: [],
     daSearch: '',
@@ -466,10 +468,13 @@ function switchPage(pageName) {
         if (pageName === 'printed-materials') {
             state.printSearch = '';
             state.printStatusFilter = 'all';
+            state.printVendorFilter = 'all';
             const printSearchInput = document.getElementById('print-search-input');
             if (printSearchInput) printSearchInput.value = '';
             const printStatusSelect = document.getElementById('print-status-filter');
             if (printStatusSelect) printStatusSelect.value = 'all';
+            const printVendorSelect = document.getElementById('print-vendor-filter');
+            if (printVendorSelect) printVendorSelect.value = 'all';
             renderPrintedMaterials();
         }
         if (pageName === 'digital-assets') {
@@ -5146,6 +5151,15 @@ function renderPrintedMaterials() {
     if (statOrdered) statOrdered.textContent = ordered;
     if (statReceived) statReceived.textContent = received + done;
 
+    // Populate vendor filter dropdown
+    const vendorSelect = document.getElementById('print-vendor-filter');
+    if (vendorSelect) {
+        const vendors = [...new Set(items.map(i => i.vendor).filter(Boolean))].sort();
+        const currentVal = state.printVendorFilter;
+        vendorSelect.innerHTML = '<option value="all">All Vendors</option>' +
+            vendors.map(v => `<option value="${escapeHtml(v)}"${currentVal === v ? ' selected' : ''}>${escapeHtml(v)}</option>`).join('');
+    }
+
     // Apply filters
     let filtered = [...items];
     if (state.printSearch) {
@@ -5163,11 +5177,24 @@ function renderPrintedMaterials() {
             return s === state.printStatusFilter || (state.printStatusFilter === 'not-started' && s === 'pending');
         });
     }
+    if (state.printVendorFilter !== 'all') {
+        filtered = filtered.filter(i => (i.vendor || '') === state.printVendorFilter);
+    }
+
+    // Apply column visibility classes to table
+    const table = document.getElementById('print-materials-table');
+    if (table) {
+        const cols = state.printColumns;
+        ['name','quantity','size','material','holder','vendor','status','link','notes'].forEach(col => {
+            table.classList.toggle('hide-pm-' + col, !cols[col]);
+        });
+    }
 
     // Update search count
     const searchCount = document.getElementById('print-search-count');
     if (searchCount) {
-        if (state.printSearch || state.printStatusFilter !== 'all') {
+        const isFiltered = state.printSearch || state.printStatusFilter !== 'all' || state.printVendorFilter !== 'all';
+        if (isFiltered) {
             searchCount.textContent = `${filtered.length} of ${total} items`;
         } else {
             searchCount.textContent = '';
@@ -5212,15 +5239,15 @@ function renderPrintedMaterials() {
             : '<span class="print-no-link">--</span>';
         const notesText = item.notes || '';
         return `<tr onclick="openPrintModal('${item.id}')">
-            <td class="print-name-cell">${escapeHtml(item.name || '')}</td>
-            <td>${escapeHtml(item.quantity || '')}</td>
-            <td>${escapeHtml(item.size || '')}</td>
-            <td>${escapeHtml(item.material || '')}</td>
-            <td>${escapeHtml(item.holder || '')}</td>
-            <td>${escapeHtml(item.vendor || '')}</td>
-            <td><span class="print-status-badge ${statusClasses[status]}">${statusLabels[status]}</span></td>
-            <td class="print-link-cell">${linkBtn}</td>
-            <td class="print-notes-cell" title="${escapeHtml(notesText)}">${escapeHtml(notesText)}</td>
+            <td class="print-name-cell pm-col-name">${escapeHtml(item.name || '')}</td>
+            <td class="pm-col-quantity">${escapeHtml(item.quantity || '')}</td>
+            <td class="pm-col-size">${escapeHtml(item.size || '')}</td>
+            <td class="pm-col-material">${escapeHtml(item.material || '')}</td>
+            <td class="pm-col-holder">${escapeHtml(item.holder || '')}</td>
+            <td class="pm-col-vendor">${escapeHtml(item.vendor || '')}</td>
+            <td class="pm-col-status"><span class="print-status-badge ${statusClasses[status]}">${statusLabels[status]}</span></td>
+            <td class="print-link-cell pm-col-link">${linkBtn}</td>
+            <td class="print-notes-cell pm-col-notes" title="${escapeHtml(notesText)}">${escapeHtml(notesText)}</td>
         </tr>`;
     }).join('');
 }
@@ -5322,30 +5349,87 @@ function handlePrintStatusFilter(value) {
     renderPrintedMaterials();
 }
 
+function handlePrintVendorFilter(value) {
+    state.printVendorFilter = value;
+    renderPrintedMaterials();
+}
+
+function togglePrintColumn(col, visible) {
+    state.printColumns[col] = visible;
+    renderPrintedMaterials();
+}
+
+function togglePrintColumnsDropdown() {
+    const dropdown = document.getElementById('print-columns-dropdown');
+    if (dropdown) dropdown.classList.toggle('open');
+}
+
+document.addEventListener('click', (e) => {
+    const dropdown = document.getElementById('print-columns-dropdown');
+    const btn = document.getElementById('print-columns-toggle-btn');
+    if (dropdown && btn && !dropdown.contains(e.target) && !btn.contains(e.target)) {
+        dropdown.classList.remove('open');
+    }
+});
+
 function exportPrintedMaterialsToExcel() {
-    const data = state.printedMaterials.map(item => ({
-        'Name': item.name || '',
-        'Quantity': item.quantity || '',
-        'Size': item.size || '',
-        'Material': item.material || '',
-        'Holder': item.holder || '',
-        'Vendor': item.vendor || '',
-        'Status': (item.status || 'pending').charAt(0).toUpperCase() + (item.status || 'pending').slice(1),
-        'File Link': item.fileLink || '',
-        'Notes': item.notes || ''
-    }));
+    // Apply same filters as current view
+    let items = [...state.printedMaterials];
+    if (state.printSearch) {
+        const q = state.printSearch.toLowerCase();
+        items = items.filter(i =>
+            (i.name || '').toLowerCase().includes(q) ||
+            (i.material || '').toLowerCase().includes(q) ||
+            (i.vendor || '').toLowerCase().includes(q) ||
+            (i.notes || '').toLowerCase().includes(q)
+        );
+    }
+    if (state.printStatusFilter !== 'all') {
+        items = items.filter(i => {
+            const s = i.status || 'not-started';
+            return s === state.printStatusFilter || (state.printStatusFilter === 'not-started' && s === 'pending');
+        });
+    }
+    if (state.printVendorFilter !== 'all') {
+        items = items.filter(i => (i.vendor || '') === state.printVendorFilter);
+    }
+
+    // Build rows with only visible columns
+    const cols = state.printColumns;
+    const statusLabels = { 'not-started': 'Not Started', 'in-progress': 'In Progress', 'awaiting-approval': 'Awaiting Approval', approved: 'Approved', ordered: 'Ordered', received: 'Received', pending: 'Not Started' };
+    const data = items.map(item => {
+        const row = {};
+        if (cols.name) row['Name'] = item.name || '';
+        if (cols.quantity) row['Quantity'] = item.quantity || '';
+        if (cols.size) row['Size'] = item.size || '';
+        if (cols.material) row['Material'] = item.material || '';
+        if (cols.holder) row['Holder'] = item.holder || '';
+        if (cols.vendor) row['Vendor'] = item.vendor || '';
+        if (cols.status) row['Status'] = statusLabels[item.status] || statusLabels['not-started'];
+        if (cols.link) row['File Link'] = item.fileLink || '';
+        if (cols.notes) row['Notes'] = item.notes || '';
+        return row;
+    });
 
     const ws = XLSX.utils.json_to_sheet(data);
-    ws['!cols'] = [
-        { wch: 30 }, { wch: 8 }, { wch: 10 }, { wch: 15 },
-        { wch: 18 }, { wch: 15 }, { wch: 10 }, { wch: 35 }, { wch: 25 }
-    ];
+    const widths = [];
+    if (cols.name) widths.push({ wch: 30 });
+    if (cols.quantity) widths.push({ wch: 8 });
+    if (cols.size) widths.push({ wch: 10 });
+    if (cols.material) widths.push({ wch: 15 });
+    if (cols.holder) widths.push({ wch: 18 });
+    if (cols.vendor) widths.push({ wch: 15 });
+    if (cols.status) widths.push({ wch: 14 });
+    if (cols.link) widths.push({ wch: 35 });
+    if (cols.notes) widths.push({ wch: 25 });
+    ws['!cols'] = widths;
 
     const wb = XLSX.utils.book_new();
+    const vendorSuffix = state.printVendorFilter !== 'all' ? ' - ' + state.printVendorFilter : '';
     XLSX.utils.book_append_sheet(wb, ws, 'Printed Materials');
 
     const today = new Date().toISOString().split('T')[0];
-    XLSX.writeFile(wb, 'Printed_Materials_' + today + '.xlsx');
+    XLSX.writeFile(wb, 'Printed_Materials' + vendorSuffix.replace(/[^a-zA-Z0-9 _-]/g, '') + '_' + today + '.xlsx');
 }
 
 async function duplicatePrintedMaterial(itemId) {
@@ -5377,6 +5461,9 @@ window.clearPrintSearch = clearPrintSearch;
 window.handlePrintStatusFilter = handlePrintStatusFilter;
 window.sortPrintedMaterials = sortPrintedMaterials;
 window.exportPrintedMaterialsToExcel = exportPrintedMaterialsToExcel;
+window.handlePrintVendorFilter = handlePrintVendorFilter;
+window.togglePrintColumn = togglePrintColumn;
+window.togglePrintColumnsDropdown = togglePrintColumnsDropdown;
 
 // =============================================
 // DIGITAL ASSETS FUNCTIONS

@@ -6027,6 +6027,17 @@ body.menu-open::after {
     white-space: nowrap;
 }
 
+/* Printed Materials column visibility */
+#print-materials-table.hide-pm-name .pm-col-name { display: none; }
+#print-materials-table.hide-pm-quantity .pm-col-quantity { display: none; }
+#print-materials-table.hide-pm-size .pm-col-size { display: none; }
+#print-materials-table.hide-pm-material .pm-col-material { display: none; }
+#print-materials-table.hide-pm-holder .pm-col-holder { display: none; }
+#print-materials-table.hide-pm-vendor .pm-col-vendor { display: none; }
+#print-materials-table.hide-pm-status .pm-col-status { display: none; }
+#print-materials-table.hide-pm-link .pm-col-link { display: none; }
+#print-materials-table.hide-pm-notes .pm-col-notes { display: none; }
+
 .print-status-not-started {
     background: #f0ede6;
     color: #888;

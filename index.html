@@ -1110,6 +1110,26 @@
                     <option value="ordered">Ordered</option>
                     <option value="received">Received</option>
                 </select>
+                <select id="print-vendor-filter" class="filter-select" onchange="handlePrintVendorFilter(this.value)">
+                    <option value="all">All Vendors</option>
+                </select>
+                <div class="timeline-columns-wrapper">
+                    <button class="btn btn-columns-toggle" onclick="togglePrintColumnsDropdown()" id="print-columns-toggle-btn">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect></svg>
+                        Columns
+                    </button>
+                    <div class="timeline-columns-dropdown" id="print-columns-dropdown">
+                        <label class="col-toggle"><input type="checkbox" checked onchange="togglePrintColumn('name', this.checked)"> Name</label>
+                        <label class="col-toggle"><input type="checkbox" checked onchange="togglePrintColumn('quantity', this.checked)"> Qty</label>
+                        <label class="col-toggle"><input type="checkbox" checked onchange="togglePrintColumn('size', this.checked)"> Size</label>
+                        <label class="col-toggle"><input type="checkbox" checked onchange="togglePrintColumn('material', this.checked)"> Material</label>
+                        <label class="col-toggle"><input type="checkbox" checked onchange="togglePrintColumn('holder', this.checked)"> Holder</label>
+                        <label class="col-toggle"><input type="checkbox" checked onchange="togglePrintColumn('vendor', this.checked)"> Vendor</label>
+                        <label class="col-toggle"><input type="checkbox" checked onchange="togglePrintColumn('status', this.checked)"> Status</label>
+                        <label class="col-toggle"><input type="checkbox" checked onchange="togglePrintColumn('link', this.checked)"> Link</label>
+                        <label class="col-toggle"><input type="checkbox" checked onchange="togglePrintColumn('notes', this.checked)"> Notes</label>
+                    </div>
+                </div>
                 <span id="print-search-count" class="page-search-count"></span>
             </div>
 
@@ -1146,15 +1166,15 @@
                 <table class="print-materials-table" id="print-materials-table">
                     <thead>
                         <tr>
-                            <th class="print-sortable" onclick="sortPrintedMaterials('name')">Name <span class="sort-indicator" id="print-sort-name"></span></th>
-                            <th class="print-sortable" onclick="sortPrintedMaterials('quantity')">Qty <span class="sort-indicator" id="print-sort-quantity"></span></th>
-                            <th class="print-sortable" onclick="sortPrintedMaterials('size')">Size <span class="sort-indicator" id="print-sort-size"></span></th>
-                            <th class="print-sortable" onclick="sortPrintedMaterials('material')">Material <span class="sort-indicator" id="print-sort-material"></span></th>
-                            <th class="print-sortable" onclick="sortPrintedMaterials('holder')">Holder <span class="sort-indicator" id="print-sort-holder"></span></th>
-                            <th class="print-sortable" onclick="sortPrintedMaterials('vendor')">Vendor <span class="sort-indicator" id="print-sort-vendor"></span></th>
-                            <th class="print-sortable" onclick="sortPrintedMaterials('status')">Status <span class="sort-indicator" id="print-sort-status"></span></th>
-                            <th>Link</th>
-                            <th>Notes</th>
+                            <th class="print-sortable pm-col-name" onclick="sortPrintedMaterials('name')">Name <span class="sort-indicator" id="print-sort-name"></span></th>
+                            <th class="print-sortable pm-col-quantity" onclick="sortPrintedMaterials('quantity')">Qty <span class="sort-indicator" id="print-sort-quantity"></span></th>
+                            <th class="print-sortable pm-col-size" onclick="sortPrintedMaterials('size')">Size <span class="sort-indicator" id="print-sort-size"></span></th>
+                            <th class="print-sortable pm-col-material" onclick="sortPrintedMaterials('material')">Material <span class="sort-indicator" id="print-sort-material"></span></th>
+                            <th class="print-sortable pm-col-holder" onclick="sortPrintedMaterials('holder')">Holder <span class="sort-indicator" id="print-sort-holder"></span></th>
+                            <th class="print-sortable pm-col-vendor" onclick="sortPrintedMaterials('vendor')">Vendor <span class="sort-indicator" id="print-sort-vendor"></span></th>
+                            <th class="print-sortable pm-col-status" onclick="sortPrintedMaterials('status')">Status <span class="sort-indicator" id="print-sort-status"></span></th>
+                            <th class="pm-col-link">Link</th>
+                            <th class="pm-col-notes">Notes</th>
                         </tr>
                     </thead>
                     <tbody id="print-materials-tbody">
