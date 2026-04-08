@@ -5136,20 +5136,19 @@ function renderPrintedMaterials() {
 
     const items = state.printedMaterials;
     const total = items.length;
-    const pending = items.filter(i => i.status === 'pending' || !i.status).length;
+    const awaiting = items.filter(i => i.status === 'awaiting-approval').length;
     const ordered = items.filter(i => i.status === 'ordered').length;
-    const received = items.filter(i => i.status === 'received').length;
-    const done = items.filter(i => i.status === 'done').length;
+    const done = items.filter(i => i.status === 'received' || i.status === 'done').length;
 
     // Update stat cards
     const statTotal = document.getElementById('print-stat-total');
-    const statPending = document.getElementById('print-stat-pending');
+    const statAwaiting = document.getElementById('print-stat-awaiting');
     const statOrdered = document.getElementById('print-stat-ordered');
-    const statReceived = document.getElementById('print-stat-received');
+    const statDone = document.getElementById('print-stat-done');
     if (statTotal) statTotal.textContent = total;
-    if (statPending) statPending.textContent = pending;
+    if (statAwaiting) statAwaiting.textContent = awaiting;
     if (statOrdered) statOrdered.textContent = ordered;
-    if (statReceived) statReceived.textContent = received + done;
+    if (statDone) statDone.textContent = done;
 
     // Populate vendor filter dropdown
     const vendorSelect = document.getElementById('print-vendor-filter');
