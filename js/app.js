@@ -5130,6 +5130,14 @@ const PRINT_FIELD_MAP = {
     'print-status': 'status'
 };
 
+function formatSizeWithUnits(size) {
+    if (!size || size === 'TBD') return size || '';
+    // Already has units (inches symbol or ft/feet/in)
+    if (/["″]/.test(size) || /\b(ft|feet|in)\b/i.test(size)) return size;
+    // Replace bare numbers in dimension patterns like "24 x 36" or "8.5x11"
+    return size.replace(/(\d+\.?\d*)\s*x\s*(\d+\.?\d*)/g, '$1" x $2"');
+}
+
 function renderPrintedMaterials() {
     const tbody = document.getElementById('print-materials-tbody');
     if (!tbody) return;
@@ -5245,7 +5253,7 @@ function renderPrintedMaterials() {
         return `<tr onclick="openPrintModal('${item.id}')">
             <td class="print-name-cell pm-col-name">${escapeHtml(item.name || '')}</td>
             <td class="pm-col-quantity">${escapeHtml(item.quantity || '')}</td>
-            <td class="pm-col-size">${escapeHtml(item.size || '')}</td>
+            <td class="pm-col-size">${escapeHtml(formatSizeWithUnits(item.size))}</td>
             <td class="pm-col-material">${escapeHtml(item.material || '')}</td>
             <td class="pm-col-holder">${escapeHtml(item.holder || '')}</td>
             <td class="pm-col-vendor">${escapeHtml(item.vendor || '')}</td>
@@ -5405,7 +5413,7 @@ function exportPrintedMaterialsToExcel() {
         const row = {};
         if (cols.name) row['Name'] = item.name || '';
         if (cols.quantity) row['Quantity'] = item.quantity || '';
-        if (cols.size) row['Size'] = item.size || '';
+        if (cols.size) row['Size'] = formatSizeWithUnits(item.size);
         if (cols.material) row['Material'] = item.material || '';
         if (cols.holder) row['Holder'] = item.holder || '';
         if (cols.vendor) row['Vendor'] = item.vendor || '';
@@ -5419,7 +5427,7 @@ function exportPrintedMaterialsToExcel() {
     const widths = [];
     if (cols.name) widths.push({ wch: 30 });
     if (cols.quantity) widths.push({ wch: 8 });
-    if (cols.size) widths.push({ wch: 10 });
+    if (cols.size) widths.push({ wch: 14 });
     if (cols.material) widths.push({ wch: 15 });
     if (cols.holder) widths.push({ wch: 18 });
     if (cols.vendor) widths.push({ wch: 15 });
