@@ -2276,7 +2276,7 @@ function setupExportAndPrint() {
 
     const printSetListBtn = document.getElementById('print-setlist-btn');
     if (printSetListBtn) {
-        printSetListBtn.addEventListener('click', () => window.print());
+        printSetListBtn.addEventListener('click', printSetLists);
     }
     const exportSetListBtn = document.getElementById('export-setlist-btn');
     if (exportSetListBtn) {
@@ -9916,6 +9916,271 @@ function renderSetLists() {
             </div>
         </div>`;
     }).join('') + '</div>';
+}
+
+function printSetLists() {
+    // Use the same filter the user has applied on the page
+    let items = [...state.setLists];
+    if (state.setListStageFilter !== 'all') {
+        items = items.filter(sl => sl.stage === state.setListStageFilter);
+    }
+    if (state.setListSearch && state.setListSearch.trim().length > 0) {
+        const q = state.setListSearch.toLowerCase();
+        items = items.filter(sl =>
+            (sl.performer || '').toLowerCase().includes(q) ||
+            (sl.songs || []).some(s => (s.title || '').toLowerCase().includes(q))
+        );
+    }
+
+    if (items.length === 0) {
+        showToast('No set lists to print', 'error');
+        return;
+    }
+
+    // Sort: Main Stage first, then Cocktail, alphabetical by performer within each
+    items.sort((a, b) => {
+        if (a.stage !== b.stage) return a.stage === 'main' ? -1 : 1;
+        return (a.performer || '').localeCompare(b.performer || '');
+    });
+
+    const esc = (s) => String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+    // Wrap parenthetical groups in nowrap spans so "(SET 1)" etc. don't break
+    const formatPerformer = (name) => {
+        return esc(name || 'UNNAMED').toUpperCase()
+            .replace(/\(([^)]+)\)/g, '<span style="white-space:nowrap">($1)</span>');
+    };
+
+    const pagesHtml = items.map(sl => {
+        const songs = sl.songs || [];
+        const stageLabel = sl.stage === 'main' ? 'Main Stage' : 'Cocktail Stage';
+        const count = songs.length;
+
+        const songsHtml = songs.length > 0
+            ? songs.map(s => `
+                    <tr class="song-row">
+                        <td class="song-title">${esc(s.title)}</td>
+                    </tr>`).join('')
+            : '<tr><td class="no-songs">NO SONGS LISTED</td></tr>';
+
+        return `
+            <section class="setlist-page">
+                <header class="setlist-header">
+                    <div class="stage-badge">${esc(stageLabel).toUpperCase()}</div>
+                    <h1 class="performer-name">${formatPerformer(sl.performer)}</h1>
+                    <div class="meta">
+                        <span>${count} SONG${count !== 1 ? 'S' : ''}</span>
+                        ${sl.estimatedDuration ? `<span class="dot">•</span><span>${esc(sl.estimatedDuration).toUpperCase()}</span>` : ''}
+                    </div>
+                </header>
+                <div class="song-list-wrap">
+                    <table class="song-list"><tbody>${songsHtml}</tbody></table>
+                </div>
+                ${sl.generalNotes ? `<footer class="setlist-notes">${esc(sl.generalNotes).toUpperCase()}</footer>` : ''}
+            </section>`;
+    }).join('');
+
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Set Lists — YMU Gala 2026</title>
+<style>
+    @page {
+        size: letter portrait;
+        margin: 0;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+        margin: 0;
+        padding: 0;
+        background: #fff;
+        color: #000;
+        font-family: 'Impact', 'Arial Black', 'Helvetica Neue', Arial, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        /* Force layout to always use exact 816px (8.5in @ 96dpi) width so the
+           fit calculations match the print paper size regardless of browser viewport */
+        width: 816px;
+        min-width: 816px;
+    }
+    .setlist-page {
+        /* Exact portrait letter dimensions. Identical for screen and print. */
+        width: 816px;
+        height: 1056px;
+        /* Generous top/bottom padding leaves room for any browser-added
+           print headers/footers so content never gets clipped. */
+        padding: 72px 58px; /* 0.75in x 0.6in at 96dpi */
+        page-break-after: always;
+        break-after: page;
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        text-align: center;
+        overflow: hidden;
+    }
+    .setlist-page:last-child {
+        page-break-after: auto;
+        break-after: auto;
+    }
+    .setlist-header {
+        width: 100%;
+        border-bottom: 6px solid #000;
+        padding-bottom: 0.15in;
+        margin-bottom: 0.15in;
+        flex-shrink: 0;
+    }
+    .stage-badge {
+        display: inline-block;
+        font-size: 16pt;
+        letter-spacing: 0.25em;
+        font-weight: 900;
+        padding: 3px 14px;
+        border: 3px solid #000;
+        margin-bottom: 6px;
+    }
+    .performer-name {
+        font-size: 46pt;
+        line-height: 0.95;
+        margin: 2px 0 4px;
+        font-weight: 900;
+        letter-spacing: 0.01em;
+        text-transform: uppercase;
+    }
+    .meta {
+        font-size: 13pt;
+        font-weight: 700;
+        letter-spacing: 0.15em;
+    }
+    .meta .dot { margin: 0 8px; }
+    .song-list-wrap {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        overflow: hidden;
+    }
+    .song-list {
+        /* Table layout gives us vertically-aligned number and title columns.
+           The whole table is auto-centered as a single block. */
+        margin: 0 auto;
+        border-collapse: collapse;
+        max-width: 100%;
+    }
+    .song-row { }
+    .song-title {
+        vertical-align: baseline;
+        font-weight: 900;
+        line-height: 1.05;
+        padding: 0.08em 0;
+        text-transform: uppercase;
+        text-align: center;
+        white-space: nowrap;
+    }
+    .no-songs {
+        font-size: 48pt;
+        font-weight: 900;
+        color: #999;
+        text-align: center;
+        padding: 1in 0;
+    }
+    .setlist-notes {
+        margin-top: 0.15in;
+        padding-top: 0.12in;
+        border-top: 3px solid #000;
+        font-size: 12pt;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        width: 100%;
+        flex-shrink: 0;
+    }
+    @media screen {
+        body { background: #333; padding: 20px 0; }
+        .setlist-page {
+            background: #fff;
+            box-shadow: 0 8px 40px rgba(0,0,0,0.4);
+            margin: 0 auto 20px;
+        }
+    }
+</style>
+</head>
+<body>
+    ${pagesHtml}
+    <script>
+        // Math-based fit: measure at reference size, compute scale, snap to target.
+        function setRowFontSize(row, px) {
+            row.style.fontSize = px + 'px';
+        }
+        function fitPages() {
+            document.querySelectorAll('.setlist-page').forEach(page => {
+                const header = page.querySelector('.setlist-header');
+                const wrap = page.querySelector('.song-list-wrap');
+                const list = page.querySelector('.song-list');
+                const perf = page.querySelector('.performer-name');
+                if (!list || !wrap) return;
+                const rows = [...list.querySelectorAll('.song-row')];
+                if (rows.length === 0) return;
+
+                // 1) Shrink performer name if header too tall (long band names wrap)
+                let perfSize = parseFloat(getComputedStyle(perf).fontSize);
+                let guard = 60;
+                const maxHeaderH = 280; // ~2.9in budget for header
+                while (header.offsetHeight > maxHeaderH && perfSize > 20 && guard-- > 0) {
+                    perfSize -= 2;
+                    perf.style.fontSize = perfSize + 'px';
+                }
+
+                // 2) Measure song list at a reference font size
+                const REF = 40;
+                rows.forEach(r => setRowFontSize(r, REF));
+                // Force reflow
+                void list.offsetHeight;
+                const refH = list.offsetHeight;
+                const refW = list.offsetWidth;
+                if (refH === 0 || refW === 0) return;
+
+                // 3) Compute ideal scale to fit both dimensions
+                const availH = wrap.clientHeight - 10;
+                const availW = wrap.clientWidth - 20;
+                const scale = Math.min(availH / refH, availW / refW);
+                // Apply a 0.96 safety factor and cap maximum so single-song
+                // pages don't get absurdly huge.
+                let songSize = Math.floor(REF * scale * 0.96);
+                songSize = Math.max(12, Math.min(songSize, 260));
+                rows.forEach(r => setRowFontSize(r, songSize));
+
+                // 4) Fine-tune: small corrections if slightly off after scale
+                guard = 40;
+                while ((list.offsetHeight > availH || list.offsetWidth > availW) && songSize > 12 && guard-- > 0) {
+                    songSize -= 2;
+                    rows.forEach(r => setRowFontSize(r, songSize));
+                }
+            });
+        }
+        function runFitAndPrint() {
+            fitPages();
+            // Run twice — first pass may change layout; second pass re-fits if needed
+            fitPages();
+            setTimeout(() => { window.print(); }, 250);
+        }
+        if (document.readyState === 'complete') {
+            runFitAndPrint();
+        } else {
+            window.addEventListener('load', runFitAndPrint);
+        }
+    <\/script>
+</body>
+</html>`;
+
+    const w = window.open('', '_blank');
+    if (!w) {
+        showToast('Please allow popups to print set lists', 'error');
+        return;
+    }
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
 }
 
 function openSetListModal(itemId = null) {
