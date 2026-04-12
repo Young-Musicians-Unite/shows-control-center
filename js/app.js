@@ -877,8 +877,10 @@ function setupVendorFilters() {
 }
 
 function navigateToVendorFilter(filter) {
-    state.vendorFilter = filter;
     switchPage('vendors');
+
+    // Override the 'all' default that switchPage just set
+    state.vendorFilter = filter;
 
     // Update nav active state
     document.querySelectorAll('.nav-link').forEach(link => {
