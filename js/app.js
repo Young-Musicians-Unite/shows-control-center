@@ -111,7 +111,22 @@ const state = {
     digitalAssets: [],
     daSearch: '',
     daStatusFilter: 'all',
-    daSort: { field: null, direction: 'asc' }
+    daSort: { field: null, direction: 'asc' },
+    // Seating state
+    guests: [],
+    seatingTables: [],
+    seatingView: 'table',
+    seatingSelectedTableId: null,
+    seatingSearch: '',
+    seatingPanelSearch: '',
+    seatingUnassignedOnly: false,
+    seatingEditingRowId: null,
+    seatingRenderPending: false,
+    pendingNewGuestRow: {},
+    seatingCanvas: null,
+    seatingBgImage: null,
+    seatingMarkers: new Map(),
+    seatingCanvasInitialized: false
 };
 
 // --- Staff-Budget linking helpers ---
@@ -477,6 +492,22 @@ function switchPage(pageName) {
             if (printVendorSelect) printVendorSelect.value = 'all';
             renderPrintedMaterials();
         }
+        if (pageName === 'seating') {
+            state.seatingEditingRowId = null;
+            state.seatingRenderPending = false;
+            state.pendingNewGuestRow = {};
+            state.seatingSearch = '';
+            state.seatingUnassignedOnly = false;
+            const sInput = document.getElementById('seating-search-input');
+            if (sInput) sInput.value = '';
+            const uOnly = document.getElementById('seating-unassigned-only');
+            if (uOnly) uOnly.checked = false;
+            renderSeatingTable();
+            updateSeatingStats();
+            if (state.seatingView === 'map') {
+                setTimeout(() => seatingInitCanvas(), 50);
+            }
+        }
         if (pageName === 'digital-assets') {
             state.daSearch = '';
             state.daStatusFilter = 'all';
@@ -546,6 +577,8 @@ function loadAllData() {
     setupCollectionListener('menuItems', 'menuItems', [renderMenu, updateDashboard]);
     setupCollectionListener('printedMaterials', 'printedMaterials', [renderPrintedMaterials]);
     setupCollectionListener('digitalAssets', 'digitalAssets', [renderDigitalAssets]);
+    setupCollectionListener('guests', 'guests', [renderSeatingTable, renderSeatingMap, renderSeatingPanel, updateSeatingStats]);
+    setupCollectionListener('seatingTables', 'seatingTables', [renderSeatingTable, renderSeatingMap, renderSeatingPanel, updateSeatingStats]);
 }
 
 // Dashboard
@@ -1702,6 +1735,8 @@ function setupFormHandlers() {
     document.getElementById('menu-form').addEventListener('submit', handleMenuSubmit);
     document.getElementById('print-form').addEventListener('submit', handlePrintSubmit);
     document.getElementById('da-form').addEventListener('submit', handleDASubmit);
+    const guestForm = document.getElementById('guest-form');
+    if (guestForm) guestForm.addEventListener('submit', handleGuestSubmit);
 }
 
 // Generic form submission handler
@@ -10585,3 +10620,892 @@ window.editTimelineCell = editTimelineCell;
 window.commitNewRow = commitNewRow;
 window.editStageCell = editStageCell;
 
+// ============================
+// Seating
+// ============================
+
+const SEATING_GUEST_FIELDS = ['firstName', 'lastName', 'party', 'tableId', 'email', 'phone', 'dietary', 'notes'];
+const SEATING_FIELD_LABELS = {
+    firstName: 'first', lastName: 'last', party: 'party', tableId: 'table',
+    email: 'email', phone: 'phone', dietary: 'dietary', notes: 'notes'
+};
+const SEATING_MARKER_COLORS = {
+    empty: '#e5e7eb',
+    partial: '#fde68a',
+    full: '#a7f3d0',
+    over: '#fecaca'
+};
+
+function getTableAssignedCount(tableId) {
+    if (!tableId) return 0;
+    return state.guests.filter(g => g.tableId === tableId).length;
+}
+
+function getTableFillColor(table) {
+    const count = getTableAssignedCount(table.id);
+    const cap = table.capacity || 0;
+    if (count === 0) return SEATING_MARKER_COLORS.empty;
+    if (count > cap) return SEATING_MARKER_COLORS.over;
+    if (count === cap) return SEATING_MARKER_COLORS.full;
+    return SEATING_MARKER_COLORS.partial;
+}
+
+function getTableLabel(tableId) {
+    const t = state.seatingTables.find(st => st.id === tableId);
+    return t ? t.label : '';
+}
+
+function sortSeatingTables(tables) {
+    return [...tables].sort((a, b) => {
+        if (a.kind !== b.kind) return a.kind === 'lounge' ? -1 : 1;
+        return (a.number || 0) - (b.number || 0);
+    });
+}
+
+function updateSeatingStats() {
+    const total = state.guests.length;
+    const seated = state.guests.filter(g => g.tableId).length;
+    const unassigned = total - seated;
+    const capacity = state.seatingTables.reduce((sum, t) => sum + (t.capacity || 0), 0);
+    const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+    set('seating-stat-total', total);
+    set('seating-stat-seated', seated);
+    set('seating-stat-unassigned', unassigned);
+    set('seating-stat-capacity', capacity);
+}
+
+function renderSeatingTable() {
+    const tbody = document.getElementById('seating-guest-tbody');
+    if (!tbody) return;
+    if (state.seatingEditingRowId) {
+        state.seatingRenderPending = true;
+        return;
+    }
+
+    const search = (state.seatingSearch || '').toLowerCase().trim();
+    let filtered = state.guests.filter(g => {
+        if (state.seatingUnassignedOnly && g.tableId) return false;
+        if (!search) return true;
+        const tableLabel = getTableLabel(g.tableId).toLowerCase();
+        return [g.firstName, g.lastName, g.party, g.email, tableLabel]
+            .some(v => (v || '').toLowerCase().includes(search));
+    });
+
+    filtered.sort((a, b) => {
+        const aL = (a.lastName || '').toLowerCase();
+        const bL = (b.lastName || '').toLowerCase();
+        if (aL !== bL) return aL.localeCompare(bL);
+        return (a.firstName || '').toLowerCase().localeCompare((b.firstName || '').toLowerCase());
+    });
+
+    const phantomRow = `
+        <tr class="tl-row seating-phantom-row no-anim" data-phantom="true">
+            <td data-field="firstName" onclick="editSeatingCell(this)"><span class="phantom-placeholder">+ first</span></td>
+            <td data-field="lastName" onclick="editSeatingCell(this)"><span class="phantom-placeholder">last</span></td>
+            <td data-field="party" onclick="editSeatingCell(this)"><span class="phantom-placeholder">party</span></td>
+            <td data-field="tableId" onclick="editSeatingCell(this)"><span class="phantom-placeholder">table</span></td>
+            <td data-field="email" onclick="editSeatingCell(this)"><span class="phantom-placeholder">email</span></td>
+            <td data-field="phone" onclick="editSeatingCell(this)"><span class="phantom-placeholder">phone</span></td>
+            <td data-field="dietary" onclick="editSeatingCell(this)"><span class="phantom-placeholder">dietary</span></td>
+            <td data-field="notes" onclick="editSeatingCell(this)"><span class="phantom-placeholder">notes</span></td>
+            <td class="actions-col no-print"></td>
+        </tr>
+    `;
+
+    if (filtered.length === 0) {
+        tbody.innerHTML = phantomRow;
+        state.pendingNewGuestRow = {};
+        return;
+    }
+
+    const rowsHtml = filtered.map(g => {
+        const tableLabel = g.tableId ? getTableLabel(g.tableId) : '';
+        const tableCellInner = g.tableId
+            ? `<span class="table-pill">${escapeHtml(tableLabel)}</span>`
+            : `<span class="table-unassigned">unassigned</span>`;
+        return `
+            <tr class="tl-row" data-id="${g.id}">
+                <td data-field="firstName" data-original="${escapeHtml(g.firstName || '')}" onclick="editSeatingCell(this)">${escapeHtml(g.firstName || '')}</td>
+                <td data-field="lastName" data-original="${escapeHtml(g.lastName || '')}" onclick="editSeatingCell(this)">${escapeHtml(g.lastName || '')}</td>
+                <td data-field="party" data-original="${escapeHtml(g.party || '')}" onclick="editSeatingCell(this)">${escapeHtml(g.party || '')}</td>
+                <td data-field="tableId" data-original="${escapeHtml(g.tableId || '')}" onclick="editSeatingCell(this)">${tableCellInner}</td>
+                <td data-field="email" data-original="${escapeHtml(g.email || '')}" onclick="editSeatingCell(this)">${escapeHtml(g.email || '')}</td>
+                <td data-field="phone" data-original="${escapeHtml(g.phone || '')}" onclick="editSeatingCell(this)">${escapeHtml(g.phone || '')}</td>
+                <td data-field="dietary" data-original="${escapeHtml(g.dietary || '')}" onclick="editSeatingCell(this)">${escapeHtml(g.dietary || '')}</td>
+                <td data-field="notes" data-original="${escapeHtml(g.notes || '')}" onclick="editSeatingCell(this)">${escapeHtml(g.notes || '')}</td>
+                <td class="actions-col no-print">
+                    <div class="actions-row">
+                        <button class="action-icon" onclick="openGuestModal('${g.id}')" title="Edit">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                        </button>
+                        <button class="action-icon" onclick="duplicateGuest('${g.id}')" title="Duplicate">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        </button>
+                        <button class="action-icon action-icon-danger" onclick="deleteGuest('${g.id}')" title="Delete">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+
+    tbody.innerHTML = rowsHtml + phantomRow;
+    state.pendingNewGuestRow = {};
+}
+
+function editSeatingCell(cell) {
+    if (cell.querySelector('.inline-edit-input, .inline-edit-select')) return;
+    const row = cell.closest('tr');
+    const field = cell.dataset.field;
+    if (!field) return;
+
+    const isPhantom = row.dataset.phantom === 'true';
+    state.seatingEditingRowId = isPhantom ? 'phantom' : row.dataset.id;
+    row.classList.add('editing');
+
+    const original = isPhantom
+        ? (state.pendingNewGuestRow[field] || '')
+        : (cell.dataset.original || '');
+
+    let input;
+    if (field === 'tableId') {
+        input = document.createElement('select');
+        input.className = 'inline-edit-select';
+        input.style.minWidth = '120px';
+        const opts = ['<option value="">— Unassigned —</option>'];
+        sortSeatingTables(state.seatingTables).forEach(t => {
+            const count = getTableAssignedCount(t.id);
+            const cap = t.capacity || 0;
+            const isFull = count >= cap;
+            const isCurrent = t.id === original;
+            const disabled = isFull && !isCurrent ? 'disabled' : '';
+            opts.push(`<option value="${t.id}" ${isCurrent ? 'selected' : ''} ${disabled}>${escapeHtml(t.label)} (${count}/${cap})</option>`);
+        });
+        input.innerHTML = opts.join('');
+    } else {
+        input = document.createElement('input');
+        input.type = field === 'email' ? 'email' : 'text';
+        input.value = original;
+        input.className = 'inline-edit-input';
+    }
+    input.dataset.field = field;
+
+    cell.textContent = '';
+    cell.appendChild(input);
+    input.focus();
+    if (input.select) try { input.select(); } catch (e) {}
+
+    input.addEventListener('keydown', (e) => handleSeatingCellKeydown(e, cell, row));
+    input.addEventListener('blur', () => {
+        setTimeout(() => {
+            const activeEl = document.activeElement;
+            if (row.contains(activeEl) && (activeEl.classList.contains('inline-edit-input') || activeEl.classList.contains('inline-edit-select'))) return;
+            if (cell.querySelector('.inline-edit-input, .inline-edit-select')) {
+                if (isPhantom) {
+                    const val = input.value;
+                    const trimmed = typeof val === 'string' ? val.trim() : val;
+                    if (trimmed) state.pendingNewGuestRow[field] = trimmed;
+                    restoreSeatingCell(cell, true);
+                    if (!row.querySelector('.inline-edit-input, .inline-edit-select')) {
+                        row.classList.remove('editing');
+                        commitNewGuestRow();
+                    }
+                } else {
+                    saveSingleSeatingCell(cell, row);
+                }
+            }
+        }, 50);
+    });
+    if (field === 'tableId') {
+        input.addEventListener('change', () => {
+            if (isPhantom) {
+                state.pendingNewGuestRow[field] = input.value;
+                restoreSeatingCell(cell, true);
+                if (!row.querySelector('.inline-edit-input, .inline-edit-select')) {
+                    row.classList.remove('editing');
+                    commitNewGuestRow();
+                }
+            } else {
+                saveSingleSeatingCell(cell, row);
+            }
+        });
+    }
+}
+
+function handleSeatingCellKeydown(e, cell, row) {
+    const field = cell.dataset.field;
+    const isPhantom = row.dataset.phantom === 'true';
+    const input = cell.querySelector('.inline-edit-input, .inline-edit-select');
+    if (e.key === 'Tab') {
+        e.preventDefault();
+        const direction = e.shiftKey ? -1 : 1;
+        if (isPhantom) {
+            const val = input ? input.value : '';
+            const trimmed = typeof val === 'string' ? val.trim() : val;
+            if (trimmed) state.pendingNewGuestRow[field] = trimmed;
+            restoreSeatingCell(cell, true);
+        } else {
+            saveSingleSeatingCell(cell, row, true);
+        }
+        navigateSeatingCell(row, field, direction);
+    } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (isPhantom) {
+            const val = input ? input.value : '';
+            const trimmed = typeof val === 'string' ? val.trim() : val;
+            if (trimmed) state.pendingNewGuestRow[field] = trimmed;
+            restoreSeatingCell(cell, true);
+            commitNewGuestRow();
+        } else {
+            saveSingleSeatingCell(cell, row, true);
+            navigateSeatingNextRow(row, field);
+        }
+    } else if (e.key === 'Escape') {
+        e.preventDefault();
+        restoreSeatingCell(cell, isPhantom);
+        row.classList.remove('editing');
+        clearSeatingEditingFlag();
+    }
+}
+
+function navigateSeatingCell(row, currentField, direction) {
+    const idx = SEATING_GUEST_FIELDS.indexOf(currentField);
+    const nextIdx = idx + direction;
+    if (nextIdx >= 0 && nextIdx < SEATING_GUEST_FIELDS.length) {
+        const liveRow = getLiveSeatingRow(row);
+        const nextField = SEATING_GUEST_FIELDS[nextIdx];
+        const nextCell = liveRow.querySelector(`td[data-field="${nextField}"]`);
+        if (nextCell) editSeatingCell(nextCell);
+    } else if (direction > 0) {
+        if (row.dataset.phantom === 'true') { commitNewGuestRow(); return; }
+        const liveRow = getLiveSeatingRow(row);
+        const nextRow = liveRow.nextElementSibling;
+        if (nextRow) {
+            const nextCell = nextRow.querySelector(`td[data-field="${SEATING_GUEST_FIELDS[0]}"]`);
+            if (nextCell) editSeatingCell(nextCell);
+        }
+    }
+}
+
+function navigateSeatingNextRow(row, field) {
+    const liveRow = getLiveSeatingRow(row);
+    const nextRow = liveRow.nextElementSibling;
+    if (nextRow) {
+        const nextCell = nextRow.querySelector(`td[data-field="${field}"]`);
+        if (nextCell) editSeatingCell(nextCell);
+    }
+}
+
+function getLiveSeatingRow(row) {
+    if (row.dataset.phantom === 'true') return document.querySelector('#seating-guest-tbody tr[data-phantom="true"]') || row;
+    if (row.dataset.id) return document.querySelector(`#seating-guest-tbody tr[data-id="${row.dataset.id}"]`) || row;
+    return row;
+}
+
+function restoreSeatingCell(cell, isPhantom) {
+    const field = cell.dataset.field;
+    if (isPhantom) {
+        const val = state.pendingNewGuestRow[field] || '';
+        if (val) {
+            if (field === 'tableId') {
+                const label = getTableLabel(val);
+                cell.innerHTML = label ? `<span class="table-pill">${escapeHtml(label)}</span>` : `<span class="table-unassigned">unassigned</span>`;
+            } else {
+                cell.textContent = val;
+            }
+        } else {
+            const placeholder = SEATING_FIELD_LABELS[field] || field;
+            cell.innerHTML = `<span class="phantom-placeholder">${field === 'firstName' ? '+ ' : ''}${placeholder}</span>`;
+        }
+    } else {
+        const original = cell.dataset.original || '';
+        if (field === 'tableId') {
+            const label = getTableLabel(original);
+            cell.innerHTML = original
+                ? `<span class="table-pill">${escapeHtml(label)}</span>`
+                : `<span class="table-unassigned">unassigned</span>`;
+        } else {
+            cell.textContent = original;
+        }
+    }
+}
+
+function clearSeatingEditingFlag() {
+    state.seatingEditingRowId = null;
+    if (state.seatingRenderPending) {
+        state.seatingRenderPending = false;
+        renderSeatingTable();
+    }
+}
+
+function saveSingleSeatingCell(cell, row, keepEditing = false) {
+    const input = cell.querySelector('.inline-edit-input, .inline-edit-select');
+    if (!input) return;
+    const field = cell.dataset.field;
+    const id = row.dataset.id;
+    let newValue = typeof input.value === 'string' ? input.value.trim() : input.value;
+    const item = state.guests.find(g => g.id === id);
+    const oldValue = item ? (item[field] || '') : '';
+
+    // Capacity check
+    if (field === 'tableId' && newValue && newValue !== oldValue) {
+        const target = state.seatingTables.find(t => t.id === newValue);
+        if (target) {
+            const count = getTableAssignedCount(newValue);
+            if (count >= (target.capacity || 0)) {
+                showToast(`${target.label} is full (${count}/${target.capacity})`, 'error');
+                restoreSeatingCell(cell, false);
+                if (!keepEditing && !row.querySelector('.inline-edit-input, .inline-edit-select')) {
+                    row.classList.remove('editing');
+                    clearSeatingEditingFlag();
+                }
+                return;
+            }
+        }
+    }
+
+    cell.dataset.original = newValue;
+    if (field === 'tableId') {
+        const label = getTableLabel(newValue);
+        cell.innerHTML = newValue
+            ? `<span class="table-pill">${escapeHtml(label)}</span>`
+            : `<span class="table-unassigned">unassigned</span>`;
+    } else {
+        cell.textContent = newValue;
+    }
+
+    if (!keepEditing && !row.querySelector('.inline-edit-input, .inline-edit-select')) {
+        row.classList.remove('editing');
+        clearSeatingEditingFlag();
+    }
+
+    if (!item) return;
+    if (newValue === oldValue) return;
+
+    item[field] = newValue;
+    collections.guests.doc(id).update({
+        [field]: newValue,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }).catch(err => {
+        console.error('Error saving guest cell:', err);
+        if (item) item[field] = oldValue;
+        cell.dataset.original = oldValue;
+        showToast('Error saving', 'error');
+    });
+}
+
+async function commitNewGuestRow() {
+    const data = { ...state.pendingNewGuestRow };
+    if (!data.firstName && !data.lastName) {
+        state.pendingNewGuestRow = {};
+        clearSeatingEditingFlag();
+        renderSeatingTable();
+        return;
+    }
+    // Capacity check on phantom commit
+    if (data.tableId) {
+        const target = state.seatingTables.find(t => t.id === data.tableId);
+        if (target) {
+            const count = getTableAssignedCount(data.tableId);
+            if (count >= (target.capacity || 0)) {
+                showToast(`${target.label} is full — guest added unassigned`, 'warning');
+                data.tableId = '';
+            }
+        }
+    }
+    const newGuest = {
+        firstName: data.firstName || '',
+        lastName: data.lastName || '',
+        party: data.party || '',
+        tableId: data.tableId || '',
+        email: data.email || '',
+        phone: data.phone || '',
+        dietary: data.dietary || '',
+        notes: data.notes || '',
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    };
+    state.pendingNewGuestRow = {};
+    try {
+        await collections.guests.add(newGuest);
+        clearSeatingEditingFlag();
+    } catch (err) {
+        console.error('Error adding guest:', err);
+        showToast('Error adding guest', 'error');
+        clearSeatingEditingFlag();
+    }
+}
+
+function openGuestModal(id = null) {
+    // Populate the table dropdown first
+    const sel = document.getElementById('guest-table');
+    if (sel) {
+        const opts = ['<option value="">— Unassigned —</option>'];
+        sortSeatingTables(state.seatingTables).forEach(t => {
+            const count = getTableAssignedCount(t.id);
+            const cap = t.capacity || 0;
+            opts.push(`<option value="${t.id}">${escapeHtml(t.label)} (${count}/${cap})</option>`);
+        });
+        sel.innerHTML = opts.join('');
+    }
+    openModal({
+        modalId: 'guest-modal',
+        formId: 'guest-form',
+        idFieldId: 'guest-id',
+        itemId: id,
+        stateKey: 'guests',
+        title: 'Guest',
+        fieldMap: {
+            'guest-first-name': 'firstName',
+            'guest-last-name': 'lastName',
+            'guest-party': 'party',
+            'guest-table': 'tableId',
+            'guest-email': 'email',
+            'guest-phone': 'phone',
+            'guest-dietary': 'dietary',
+            'guest-notes': 'notes'
+        }
+    });
+}
+
+async function handleGuestSubmit(e) {
+    await handleFormSubmit(e, {
+        collection: 'guests',
+        idFieldId: 'guest-id',
+        itemName: 'guest',
+        fieldMap: {
+            'guest-first-name': 'firstName',
+            'guest-last-name': 'lastName',
+            'guest-party': 'party',
+            'guest-table': 'tableId',
+            'guest-email': 'email',
+            'guest-phone': 'phone',
+            'guest-dietary': 'dietary',
+            'guest-notes': 'notes'
+        }
+    });
+}
+
+const _baseDeleteGuest = createDeleteHandler('guests', 'guest');
+async function deleteGuest(id) { return _baseDeleteGuest(id); }
+
+async function duplicateGuest(id) {
+    const g = state.guests.find(x => x.id === id);
+    if (!g) return;
+    const { id: _id, createdAt, updatedAt, ...data } = g;
+    data.firstName = (data.firstName || '') + ' (copy)';
+    data.tableId = '';
+    data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+    data.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+    try {
+        await collections.guests.add(data);
+        showToast('Guest duplicated');
+    } catch (err) {
+        console.error('Error duplicating guest:', err);
+        showToast('Error duplicating guest', 'error');
+    }
+}
+
+function setSeatingView(view) {
+    state.seatingView = view;
+    document.getElementById('seating-table-view-btn').classList.toggle('active', view === 'table');
+    document.getElementById('seating-map-view-btn').classList.toggle('active', view === 'map');
+    document.getElementById('seating-table-view').style.display = view === 'table' ? '' : 'none';
+    document.getElementById('seating-map-view').style.display = view === 'map' ? '' : 'none';
+    if (view === 'map') {
+        setTimeout(() => {
+            seatingInitCanvas();
+            renderSeatingMap();
+        }, 50);
+    }
+}
+
+function handleSeatingSearch(value) {
+    state.seatingSearch = value;
+    renderSeatingTable();
+}
+
+function toggleSeatingUnassignedOnly(checked) {
+    state.seatingUnassignedOnly = checked;
+    renderSeatingTable();
+}
+
+// ---------- Map view ----------
+
+// Aspect ratio (portrait) used to size the canvas — matches the original floor plan.
+const SEATING_CANVAS_ASPECT = 1764 / 2628;
+
+function seatingInitCanvas() {
+    if (state.seatingCanvasInitialized) {
+        if (state.seatingCanvas) state.seatingCanvas.renderAll();
+        return;
+    }
+    const wrapper = document.getElementById('seating-canvas-wrapper');
+    if (!wrapper) return;
+
+    const padding = 24;
+    const availableWidth = (wrapper.parentElement ? wrapper.parentElement.clientWidth - 340 - 16 : wrapper.clientWidth) - padding;
+    const maxHeight = Math.max(window.innerHeight - 200, 700);
+    let canvasHeight = maxHeight;
+    let canvasWidth = canvasHeight * SEATING_CANVAS_ASPECT;
+    if (canvasWidth > availableWidth) {
+        canvasWidth = availableWidth;
+        canvasHeight = canvasWidth / SEATING_CANVAS_ASPECT;
+    }
+    canvasWidth = Math.floor(canvasWidth);
+    canvasHeight = Math.floor(canvasHeight);
+    wrapper.style.width = (canvasWidth + padding) + 'px';
+    wrapper.style.minHeight = (canvasHeight + padding) + 'px';
+
+    state.seatingCanvas = new fabric.Canvas('seating-canvas', {
+        width: canvasWidth,
+        height: canvasHeight,
+        selection: false,
+        preserveObjectStacking: true,
+        backgroundColor: '#fafafa'
+    });
+
+    state.seatingCanvas.on('mouse:down', (opt) => {
+        const target = opt.target;
+        if (target && target._tableId) {
+            state.seatingSelectedTableId = target._tableId;
+            state.seatingPanelSearch = '';
+            renderSeatingPanel();
+        } else if (!target) {
+            state.seatingSelectedTableId = null;
+            renderSeatingPanel();
+        }
+    });
+
+    state.seatingCanvas.on('object:modified', (e) => {
+        const obj = e.target;
+        if (!obj || !obj._tableId) return;
+        const cw = state.seatingCanvas.getWidth();
+        const ch = state.seatingCanvas.getHeight();
+        const x = obj.left / cw;
+        const y = obj.top / ch;
+        collections.seatingTables.doc(obj._tableId).update({
+            x, y,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        }).catch(err => {
+            console.error('Error saving table position:', err);
+            showToast('Error saving table position', 'error');
+        });
+    });
+
+    state.seatingCanvasInitialized = true;
+    renderSeatingMap();
+}
+
+function renderSeatingMap() {
+    const c = state.seatingCanvas;
+    if (!c || !state.seatingCanvasInitialized) return;
+    const cw = c.getWidth();
+    const ch = c.getHeight();
+
+    const seenIds = new Set();
+    state.seatingTables.forEach(t => {
+        seenIds.add(t.id);
+        const left = (t.x || 0.5) * cw;
+        const top = (t.y || 0.5) * ch;
+        const fill = getTableFillColor(t);
+        const isLounge = t.kind === 'lounge';
+
+        let group = state.seatingMarkers.get(t.id);
+        if (!group) {
+            const shape = isLounge
+                ? new fabric.Rect({
+                    width: 64,
+                    height: 36,
+                    rx: 6,
+                    ry: 6,
+                    fill,
+                    stroke: '#1a3a35',
+                    strokeWidth: 1.5,
+                    originX: 'center',
+                    originY: 'center'
+                })
+                : new fabric.Circle({
+                    radius: 18,
+                    fill,
+                    stroke: '#1a3a35',
+                    strokeWidth: 1.5,
+                    originX: 'center',
+                    originY: 'center'
+                });
+            const text = new fabric.Text(String(t.number || ''), {
+                fontSize: isLounge ? 14 : 13,
+                fontFamily: 'DM Sans, sans-serif',
+                fontWeight: '700',
+                fill: '#1a3a35',
+                originX: 'center',
+                originY: 'center'
+            });
+            group = new fabric.Group([shape, text], {
+                left,
+                top,
+                originX: 'center',
+                originY: 'center',
+                hasControls: false,
+                hasBorders: true,
+                lockScalingX: true,
+                lockScalingY: true,
+                lockRotation: true,
+                hoverCursor: 'pointer'
+            });
+            group._tableId = t.id;
+            group._tableShape = shape;
+            state.seatingMarkers.set(t.id, group);
+            c.add(group);
+        } else {
+            group.set({ left, top });
+            if (group._tableShape) group._tableShape.set({ fill });
+            group.setCoords();
+        }
+    });
+
+    // Remove markers for tables that no longer exist
+    for (const [tid, group] of state.seatingMarkers.entries()) {
+        if (!seenIds.has(tid)) {
+            c.remove(group);
+            state.seatingMarkers.delete(tid);
+        }
+    }
+
+    c.renderAll();
+}
+
+function renderSeatingPanel() {
+    const empty = document.getElementById('seating-panel-empty');
+    const panel = document.getElementById('seating-panel-table');
+    if (!empty || !panel) return;
+
+    const tableId = state.seatingSelectedTableId;
+    const table = tableId ? state.seatingTables.find(t => t.id === tableId) : null;
+    if (!table) {
+        empty.style.display = '';
+        panel.style.display = 'none';
+        return;
+    }
+    empty.style.display = 'none';
+    panel.style.display = '';
+
+    const seated = state.guests
+        .filter(g => g.tableId === table.id)
+        .sort((a, b) => (a.lastName || '').localeCompare(b.lastName || ''));
+    const count = seated.length;
+    const cap = table.capacity || 0;
+    const counterClass = count > cap ? 'over' : (count === cap ? 'full' : '');
+
+    const isLounge = table.kind === 'lounge';
+    const search = (state.seatingPanelSearch || '').toLowerCase().trim();
+    const unassigned = state.guests
+        .filter(g => !g.tableId)
+        .filter(g => {
+            if (!search) return true;
+            return [g.firstName, g.lastName, g.party, g.email]
+                .some(v => (v || '').toLowerCase().includes(search));
+        })
+        .sort((a, b) => (a.lastName || '').localeCompare(b.lastName || ''))
+        .slice(0, 50);
+
+    panel.innerHTML = `
+        <div class="seating-panel-header">
+            <h3>${escapeHtml(table.label)}</h3>
+            <span class="seating-panel-counter ${counterClass}">${count}/${cap}</span>
+        </div>
+        <div class="seating-panel-section">
+            <div class="seating-panel-section-label">Capacity</div>
+            <div class="seating-capacity-buttons">
+                <button class="${cap === 10 ? 'active' : ''}" ${isLounge ? 'disabled' : ''} onclick="setTableCapacity('${table.id}', 10)">10</button>
+                <button class="${cap === 12 ? 'active' : ''}" onclick="setTableCapacity('${table.id}', 12)">12</button>
+            </div>
+        </div>
+        <div class="seating-panel-section">
+            <div class="seating-panel-section-label">Seated (${count})</div>
+            ${seated.length === 0 ? '<div class="seating-search-empty">No guests seated yet</div>' : seated.map(g => `
+                <div class="guest-chip">
+                    <span><span class="chip-name">${escapeHtml((g.firstName || '') + ' ' + (g.lastName || ''))}</span>${g.party ? `<span class="chip-party">· ${escapeHtml(g.party)}</span>` : ''}</span>
+                    <button class="remove-btn" onclick="unseatGuest('${g.id}')" title="Remove from table">×</button>
+                </div>
+            `).join('')}
+        </div>
+        <div class="seating-panel-section">
+            <div class="seating-panel-section-label">Add Guest</div>
+            <input type="text" class="search-input" id="seating-panel-search" placeholder="Search unassigned guests…" value="${escapeHtml(state.seatingPanelSearch || '')}" oninput="handleSeatingPanelSearch(this.value)" style="width:100%;padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:0.85rem;">
+            <div class="seating-search-results">
+                ${unassigned.length === 0 ? '<div class="seating-search-empty">No matching unassigned guests</div>' : unassigned.map(g => `
+                    <div class="seating-search-result" onclick="seatGuest('${g.id}', '${table.id}')">
+                        <span>${escapeHtml((g.firstName || '') + ' ' + (g.lastName || ''))}</span>
+                        ${g.party ? `<span class="result-party"> · ${escapeHtml(g.party)}</span>` : ''}
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    `;
+    // Restore focus on search input if it was being typed in
+    const searchInput = document.getElementById('seating-panel-search');
+    if (searchInput && state.seatingPanelSearch) {
+        searchInput.focus();
+        searchInput.setSelectionRange(searchInput.value.length, searchInput.value.length);
+    }
+}
+
+function handleSeatingPanelSearch(value) {
+    state.seatingPanelSearch = value;
+    renderSeatingPanel();
+}
+
+async function seatGuest(guestId, tableId) {
+    const table = state.seatingTables.find(t => t.id === tableId);
+    if (!table) return;
+    const count = getTableAssignedCount(tableId);
+    if (count >= (table.capacity || 0)) {
+        showToast(`${table.label} is full (${count}/${table.capacity})`, 'error');
+        return;
+    }
+    try {
+        await collections.guests.doc(guestId).update({
+            tableId,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+    } catch (err) {
+        console.error('Error seating guest:', err);
+        showToast('Error seating guest', 'error');
+    }
+}
+
+async function unseatGuest(guestId) {
+    try {
+        await collections.guests.doc(guestId).update({
+            tableId: '',
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+    } catch (err) {
+        console.error('Error unseating guest:', err);
+        showToast('Error unseating guest', 'error');
+    }
+}
+
+async function setTableCapacity(tableId, capacity) {
+    const table = state.seatingTables.find(t => t.id === tableId);
+    if (!table || table.kind === 'lounge') return;
+    const count = getTableAssignedCount(tableId);
+    if (count > capacity) {
+        showToast(`Table has ${count} seated — unseat first`, 'error');
+        return;
+    }
+    try {
+        await collections.seatingTables.doc(tableId).update({
+            capacity,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        showToast(`Capacity set to ${capacity}`);
+    } catch (err) {
+        console.error('Error updating capacity:', err);
+        showToast('Error updating capacity', 'error');
+    }
+}
+
+// ---------- Import / Export ----------
+
+async function importGuestsFromXlsx(file) {
+    if (!file) return;
+    if (typeof XLSX === 'undefined') {
+        showToast('XLSX library not loaded', 'error');
+        return;
+    }
+    try {
+        const data = await file.arrayBuffer();
+        const workbook = XLSX.read(data);
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+        if (rows.length === 0) {
+            showToast('No rows found in file', 'warning');
+            return;
+        }
+
+        const norm = (s) => String(s || '').toLowerCase().replace(/[\s_]/g, '');
+        const fieldAliases = {
+            firstname: 'firstName', first: 'firstName',
+            lastname: 'lastName', last: 'lastName', surname: 'lastName',
+            party: 'party', group: 'party',
+            email: 'email', 'e-mail': 'email',
+            phone: 'phone', mobile: 'phone',
+            dietary: 'dietary', diet: 'dietary',
+            notes: 'notes', note: 'notes'
+        };
+
+        showToast(`Importing ${rows.length} guests…`, 'info');
+        const batchSize = 400;
+        for (let i = 0; i < rows.length; i += batchSize) {
+            const batch = firebase.firestore().batch();
+            const slice = rows.slice(i, i + batchSize);
+            slice.forEach(row => {
+                const guest = { firstName: '', lastName: '', party: '', tableId: '', email: '', phone: '', dietary: '', notes: '' };
+                Object.keys(row).forEach(key => {
+                    const target = fieldAliases[norm(key)];
+                    if (target) guest[target] = String(row[key] || '').trim();
+                });
+                if (!guest.firstName && !guest.lastName) return;
+                guest.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+                guest.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+                const ref = collections.guests.doc();
+                batch.set(ref, guest);
+            });
+            await batch.commit();
+        }
+        showToast(`Imported ${rows.length} guests`, 'success');
+        document.getElementById('seating-import-input').value = '';
+    } catch (err) {
+        console.error('Error importing guests:', err);
+        showToast('Error importing guests', 'error');
+    }
+}
+
+function exportSeatingToXlsx() {
+    if (typeof XLSX === 'undefined') {
+        showToast('XLSX library not loaded', 'error');
+        return;
+    }
+    const guestsRows = state.guests.map(g => ({
+        id: g.id,
+        'First Name': g.firstName || '',
+        'Last Name': g.lastName || '',
+        Party: g.party || '',
+        Table: getTableLabel(g.tableId) || '',
+        Email: g.email || '',
+        Phone: g.phone || '',
+        Dietary: g.dietary || '',
+        Notes: g.notes || ''
+    }));
+    const tablesRows = sortSeatingTables(state.seatingTables).map(t => ({
+        id: t.id,
+        Label: t.label,
+        Kind: t.kind,
+        Number: t.number,
+        Capacity: t.capacity,
+        Assigned: getTableAssignedCount(t.id)
+    }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(guestsRows), 'Guests');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(tablesRows), 'Tables');
+    const date = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `gala-seating-${date}.xlsx`);
+}
+
+// Window exports
+window.editSeatingCell = editSeatingCell;
+window.deleteGuest = deleteGuest;
+window.duplicateGuest = duplicateGuest;
+window.openGuestModal = openGuestModal;
+window.setSeatingView = setSeatingView;
+window.handleSeatingSearch = handleSeatingSearch;
+window.toggleSeatingUnassignedOnly = toggleSeatingUnassignedOnly;
+window.handleSeatingPanelSearch = handleSeatingPanelSearch;
+window.seatGuest = seatGuest;
+window.unseatGuest = unseatGuest;
+window.setTableCapacity = setTableCapacity;
+window.importGuestsFromXlsx = importGuestsFromXlsx;
+window.exportSeatingToXlsx = exportSeatingToXlsx;

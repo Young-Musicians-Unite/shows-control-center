@@ -38,6 +38,8 @@ documents/invoices/*
 
 # Screenshots
 screenshots/
+.playwright-screenshots/
+.playwright-mcp/
 
 # Source data (Excel spreadsheets, PDFs)
 source-data/

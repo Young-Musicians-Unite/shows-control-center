@@ -73,6 +73,10 @@
                             <svg class="nav-icon" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="5" r="4"/><path d="M1 17c0-4 3.6-7 8-7s8 3 8 7"/></svg>
                             <span class="nav-label">Staff</span>
                         </a>
+                        <a href="#seating" class="nav-link" data-page="seating">
+                            <svg class="nav-icon" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8V3a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v5"/><path d="M3 8h12v4H3z"/><path d="M5 12v4"/><path d="M13 12v4"/></svg>
+                            <span class="nav-label">Seating</span>
+                        </a>
                         <a href="#packing-list" class="nav-link" data-page="packing-list">
                             <svg class="nav-icon" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="1" width="14" height="16" rx="1.5"/><path d="M6 1v2h6V1"/><path d="M6 7h1.5m2 0h2.5"/><path d="M6 10.5h1.5m2 0h2.5"/><path d="M6 14h1.5m2 0h2.5"/></svg>
                             <span class="nav-label">Packing List</span>
@@ -545,6 +549,118 @@
                     <span id="staff-day-count" class="staff-day-count"></span>
                 </div>
                 <div id="staff-gantt-container"></div>
+            </div>
+        </div>
+
+        <!-- Seating Page -->
+        <div id="seating" class="page">
+            <div class="page-header">
+                <h1>Seating</h1>
+                <div class="header-actions">
+                    <div class="seating-view-toggle">
+                        <button class="seating-view-btn active" id="seating-table-view-btn" onclick="setSeatingView('table')">Table View</button>
+                        <button class="seating-view-btn" id="seating-map-view-btn" onclick="setSeatingView('map')">Map View</button>
+                    </div>
+                    <input type="file" id="seating-import-input" accept=".xlsx,.xls,.csv" style="display:none" onchange="importGuestsFromXlsx(this.files[0])">
+                    <button class="btn btn-icon" id="import-guests-btn" title="Import from Excel" onclick="document.getElementById('seating-import-input').click()">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                    </button>
+                    <button class="btn btn-icon" id="export-guests-btn" title="Export to Excel" onclick="exportSeatingToXlsx()">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                    </button>
+                    <button class="btn btn-primary-gold" id="add-guest-btn" onclick="openGuestModal()">+ Add Guest</button>
+                </div>
+            </div>
+
+            <!-- Stats -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-content">
+                        <div class="stat-label">Total Guests</div>
+                        <div class="stat-value" id="seating-stat-total">0</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-content">
+                        <div class="stat-label">Seated</div>
+                        <div class="stat-value" id="seating-stat-seated">0</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-content">
+                        <div class="stat-label">Unassigned</div>
+                        <div class="stat-value" id="seating-stat-unassigned">0</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-content">
+                        <div class="stat-label">Capacity</div>
+                        <div class="stat-value" id="seating-stat-capacity">0</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Toolbar -->
+            <div class="seating-toolbar">
+                <div class="page-search-wrapper">
+                    <svg class="page-search-icon" viewBox="0 0 20 20" fill="currentColor" width="18" height="18">
+                        <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"/>
+                    </svg>
+                    <input type="text" id="seating-search-input" class="search-input" placeholder="Search guests by name, party, table…" oninput="handleSeatingSearch(this.value)">
+                </div>
+                <label class="checkbox-label"><input type="checkbox" id="seating-unassigned-only" onchange="toggleSeatingUnassignedOnly(this.checked)"> Unassigned only</label>
+            </div>
+
+            <!-- Table View -->
+            <div id="seating-table-view">
+                <div class="card">
+                    <div class="table-container">
+                        <table class="data-table seating-table" id="seating-guest-table">
+                            <thead>
+                                <tr>
+                                    <th class="seating-first-col">First</th>
+                                    <th class="seating-last-col">Last</th>
+                                    <th class="seating-party-col">Party</th>
+                                    <th class="seating-table-col">Table</th>
+                                    <th class="seating-email-col">Email</th>
+                                    <th class="seating-phone-col">Phone</th>
+                                    <th class="seating-dietary-col">Dietary</th>
+                                    <th class="seating-notes-col">Notes</th>
+                                    <th class="actions-col no-print">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="seating-guest-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="timeline-keyboard-hints">
+                    <span><kbd>Click</kbd> cell to edit</span>
+                    <span><kbd>Tab</kbd> next cell</span>
+                    <span><kbd>Enter</kbd> next row</span>
+                    <span><kbd>Esc</kbd> cancel</span>
+                </div>
+            </div>
+
+            <!-- Map View -->
+            <div id="seating-map-view" style="display: none;">
+                <div class="seating-map-layout">
+                    <div class="seating-canvas-wrapper" id="seating-canvas-wrapper">
+                        <canvas id="seating-canvas"></canvas>
+                        <div class="seat-marker-legend">
+                            <span><i style="background:#e5e7eb"></i> Empty</span>
+                            <span><i style="background:#fde68a"></i> Partial</span>
+                            <span><i style="background:#a7f3d0"></i> Full</span>
+                            <span><i style="background:#fecaca"></i> Over</span>
+                            <span class="legend-hint">Click a table to assign · Drag to reposition</span>
+                        </div>
+                    </div>
+                    <aside class="seating-side-panel">
+                        <div id="seating-panel-empty" class="seating-panel-empty">
+                            <p>Click a table or lounge on the map to seat guests.</p>
+                        </div>
+                        <div id="seating-panel-table" style="display:none;"></div>
+                    </aside>
+                </div>
             </div>
         </div>
 
@@ -1856,6 +1972,63 @@
                     <div class="form-actions">
                         <button type="button" class="btn btn-secondary cancel-btn">Cancel</button>
                         <button type="submit" class="btn btn-primary">Save Task</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Guest Modal -->
+    <div id="guest-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="guest-modal-title">Add Guest</h2>
+                <button class="close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="guest-form">
+                    <input type="hidden" id="guest-id">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="guest-first-name">First Name *</label>
+                            <input type="text" id="guest-first-name" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="guest-last-name">Last Name</label>
+                            <input type="text" id="guest-last-name">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="guest-party">Party / Group</label>
+                            <input type="text" id="guest-party" placeholder="e.g. Smith Table, Acme Corp">
+                        </div>
+                        <div class="form-group">
+                            <label for="guest-table">Table</label>
+                            <select id="guest-table"><option value="">— Unassigned —</option></select>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="guest-email">Email</label>
+                            <input type="email" id="guest-email">
+                        </div>
+                        <div class="form-group">
+                            <label for="guest-phone">Phone</label>
+                            <input type="text" id="guest-phone">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="guest-dietary">Dietary</label>
+                        <input type="text" id="guest-dietary" placeholder="e.g. Vegetarian, GF, Allergies">
+                    </div>
+                    <div class="form-group">
+                        <label for="guest-notes">Notes</label>
+                        <textarea id="guest-notes" rows="3"></textarea>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-secondary cancel-btn">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Save Guest</button>
                     </div>
                 </form>
             </div>
