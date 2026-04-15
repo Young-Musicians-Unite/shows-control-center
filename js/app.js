@@ -91,6 +91,7 @@ const state = {
     vmBaseHeight: 0,
     // Packing list state
     packingList: [],
+    packingCategoryColors: [],
     packingSearch: '',
     packingCategoryFilter: 'all',
     packingStatusFilter: 'all',
@@ -574,6 +575,7 @@ function loadAllData() {
     setupCollectionListener('stagePlots', 'stagePlots', [updatePlotSelector, renderTimeline]);
     setupCollectionListener('setLists', 'setLists', [renderSetLists, updateDashboard, renderTimeline]);
     setupCollectionListener('packingList', 'packingList', [renderPackingList]);
+    setupCollectionListener('packingCategoryColors', 'packingCategoryColors', [renderPackingList]);
     setupCollectionListener('menuItems', 'menuItems', [renderMenu, updateDashboard]);
     setupCollectionListener('printedMaterials', 'printedMaterials', [renderPrintedMaterials]);
     setupCollectionListener('digitalAssets', 'digitalAssets', [renderDigitalAssets]);
@@ -2269,14 +2271,27 @@ function setupStageTabs() {
     }
 }
 
+// Scoped print helper — tags body with a class so @media print CSS can
+// customize layout per-page without leaking into other prints.
+function printWithScope(scopeClass) {
+    document.body.classList.add(scopeClass);
+    // Some browsers (Safari) don't flush layout before window.print; rAF helps.
+    requestAnimationFrame(() => {
+        window.print();
+        setTimeout(() => document.body.classList.remove(scopeClass), 500);
+    });
+}
+window.printWithScope = printWithScope;
+
 // Export and Print Functionality
 function setupExportAndPrint() {
     // Print Buttons
     const printTimelineBtn = document.getElementById('print-timeline-btn');
     const printStaffBtn = document.getElementById('print-staff-btn');
+    const printStageBtn = document.getElementById('print-stage-btn');
 
     if (printTimelineBtn) {
-        printTimelineBtn.addEventListener('click', () => window.print());
+        printTimelineBtn.addEventListener('click', () => printWithScope('printing-timeline'));
     }
 
     const timelineUndoBtn = document.getElementById('timeline-undo-btn');
@@ -2285,6 +2300,9 @@ function setupExportAndPrint() {
     }
     if (printStaffBtn) {
         printStaffBtn.addEventListener('click', () => window.print());
+    }
+    if (printStageBtn) {
+        printStageBtn.addEventListener('click', () => printWithScope('printing-stage-inputs'));
     }
 
     // Export Buttons
@@ -4876,6 +4894,33 @@ window.toggleMenuCategory = toggleMenuCategory;
 
 const PACKING_CATEGORIES = ['Audio', 'Lighting', 'Decor', 'Signage', 'Catering', 'Printed Materials', 'Misc'];
 
+const PACKING_COLOR_PALETTE = [
+    { hex: null,      title: 'None' },
+    { hex: '#fff3cd', title: 'Yellow' },
+    { hex: '#d4edda', title: 'Green' },
+    { hex: '#cce5ff', title: 'Blue' },
+    { hex: '#f8d7da', title: 'Red' },
+    { hex: '#e2d6f3', title: 'Purple' },
+    { hex: '#fde0c8', title: 'Orange' },
+    { hex: '#fce4ec', title: 'Pink' },
+    { hex: '#d6d6d6', title: 'Gray' }
+];
+
+function getPackingCategoryColor(category) {
+    const rec = (state.packingCategoryColors || []).find(c => c.id === category);
+    return rec && rec.color ? rec.color : null;
+}
+
+function renderPackingColorSwatches(onclickFn, extra) {
+    return PACKING_COLOR_PALETTE.map(p => {
+        const bg = p.hex || '#ffffff';
+        const border = p.hex ? '' : 'border:1px dashed #ccc;';
+        // Pass empty string for null so onclick gets a plain arg
+        const arg = p.hex ? p.hex : '';
+        return `<button type="button" class="color-swatch" style="background:${bg};${border}" onclick="event.stopPropagation(); ${onclickFn}('${extra}','${arg}')" title="${p.title}"></button>`;
+    }).join('');
+}
+
 const PACKING_STATUSES = [
     { value: 'to-pack', label: 'To Pack', next: 'packed' },
     { value: 'packed', label: 'Packed', next: 'loaded' },
@@ -4976,6 +5021,8 @@ function renderPackingList() {
         const catPct = catTotal > 0 ? Math.round((catAtVenue / catTotal) * 100) : 0;
         const allDone = catAtVenue === catTotal;
         const hasAdvanceable = catItems.some(i => getStatusInfo(i.status).next !== null);
+        const catColor = getPackingCategoryColor(cat);
+        const catSwatches = renderPackingColorSwatches('setPackingCategoryColor', cat);
 
         html += `
         <div class="packing-category-section" data-category="${cat}">
@@ -4986,6 +5033,10 @@ function renderPackingList() {
                     <span class="packing-category-count">${catAtVenue}/${catTotal}</span>
                 </div>
                 <div class="packing-category-header-right">
+                    <div class="color-swatch-wrapper">
+                        <button type="button" class="color-swatch-btn packing-cat-swatch" style="background-color:${catColor || '#ffffff'}; ${catColor ? '' : 'border:2px dashed #ccc;'}" onclick="event.stopPropagation(); togglePackingCategoryColorPicker('${cat}')" title="Set color for all ${cat} items"></button>
+                        <div class="color-swatch-dropdown" id="pcat-picker-${cat.replace(/\s+/g, '-')}">${catSwatches}</div>
+                    </div>
                     <div class="packing-mini-progress">
                         <div class="packing-mini-progress-fill${allDone ? ' complete' : ''}" style="width: ${catPct}%"></div>
                     </div>
@@ -4996,8 +5047,11 @@ function renderPackingList() {
                 ${catItems.map(item => {
                     const si = getStatusInfo(item.status);
                     const isLast = si.next === null;
+                    const itemColor = item.color || null;
+                    const borderStyle = itemColor ? `style="border-left-color:${itemColor};"` : '';
+                    const itemSwatches = renderPackingColorSwatches('setPackingItemColor', item.id);
                     return `
-                    <div class="packing-item-row${isLast ? ' done' : ''}">
+                    <div class="packing-item-row${isLast ? ' done' : ''}${itemColor ? ' has-color' : ''}" ${borderStyle}>
                         <button class="packing-status-badge status-${item.status}${isLast ? '' : ' advanceable'}" onclick="cyclePackingStatus('${item.id}')" title="${isLast ? 'At Venue' : 'Click to advance to ' + getStatusInfo(item.status).next}">
                             ${si.label}${isLast ? '' : ' ›'}
                         </button>
@@ -5008,6 +5062,10 @@ function renderPackingList() {
                         ${item.assignee ? `<span class="packing-item-assignee">${item.assignee}</span>` : ''}
                         ${item.notes ? `<span class="packing-item-notes" title="${item.notes.replace(/"/g, '&quot;')}">📋</span>` : ''}
                         <div class="packing-item-actions">
+                            <div class="color-swatch-wrapper">
+                                <button type="button" class="color-swatch-btn-sm" style="background-color:${itemColor || '#ffffff'}; ${itemColor ? '' : 'border:1px dashed #ccc;'}" onclick="togglePackingItemColorPicker('${item.id}')" title="Item color"></button>
+                                <div class="color-swatch-dropdown" id="pitem-picker-${item.id}">${itemSwatches}</div>
+                            </div>
                             <button class="btn-icon-sm" onclick="openPackingModal('${item.id}')" title="Edit">✎</button>
                             <button class="btn-icon-sm delete" onclick="deletePackingItem('${item.id}')" title="Delete">✕</button>
                         </div>
@@ -5141,6 +5199,79 @@ function togglePackingCategory(category) {
     if (chevron) chevron.classList.toggle('collapsed');
 }
 
+function closeAllPackingColorPickers(exceptId) {
+    document.querySelectorAll('.packing-category-section .color-swatch-dropdown.open').forEach(el => {
+        if (el.id !== exceptId) el.classList.remove('open');
+    });
+}
+
+function togglePackingCategoryColorPicker(category) {
+    const id = 'pcat-picker-' + category.replace(/\s+/g, '-');
+    const el = document.getElementById(id);
+    if (!el) return;
+    const willOpen = !el.classList.contains('open');
+    closeAllPackingColorPickers(willOpen ? id : null);
+    el.classList.toggle('open', willOpen);
+}
+
+function togglePackingItemColorPicker(itemId) {
+    const id = 'pitem-picker-' + itemId;
+    const el = document.getElementById(id);
+    if (!el) return;
+    const willOpen = !el.classList.contains('open');
+    closeAllPackingColorPickers(willOpen ? id : null);
+    el.classList.toggle('open', willOpen);
+}
+
+async function setPackingCategoryColor(category, hex) {
+    const color = hex && hex.length ? hex : null;
+    try {
+        // Upsert the category color record
+        await collections.packingCategoryColors.doc(category).set({
+            color,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        // Bulk-overwrite every item in the category
+        const items = state.packingList.filter(i => i.category === category);
+        if (items.length > 0) {
+            const batch = db.batch();
+            items.forEach(i => {
+                batch.update(collections.packingList.doc(i.id), {
+                    color,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+            });
+            await batch.commit();
+        }
+        closeAllPackingColorPickers(null);
+        showToast(color ? `Colored ${items.length} ${category} item${items.length === 1 ? '' : 's'}` : `Cleared color on ${category}`);
+    } catch (error) {
+        console.error('Error setting category color:', error);
+        showToast('Error setting color', 'error');
+    }
+}
+
+async function setPackingItemColor(itemId, hex) {
+    const color = hex && hex.length ? hex : null;
+    try {
+        await collections.packingList.doc(itemId).update({
+            color,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        closeAllPackingColorPickers(null);
+    } catch (error) {
+        console.error('Error setting item color:', error);
+        showToast('Error setting color', 'error');
+    }
+}
+
+// Close packing color pickers when clicking outside any of them
+document.addEventListener('click', (e) => {
+    if (!e.target.closest('.packing-category-section .color-swatch-wrapper')) {
+        closeAllPackingColorPickers(null);
+    }
+});
+
 window.deletePackingItem = createDeleteHandler('packingList', 'packing item');
 window.openPackingModal = openPackingModal;
 window.cyclePackingStatus = cyclePackingStatus;
@@ -5150,6 +5281,10 @@ window.clearPackingSearch = clearPackingSearch;
 window.handlePackingCategoryFilter = handlePackingCategoryFilter;
 window.handlePackingStatusFilter = handlePackingStatusFilter;
 window.togglePackingCategory = togglePackingCategory;
+window.togglePackingCategoryColorPicker = togglePackingCategoryColorPicker;
+window.togglePackingItemColorPicker = togglePackingItemColorPicker;
+window.setPackingCategoryColor = setPackingCategoryColor;
+window.setPackingItemColor = setPackingItemColor;
 
 // =============================================
 // PRINTED MATERIALS FUNCTIONS
@@ -9955,6 +10090,9 @@ function renderSetLists() {
     }).join('') + '</div>';
 }
 
+// Stash for the pending print job between modal open and confirm
+let _pendingPrintSetLists = null;
+
 function printSetLists() {
     // Use the same filter the user has applied on the page
     let items = [...state.setLists];
@@ -9980,6 +10118,55 @@ function printSetLists() {
         return (a.performer || '').localeCompare(b.performer || '');
     });
 
+    openPrintCopiesModal(items);
+}
+
+function openPrintCopiesModal(items) {
+    _pendingPrintSetLists = items;
+    const listEl = document.getElementById('print-copies-list');
+    if (!listEl) return;
+    const escAttr = (s) => String(s || '').replace(/"/g, '&quot;');
+    listEl.innerHTML = items.map(sl => {
+        const name = sl.performer || 'UNNAMED';
+        const stageLabel = sl.stage === 'main' ? 'Main' : 'Cocktail';
+        return `
+            <div class="copies-row">
+                <div class="copies-row-label">
+                    <span class="copies-row-stage">${escAttr(stageLabel)}</span>
+                    <span class="copies-row-name">${escAttr(name)}</span>
+                </div>
+                <input type="number" min="0" max="50" value="1" data-id="${escAttr(sl.id)}" class="copies-input" aria-label="Copies for ${escAttr(name)}">
+            </div>`;
+    }).join('');
+    const modal = document.getElementById('print-copies-modal');
+    if (modal) modal.classList.add('active');
+}
+
+function closePrintCopiesModal() {
+    const modal = document.getElementById('print-copies-modal');
+    if (modal) modal.classList.remove('active');
+    _pendingPrintSetLists = null;
+}
+
+function setAllPrintCopies(n) {
+    document.querySelectorAll('#print-copies-list .copies-input').forEach(i => {
+        i.value = String(n);
+    });
+}
+
+function confirmPrintCopies() {
+    const items = _pendingPrintSetLists;
+    if (!items) return;
+    const copiesById = {};
+    document.querySelectorAll('#print-copies-list .copies-input').forEach(i => {
+        const n = parseInt(i.value, 10);
+        copiesById[i.dataset.id] = Number.isFinite(n) && n >= 0 ? n : 1;
+    });
+    closePrintCopiesModal();
+    generateSetListPrintWindow(items, copiesById);
+}
+
+function generateSetListPrintWindow(items, copiesById) {
     const esc = (s) => String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
     // Wrap parenthetical groups in nowrap spans so "(SET 1)" etc. don't break
@@ -9988,7 +10175,14 @@ function printSetLists() {
             .replace(/\(([^)]+)\)/g, '<span style="white-space:nowrap">($1)</span>');
     };
 
-    const pagesHtml = items.map(sl => {
+    // Filter out bands with 0 copies so nothing prints for them
+    const toPrint = items.filter(sl => (copiesById[sl.id] ?? 1) > 0);
+    if (toPrint.length === 0) {
+        showToast('No copies requested', 'error');
+        return;
+    }
+
+    const pagesHtml = toPrint.flatMap(sl => {
         const songs = sl.songs || [];
         const stageLabel = sl.stage === 'main' ? 'Main Stage' : 'Cocktail Stage';
         const count = songs.length;
@@ -10000,7 +10194,7 @@ function printSetLists() {
                     </tr>`).join('')
             : '<tr><td class="no-songs">NO SONGS LISTED</td></tr>';
 
-        return `
+        const sectionHtml = `
             <section class="setlist-page">
                 <header class="setlist-header">
                     <div class="stage-badge">${esc(stageLabel).toUpperCase()}</div>
@@ -10015,6 +10209,8 @@ function printSetLists() {
                 </div>
                 ${sl.generalNotes ? `<footer class="setlist-notes">${esc(sl.generalNotes).toUpperCase()}</footer>` : ''}
             </section>`;
+        const copies = copiesById[sl.id] ?? 1;
+        return Array(copies).fill(sectionHtml);
     }).join('');
 
     const html = `<!DOCTYPE html>
@@ -10219,6 +10415,12 @@ function printSetLists() {
     w.document.write(html);
     w.document.close();
 }
+
+window.printSetLists = printSetLists;
+window.openPrintCopiesModal = openPrintCopiesModal;
+window.closePrintCopiesModal = closePrintCopiesModal;
+window.setAllPrintCopies = setAllPrintCopies;
+window.confirmPrintCopies = confirmPrintCopies;
 
 function openSetListModal(itemId = null) {
     const modal = document.getElementById('setlist-modal');

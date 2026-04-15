@@ -1178,6 +1178,75 @@ body {
     padding: 1.5rem;
 }
 
+/* Print-copies modal (Set Lists) */
+.copies-hint {
+    margin: 0 0 0.75rem;
+    font-size: 0.9rem;
+    color: #6b7280;
+}
+.copies-bulk-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid #e5e7eb;
+    font-size: 0.85rem;
+    color: #6b7280;
+}
+.copies-list {
+    max-height: 55vh;
+    overflow-y: auto;
+    margin-bottom: 1rem;
+}
+.copies-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 0.25rem;
+    border-bottom: 1px solid #f1f3f5;
+}
+.copies-row:last-child { border-bottom: none; }
+.copies-row-label {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    min-width: 0;
+}
+.copies-row-stage {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    background: #f3f4f6;
+    color: #6b7280;
+    padding: 2px 6px;
+    border-radius: 3px;
+    flex-shrink: 0;
+}
+.copies-row-name {
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.copies-input {
+    width: 64px;
+    padding: 0.35rem 0.5rem;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    text-align: center;
+    font-size: 0.95rem;
+    font-family: inherit;
+    margin-left: 0.75rem;
+    flex-shrink: 0;
+}
+.copies-input:focus {
+    outline: none;
+    border-color: #c9a961;
+    box-shadow: 0 0 0 2px rgba(201, 169, 97, 0.25);
+}
+
 /* Form */
 .form-group {
     margin-bottom: 1.5rem;
@@ -2062,8 +2131,250 @@ tr.task-completed td:not(.checkbox-col):not(.actions-col) {
 
     /* Print title */
     @page {
-        margin: 0.5in;
+        margin: 0.35in;
     }
+}
+
+/* =============================================================================
+   Print-scoped rules (body.printing-* classes)
+   -----------------------------------------------------------------------------
+   These live OUTSIDE @media print on purpose: Playwright's page.pdf() and some
+   real-browser print contexts don't reliably honor @media print rules, and we
+   also need these to beat the mobile @media (max-width: 768px) rules that fire
+   at narrow paper widths. The body class is only ever set for ~500ms around a
+   window.print() call via printWithScope(), so they never affect normal use.
+   ============================================================================= */
+
+/* Universally hide UI chrome during print */
+body.printing-timeline .navbar,
+body.printing-timeline .no-print,
+body.printing-timeline .page-header,
+body.printing-timeline .timeline-toolbar,
+body.printing-timeline .day-tabs,
+body.printing-stage-inputs .navbar,
+body.printing-stage-inputs .no-print,
+body.printing-stage-inputs .page-header .header-actions,
+body.printing-stage-inputs .day-tabs {
+    display: none !important;
+}
+
+/* Kill any animations/opacity transitions during print so rows don't render
+   as transparent in the PDF (the timeline .tl-row has a fade-in keyframe
+   whose `from` state is opacity:0). */
+body.printing-timeline *,
+body.printing-stage-inputs * {
+    animation: none !important;
+    transition: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+}
+
+body.printing-timeline,
+body.printing-stage-inputs {
+    background: #fff !important;
+}
+
+body.printing-timeline .container,
+body.printing-stage-inputs .container {
+    max-width: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: #fff !important;
+}
+
+/* Hide the inline "+ time / + event" phantom add row during print */
+body.printing-timeline .tl-phantom-row,
+body.printing-stage-inputs .stage-phantom-row {
+    display: none !important;
+}
+
+/* Only the active page prints; force its visibility even if some earlier rule
+   tried to hide it. */
+body.printing-timeline .page:not(.active),
+body.printing-stage-inputs .page:not(.active) {
+    display: none !important;
+}
+body.printing-timeline #timeline.page.active,
+body.printing-stage-inputs #input-lists.page.active {
+    display: block !important;
+}
+
+/* Unclip card / table wrappers so long tables paginate, and override the
+   mobile breakpoint that hides .table-container below 768px. */
+body.printing-timeline .card,
+body.printing-timeline .table-container,
+body.printing-timeline #timeline .card .table-container,
+body.printing-timeline .timeline-card .table-container,
+body.printing-stage-inputs .card,
+body.printing-stage-inputs .table-container,
+body.printing-stage-inputs #input-lists .card .table-container {
+    display: block !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    page-break-inside: auto !important;
+    break-inside: auto !important;
+    background: #fff !important;
+}
+
+body.printing-timeline .mobile-cards-container,
+body.printing-stage-inputs .mobile-cards-container {
+    display: none !important;
+}
+
+body.printing-timeline .card-header,
+body.printing-stage-inputs .card-header {
+    background: none !important;
+    border: none !important;
+    padding: 0 0 0.2rem 0 !important;
+}
+body.printing-timeline .card-header h2,
+body.printing-stage-inputs .card-header h2 {
+    font-size: 12pt !important;
+    font-weight: 700 !important;
+    margin: 0 !important;
+    color: #000 !important;
+}
+
+/* ---------- Timeline: plain compact table ---------- */
+body.printing-timeline .timeline-table .checkbox-col,
+body.printing-timeline .timeline-table .prod-col,
+body.printing-timeline .timeline-table .andi-col,
+body.printing-timeline .timeline-table .pedro-col,
+body.printing-timeline .timeline-table .setlist-col,
+body.printing-timeline .timeline-table .stageplot-col,
+body.printing-timeline .timeline-table .actions-col {
+    display: none !important;
+}
+body.printing-timeline .timeline-table {
+    width: 100% !important;
+    table-layout: auto !important;
+    border-collapse: collapse !important;
+    background: #fff !important;
+}
+body.printing-timeline .timeline-table thead {
+    background: #fff !important;
+    display: table-header-group !important;
+}
+body.printing-timeline .timeline-table th {
+    background: #fff !important;
+    color: #000 !important;
+    font-weight: 700 !important;
+    text-align: left !important;
+    text-transform: none !important;
+    letter-spacing: 0 !important;
+}
+body.printing-timeline .timeline-table th,
+body.printing-timeline .timeline-table td {
+    padding: 3px 6px !important;
+    font-size: 9pt !important;
+    line-height: 1.25 !important;
+    border: 1px solid #333 !important;
+    background: #fff !important;
+    color: #000 !important;
+    vertical-align: top !important;
+}
+body.printing-timeline .timeline-table tr,
+body.printing-timeline .timeline-table .tl-row {
+    background: #fff !important;
+    border-left: none !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+}
+body.printing-timeline .timeline-table .time-col {
+    width: 1% !important;
+    white-space: nowrap !important;
+    font-weight: 700 !important;
+}
+body.printing-timeline .timeline-table .tl-time {
+    color: #000 !important;
+    font-weight: 700 !important;
+}
+body.printing-timeline .timeline-table .event-col { width: auto !important; }
+body.printing-timeline .timeline-table .responsible-col,
+body.printing-timeline .timeline-table .staff-col {
+    width: 16% !important;
+    white-space: normal !important;
+}
+
+/* Timeline day header — plain bold title, no decorative border chrome */
+body.printing-timeline .timeline-card-header {
+    padding: 0 0 0.15rem 0 !important;
+    border: none !important;
+    margin: 0 0 0.2rem 0 !important;
+    background: none !important;
+    display: block !important;
+}
+body.printing-timeline .timeline-card-header h2 {
+    font-size: 12pt !important;
+    font-weight: 700 !important;
+    margin: 0 !important;
+    color: #000 !important;
+}
+body.printing-timeline #timeline-date-subtitle {
+    font-size: 9pt !important;
+    color: #000 !important;
+    font-weight: 400 !important;
+    margin-left: 0.5rem;
+}
+/* Cards inside timeline contain each day — keep them minimal */
+body.printing-timeline .timeline-card {
+    box-shadow: none !important;
+    border: none !important;
+    margin: 0 0 0.5rem 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+    page-break-inside: auto !important;
+    break-inside: auto !important;
+}
+
+/* ---------- Input List: compact table ---------- */
+body.printing-stage-inputs #stage-table .drag-col,
+body.printing-stage-inputs #stage-table .drag-handle,
+body.printing-stage-inputs #stage-table .stage-actions-cell,
+body.printing-stage-inputs #stage-table .actions-col {
+    display: none !important;
+}
+body.printing-stage-inputs #stage-table {
+    width: 100% !important;
+    table-layout: auto !important;
+    border-collapse: collapse !important;
+    background: #fff !important;
+}
+body.printing-stage-inputs #stage-table thead {
+    background: #fff !important;
+    display: table-header-group !important;
+}
+body.printing-stage-inputs #stage-table th {
+    background: #fff !important;
+    color: #000 !important;
+    font-weight: 700 !important;
+    text-align: left !important;
+    text-transform: none !important;
+    letter-spacing: 0 !important;
+}
+body.printing-stage-inputs #stage-table th,
+body.printing-stage-inputs #stage-table td {
+    padding: 3px 6px !important;
+    font-size: 9pt !important;
+    line-height: 1.25 !important;
+    border: 1px solid #333 !important;
+    background: #fff !important;
+    color: #000 !important;
+    vertical-align: top !important;
+}
+body.printing-stage-inputs #stage-table tr {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+}
+body.printing-stage-inputs #stage-table .stage-phantom-row {
+    display: none !important;
+}
+body.printing-stage-inputs .card-header h2 {
+    font-size: 14pt !important;
 }
 
 /* Inline Editing Styles */
@@ -5747,11 +6058,51 @@ body.menu-open::after {
     gap: 12px;
     padding: 10px 18px;
     border-bottom: 1px solid #f0ede6;
-    transition: background 0.1s;
+    border-left: 4px solid transparent;
+    transition: background 0.1s, border-left-color 0.15s;
+}
+
+.packing-item-row.has-color {
+    padding-left: 14px;
 }
 
 .packing-item-row:last-child {
     border-bottom: none;
+}
+
+/* Packing color pickers */
+.packing-cat-swatch {
+    margin-right: 8px;
+}
+
+.color-swatch-btn-sm {
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+    border: 1.5px solid #d0d5dd;
+    cursor: pointer;
+    padding: 0;
+    transition: all 0.15s ease;
+    vertical-align: middle;
+}
+
+.color-swatch-btn-sm:hover {
+    transform: scale(1.15);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+}
+
+.packing-category-section .packing-category-header-right .color-swatch-dropdown {
+    left: auto;
+    right: 0;
+    transform: none;
+    bottom: auto;
+    top: calc(100% + 6px);
+}
+
+.packing-item-row .color-swatch-dropdown {
+    left: auto;
+    right: 0;
+    transform: none;
 }
 
 .packing-item-row:hover {

@@ -446,6 +446,9 @@
             <div class="page-header">
                 <h1>Input Lists</h1>
                 <div class="header-actions">
+                    <button class="btn btn-icon" id="print-stage-btn" title="Print input list">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+                    </button>
                     <button class="btn btn-icon" id="export-stage-btn" title="Export to Excel">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                     </button>
@@ -1593,6 +1596,31 @@
                         <button type="submit" class="btn btn-primary">Save Set List</button>
                     </div>
                 </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Print Set List Copies Modal -->
+    <div id="print-copies-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Copies per Band</h2>
+                <button type="button" class="close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="copies-hint">Enter how many copies to print for each band. Set to 0 to skip.</p>
+                <div class="copies-bulk-actions">
+                    <span>Set all to:</span>
+                    <button type="button" class="btn btn-sm btn-secondary" onclick="setAllPrintCopies(1)">1</button>
+                    <button type="button" class="btn btn-sm btn-secondary" onclick="setAllPrintCopies(2)">2</button>
+                    <button type="button" class="btn btn-sm btn-secondary" onclick="setAllPrintCopies(3)">3</button>
+                    <button type="button" class="btn btn-sm btn-secondary" onclick="setAllPrintCopies(5)">5</button>
+                </div>
+                <div id="print-copies-list" class="copies-list"></div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary cancel-btn">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="confirmPrintCopies()">Print</button>
+                </div>
             </div>
         </div>
     </div>
