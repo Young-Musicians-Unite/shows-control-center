@@ -409,6 +409,7 @@
                             <tr>
                                 <th class="checkbox-col">✓</th>
                                 <th class="time-col">Time</th>
+                                <th class="duration-col">Duration</th>
                                 <th class="event-col">Event</th>
                                 <th class="prod-col">Prod</th>
                                 <th class="andi-col">Andi</th>
@@ -422,7 +423,7 @@
                         </thead>
                         <tbody id="timeline-tbody">
                             <tr>
-                                <td colspan="10" class="empty-state">No tasks for this day</td>
+                                <td colspan="12" class="empty-state">No tasks for this day</td>
                             </tr>
                         </tbody>
                     </table>
@@ -1910,13 +1911,19 @@
                     </div>
                     <div class="form-row">
                         <div class="form-group">
-                            <label for="budget-budgeted">Budgeted Amount *</label>
-                            <input type="number" id="budget-budgeted" step="0.01" min="0" required>
+                            <label for="budget-budgeted">Budgeted Amount</label>
+                            <input type="number" id="budget-budgeted" step="0.01" min="0">
                         </div>
                         <div class="form-group">
                             <label for="budget-actual">Actual Amount</label>
                             <input type="number" id="budget-actual" step="0.01" min="0">
                         </div>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0.5rem;">
+                        <label class="checkbox-label" style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                            <input type="checkbox" id="budget-in-kind" style="width: auto;">
+                            <span>In-kind donation (suppresses $0 issue flag)</span>
+                        </label>
                     </div>
                     <div class="form-group">
                         <label for="budget-payment-status">Payment Status</label>
@@ -1960,6 +1967,10 @@
                         <div class="form-group">
                             <label for="timeline-time">Time</label>
                             <input type="time" id="timeline-time">
+                        </div>
+                        <div class="form-group">
+                            <label for="timeline-duration">Duration</label>
+                            <input type="text" id="timeline-duration" placeholder="e.g. 1h 30m">
                         </div>
                         <div class="form-group">
                             <label for="timeline-day-display">Day</label>

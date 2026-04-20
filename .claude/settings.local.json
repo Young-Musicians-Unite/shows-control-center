@@ -4,7 +4,17 @@
       "mcp__plugin_playwright_playwright__browser_hover",
       "mcp__plugin_playwright_playwright__browser_press_key",
       "Skill(push-live:push-live)",
-      "mcp__plugin_playwright_playwright__browser_fill_form"
+      "mcp__plugin_playwright_playwright__browser_fill_form",
+      "WebFetch(domain:cdnjs.cloudflare.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:fabricjs.com)",
+      "WebFetch(domain:unpkg.com)",
+      "WebSearch",
+      "WebFetch(domain:fabric5.fabricjs.com)",
+      "WebFetch(domain:dev.to)",
+      "mcp__plugin_playwright_playwright__browser_select_option",
+      "mcp__plugin_playwright_playwright__browser_run_code",
+      "mcp__plugin_playwright_playwright__browser_tabs"
     ]
   }
 }

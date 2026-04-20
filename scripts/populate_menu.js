@@ -215,7 +215,7 @@ const menuItems = [
     // === BAR — WINE ===
     {
         name: "White Wine",
-        description: "",
+        description: "Tribute Chardonnay",
         category: "Bar",
         subcategory: "Wine",
         servingStyle: "station",
@@ -227,7 +227,7 @@ const menuItems = [
     },
     {
         name: "Red Wine",
-        description: "",
+        description: "Kenwood Cabernet",
         category: "Bar",
         subcategory: "Wine",
         servingStyle: "station",

@@ -1598,6 +1598,14 @@ body {
     width: 105px;
 }
 
+.timeline-table th.duration-col,
+.timeline-table td.duration-col {
+    width: 85px;
+    white-space: nowrap;
+    color: #6b6458;
+    font-variant-numeric: tabular-nums;
+}
+
 .timeline-table th.event-col,
 .timeline-table td.event-col {
     min-width: 280px;
@@ -2288,6 +2296,10 @@ body.printing-timeline .timeline-table .time-col {
     width: 1% !important;
     white-space: nowrap !important;
     font-weight: 700 !important;
+}
+body.printing-timeline .timeline-table .duration-col {
+    width: 1% !important;
+    white-space: nowrap !important;
 }
 body.printing-timeline .timeline-table .tl-time {
     color: #000 !important;
@@ -4649,12 +4661,27 @@ body.menu-open::after {
 
 .vendor-card-budget {
     display: flex;
+    flex-wrap: wrap;
+    align-items: center;
     gap: 1.5rem;
     font-size: 0.9rem;
     color: #555;
     margin-bottom: 0.75rem;
     padding-top: 0.5rem;
     border-top: 1px solid #f0ece3;
+}
+
+.vendor-in-kind-badge {
+    display: inline-block;
+    background: rgba(95, 135, 95, 0.12);
+    color: #3f6b4a;
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+    border: 1px solid rgba(95, 135, 95, 0.3);
 }
 
 /* Issue Pills */

@@ -650,7 +650,7 @@ function getVendorIssues(item) {
     const issues = [];
     if (!item.vendor) issues.push('vendor/item');
     if (!item.description) issues.push('description');
-    if (!item.budgeted) issues.push('budgeted');
+    if (!item.inKind && !item.budgeted) issues.push('budgeted');
     if (!item.noContactNeeded) {
         if (!item.phone) issues.push('phone');
         if (!item.email) issues.push('email');
@@ -808,6 +808,7 @@ function renderVendors() {
                         ${item.email ? `<div class="vendor-detail"><span class="vendor-detail-icon">✉</span> <a href="mailto:${escapeHtml(item.email)}">${escapeHtml(item.email)}</a></div>` : ''}
                     </div>
                     <div class="vendor-card-budget">
+                        ${item.inKind ? '<span class="vendor-in-kind-badge">In-Kind</span>' : ''}
                         <span>Budgeted: <strong>${formatCurrency(item.budgeted)}</strong></span>
                         ${item.actual ? `<span>Actual: <strong>${formatCurrency(item.actual)}</strong></span>` : ''}
                     </div>
@@ -1316,6 +1317,7 @@ function renderTimeline() {
             <tr class="tl-row tl-phantom-row no-anim" data-phantom="true">
                 <td class="checkbox-col"></td>
                 <td class="time-col" data-field="time" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ time</span></td>
+                <td class="duration-col" data-field="duration" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ duration</span></td>
                 <td class="event-col" data-field="event" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ event</span></td>
                 <td class="prod-col"></td>
                 <td class="andi-col"></td>
@@ -1358,6 +1360,7 @@ function renderTimeline() {
                            onchange="toggleTaskComplete('${item.id}', this.checked)">
                 </td>
                 <td class="time-col" data-field="time" data-original="${escapeHtml(item.time || '')}" onclick="editTimelineCell(this)"><span class="tl-time">${formatTime12Hour(item.time)}</span></td>
+                <td class="duration-col" data-field="duration" data-original="${escapeHtml(item.duration || '')}" onclick="editTimelineCell(this)">${item.duration ? escapeHtml(item.duration) : '<span class="phantom-placeholder">+ duration</span>'}</td>
                 <td class="event-col" data-field="event" data-original="${escapeHtml(item.event || '')}" onclick="editTimelineCell(this)">${escapeHtml(item.event || '')}</td>
                 <td class="prod-col"><input type="checkbox" class="tl-checkbox" ${item.production === true || item.tag === 'production' ? 'checked' : ''} onchange="toggleTimelineField('${item.id}', 'production', this.checked)"></td>
                 <td class="andi-col"><input type="checkbox" class="tl-checkbox" ${item.andi === true ? 'checked' : ''} onchange="toggleTimelineField('${item.id}', 'andi', this.checked)"></td>
@@ -1419,6 +1422,7 @@ function renderTimeline() {
         <tr class="tl-row tl-phantom-row no-anim" data-phantom="true">
             <td class="checkbox-col"></td>
             <td class="time-col" data-field="time" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ time</span></td>
+            <td class="duration-col" data-field="duration" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ duration</span></td>
             <td class="event-col" data-field="event" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ event</span></td>
             <td class="prod-col"></td>
             <td class="andi-col"></td>
@@ -1458,6 +1462,7 @@ function renderTimeline() {
                                    ${isComplete ? 'checked' : ''}
                                    onchange="toggleTaskComplete('${item.id}', this.checked)">
                             ${item.time ? `<span class="mobile-card-time">${formatTime12Hour(item.time)}</span>` : ''}
+                            ${item.duration ? `<span class="mobile-card-duration">${escapeHtml(item.duration)}</span>` : ''}
                             <span class="mobile-card-event">${escapeHtml(item.event || 'Untitled')}</span>
                         </div>
                         ${(item.responsible || item.staff || badges.length > 0) ? `
@@ -1599,6 +1604,7 @@ function openBudgetModal(itemId = null) {
             'budget-email': 'email',
             'budget-budgeted': 'budgeted',
             'budget-actual': 'actual',
+            'budget-in-kind': 'inKind',
             'budget-payment-status': 'paymentStatus',
             'budget-notes': 'notes',
             'budget-confirmed': 'confirmed'
@@ -1671,6 +1677,7 @@ function openTimelineModal(itemId = null) {
         title: 'Task',
         fieldMap: {
             'timeline-time': 'time',
+            'timeline-duration': 'duration',
             'timeline-day': 'day',
             'timeline-event': 'event',
             'timeline-responsible': 'responsible',
@@ -1810,6 +1817,7 @@ async function handleBudgetSubmit(e) {
             'budget-email': 'email',
             'budget-budgeted': 'budgeted',
             'budget-actual': 'actual',
+            'budget-in-kind': 'inKind',
             'budget-payment-status': 'paymentStatus',
             'budget-notes': 'notes',
             'budget-confirmed': 'confirmed'
@@ -1852,12 +1860,19 @@ async function handleTimelineSubmit(e) {
         }
     }
 
+    // Normalize duration text to "Xh Ym" format before save
+    const durationInput = document.getElementById('timeline-duration');
+    if (durationInput && durationInput.value) {
+        durationInput.value = formatDuration(durationInput.value);
+    }
+
     const result = await handleFormSubmit(e, {
         collection: 'timeline',
         idFieldId: 'timeline-id',
         itemName: 'task',
         fieldMap: {
             'timeline-time': 'time',
+            'timeline-duration': 'duration',
             'timeline-day': 'day',
             'timeline-event': 'event',
             'timeline-responsible': 'responsible',
@@ -2167,6 +2182,42 @@ function formatDate(dateString) {
     });
 }
 
+// Accepts "1h 30m", "1:30", "90" (minutes), "1.5h", "2 hours 15 min" etc.
+// Returns normalized "Xh Ym" string. If input can't be parsed, returns it unchanged.
+function formatDuration(raw) {
+    if (raw === null || raw === undefined) return '';
+    const s = String(raw).trim().toLowerCase();
+    if (!s) return '';
+
+    let totalMinutes = null;
+
+    const hMatch = s.match(/(\d+(?:\.\d+)?)\s*h/);
+    const mMatch = s.match(/(\d+)\s*m(?:in)?/);
+
+    if (hMatch || mMatch) {
+        totalMinutes = 0;
+        if (hMatch) totalMinutes += Math.round(parseFloat(hMatch[1]) * 60);
+        if (mMatch) totalMinutes += parseInt(mMatch[1], 10);
+    } else if (s.includes(':')) {
+        const parts = s.split(':');
+        const h = parseInt(parts[0], 10);
+        const m = parseInt(parts[1], 10);
+        if (!isNaN(h) || !isNaN(m)) {
+            totalMinutes = (isNaN(h) ? 0 : h) * 60 + (isNaN(m) ? 0 : m);
+        }
+    } else if (/^\d+(?:\.\d+)?$/.test(s)) {
+        totalMinutes = Math.round(parseFloat(s));
+    }
+
+    if (totalMinutes === null || totalMinutes <= 0) return raw;
+
+    const hours = Math.floor(totalMinutes / 60);
+    const mins = totalMinutes % 60;
+    if (hours && mins) return `${hours}h ${mins}m`;
+    if (hours) return `${hours}h`;
+    return `${mins}m`;
+}
+
 function formatTime12Hour(time24) {
     if (!time24) return '';
 
@@ -2457,7 +2508,7 @@ function exportBudgetToExcel() {
 
 // Inline Editing for Timeline
 // Editable cell field order for Tab navigation (skip tag — it has its own <select>)
-const TIMELINE_FIELD_ORDER = ['time', 'event', 'responsible', 'staff'];
+const TIMELINE_FIELD_ORDER = ['time', 'duration', 'event', 'responsible', 'staff'];
 const BUDGET_FIELD_ORDER = ['vendor', 'description', 'owner', 'budgeted', 'actual', 'paymentStatus', 'notes'];
 const STAGE_FIELD_ORDER = ['channel', 'subsnake', 'instrument', 'mics', 'stands', 'notes', 'symbol'];
 
@@ -2610,11 +2661,16 @@ function saveSingleCell(cell, row, keepEditing = false) {
     if (field === 'time' && newValue) {
         newValue = convertTo24Hour(newValue);
     }
+    if (field === 'duration' && newValue) {
+        newValue = formatDuration(newValue);
+    }
 
     // Restore cell to display mode immediately (remove input so blur handler won't double-fire)
     cell.dataset.original = newValue;
     if (field === 'time') {
         cell.innerHTML = `<span class="tl-time">${formatTime12Hour(newValue)}</span>`;
+    } else if (field === 'duration') {
+        cell.innerHTML = newValue ? escapeHtml(newValue) : '<span class="phantom-placeholder">+ duration</span>';
     } else {
         cell.textContent = newValue;
     }
@@ -2676,6 +2732,8 @@ function restoreCellDisplay(cell, isPhantom) {
         const original = cell.dataset.original || '';
         if (field === 'time') {
             cell.innerHTML = `<span class="tl-time">${formatTime12Hour(original)}</span>`;
+        } else if (field === 'duration') {
+            cell.innerHTML = original ? escapeHtml(original) : '<span class="phantom-placeholder">+ duration</span>';
         } else {
             cell.textContent = original;
         }
@@ -2765,6 +2823,7 @@ async function commitNewRow() {
 
     // Convert time to 24hr
     if (data.time) data.time = convertTo24Hour(data.time);
+    if (data.duration) data.duration = formatDuration(data.duration);
 
     data.day = state.currentDay;
     data.completed = false;
@@ -3814,9 +3873,11 @@ function formatScheduleShort(timeStr) {
 
 function parseStaffTime(timeStr) {
     if (!timeStr) return null;
-    let s = timeStr.trim().toLowerCase().replace(/\s+/g, '');
+    // Strip whitespace AND periods so "9:30 a.m." normalizes to "9:30am"
+    let s = timeStr.trim().toLowerCase().replace(/[\s.]/g, '');
     s = s.replace(/(\d{1,2}:\d{2}):\d{2}(am|pm)/i, '$1$2');
-    const match = s.match(/^(\d{1,2})(?::(\d{2}))?(am|pm|a|p)?$/i);
+    // Colon between hours and minutes is optional so "930am" also parses
+    const match = s.match(/^(\d{1,2})(?::?(\d{2}))?(am|pm|a|p)?$/i);
     if (!match) return null;
     let hours = parseInt(match[1], 10);
     const minutes = match[2] ? parseInt(match[2], 10) : 0;
