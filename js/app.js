@@ -22,6 +22,7 @@ const state = {
     setLists: [],
     setListSearch: '',
     setListStageFilter: 'all',
+    setListsExpanded: new Set(),
     budgetSort: { field: null, direction: 'asc' },
     budgetSearch: '',
     currentPage: 'dashboard',
@@ -10121,8 +10122,10 @@ function renderSetLists() {
     container.innerHTML = '<div class="setlist-accordion">' + items.map((sl, idx) => {
         const songs = sl.songs || [];
         const stageLabel = sl.stage === 'main' ? 'Main Stage' : 'Cocktail Stage';
+        const isExpanded = state.setListsExpanded.has(sl.id);
         const songListHtml = songs.map((s, i) =>
-            `<div class="setlist-song-row">
+            `<div class="setlist-song-row" draggable="true" data-song-index="${i}">
+                <span class="song-drag-handle" title="Drag to reorder" aria-hidden="true">⋮⋮</span>
                 <span class="song-number">${i + 1}.</span>
                 <span class="song-title">${escapeHtml(s.title)}</span>
                 ${s.duration ? `<span class="song-duration">${escapeHtml(s.duration)}</span>` : ''}
@@ -10131,9 +10134,9 @@ function renderSetLists() {
         ).join('');
 
         return `
-        <div class="setlist-accordion-item" data-setlist-id="${sl.id}" style="animation-delay: ${idx * 40}ms">
+        <div class="setlist-accordion-item ${isExpanded ? 'expanded' : ''}" data-setlist-id="${sl.id}" style="animation-delay: ${idx * 40}ms">
             <div class="setlist-accordion-header" onclick="toggleSetListSongs('${sl.id}')">
-                <span class="setlist-toggle-icon" id="setlist-toggle-icon-${sl.id}">&#9654;</span>
+                <span class="setlist-toggle-icon" id="setlist-toggle-icon-${sl.id}">${isExpanded ? '&#9660;' : '&#9654;'}</span>
                 <span class="setlist-performer">${escapeHtml(sl.performer || '')}</span>
                 <span class="setlist-stage-badge stage-${sl.stage}">${stageLabel}</span>
                 <span class="setlist-song-count">${songs.length} song${songs.length !== 1 ? 's' : ''}${sl.estimatedDuration ? ' \u00b7 ' + escapeHtml(sl.estimatedDuration) : ''}</span>
@@ -10142,13 +10145,110 @@ function renderSetLists() {
                     <button class="btn btn-danger btn-sm" onclick="deleteSetList('${sl.id}')">Delete</button>
                 </span>
             </div>
-            <div class="setlist-accordion-body" id="setlist-songs-${sl.id}" style="display:none">
-                ${songs.length > 0 ? `<div class="setlist-songs-list">${songListHtml}</div>` : ''}
+            <div class="setlist-accordion-body" id="setlist-songs-${sl.id}" style="display:${isExpanded ? '' : 'none'}">
+                ${songs.length > 0 ? `<div class="setlist-songs-list" data-setlist-id="${sl.id}">${songListHtml}</div>` : ''}
                 ${sl.generalNotes ? `<div class="setlist-notes">${escapeHtml(sl.generalNotes)}</div>` : ''}
                 ${sl.stagePlotUrl ? `<div class="setlist-stage-plot-link"><a href="${escapeHtml(sl.stagePlotUrl)}" target="_blank" class="btn btn-sm btn-secondary">View Stage Plot</a></div>` : ''}
             </div>
         </div>`;
     }).join('') + '</div>';
+
+    attachSetListSongDragHandlers(container);
+}
+
+// Drag-to-reorder for songs within a set list (one-time delegation on container).
+function attachSetListSongDragHandlers(container) {
+    if (container.dataset.dragWired === '1') return;
+    container.dataset.dragWired = '1';
+
+    let dragFromIndex = null;
+    let dragList = null;
+
+    container.addEventListener('dragstart', (e) => {
+        const row = e.target.closest('.setlist-song-row');
+        if (!row) return;
+        dragList = row.parentElement;
+        dragFromIndex = parseInt(row.dataset.songIndex, 10);
+        row.classList.add('song-dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        try { e.dataTransfer.setData('text/plain', String(dragFromIndex)); } catch (_) { /* some browsers require this */ }
+    });
+
+    container.addEventListener('dragover', (e) => {
+        if (!dragList) return;
+        const row = e.target.closest('.setlist-song-row');
+        if (!row || row.parentElement !== dragList) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        dragList.querySelectorAll('.song-drop-above, .song-drop-below').forEach(el => {
+            el.classList.remove('song-drop-above', 'song-drop-below');
+        });
+        const rect = row.getBoundingClientRect();
+        const above = (e.clientY - rect.top) < rect.height / 2;
+        row.classList.add(above ? 'song-drop-above' : 'song-drop-below');
+    });
+
+    container.addEventListener('dragleave', (e) => {
+        const row = e.target.closest('.setlist-song-row');
+        if (row) row.classList.remove('song-drop-above', 'song-drop-below');
+    });
+
+    container.addEventListener('drop', async (e) => {
+        if (!dragList || dragFromIndex === null) return;
+        const targetRow = e.target.closest('.setlist-song-row');
+        if (!targetRow || targetRow.parentElement !== dragList) return;
+        e.preventDefault();
+        const rect = targetRow.getBoundingClientRect();
+        const above = (e.clientY - rect.top) < rect.height / 2;
+        let toIndex = parseInt(targetRow.dataset.songIndex, 10);
+        if (!above) toIndex += 1;
+        // Adjust for removing the dragged item first
+        if (toIndex > dragFromIndex) toIndex -= 1;
+
+        const setlistId = dragList.dataset.setlistId;
+        const from = dragFromIndex;
+        dragFromIndex = null;
+        dragList.querySelectorAll('.song-drop-above, .song-drop-below, .song-dragging').forEach(el => {
+            el.classList.remove('song-drop-above', 'song-drop-below', 'song-dragging');
+        });
+        dragList = null;
+
+        if (toIndex === from) return;
+        await reorderSetListSong(setlistId, from, toIndex);
+    });
+
+    container.addEventListener('dragend', () => {
+        container.querySelectorAll('.song-drop-above, .song-drop-below, .song-dragging').forEach(el => {
+            el.classList.remove('song-drop-above', 'song-drop-below', 'song-dragging');
+        });
+        dragFromIndex = null;
+        dragList = null;
+    });
+}
+
+async function reorderSetListSong(setlistId, fromIndex, toIndex) {
+    const sl = state.setLists.find(s => s.id === setlistId);
+    if (!sl) return;
+    const songs = [...(sl.songs || [])];
+    if (fromIndex < 0 || fromIndex >= songs.length) return;
+    if (toIndex < 0 || toIndex > songs.length) return;
+    const [moved] = songs.splice(fromIndex, 1);
+    songs.splice(toIndex, 0, moved);
+
+    // Optimistic local update so the re-render shows the new order immediately.
+    sl.songs = songs;
+    state.setListsExpanded.add(setlistId);
+    renderSetLists();
+
+    try {
+        await collections.setLists.doc(setlistId).update({
+            songs,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+    } catch (err) {
+        console.error('Error reordering songs:', err);
+        showToast('Error saving song order', 'error');
+    }
 }
 
 // Stash for the pending print job between modal open and confirm
@@ -10603,12 +10703,15 @@ function toggleSetListSongs(id) {
     icon.innerHTML = isHidden ? '&#9660;' : '&#9654;';
     if (isHidden) {
         el.closest('.setlist-accordion-item').classList.add('expanded');
+        state.setListsExpanded.add(id);
     } else {
         el.closest('.setlist-accordion-item').classList.remove('expanded');
+        state.setListsExpanded.delete(id);
     }
 }
 
 function expandAllSetLists() {
+    state.setLists.forEach(sl => state.setListsExpanded.add(sl.id));
     document.querySelectorAll('.setlist-accordion-body').forEach(body => {
         body.style.display = '';
         body.closest('.setlist-accordion-item').classList.add('expanded');
@@ -10619,6 +10722,7 @@ function expandAllSetLists() {
 }
 
 function collapseAllSetLists() {
+    state.setListsExpanded.clear();
     document.querySelectorAll('.setlist-accordion-body').forEach(body => {
         body.style.display = 'none';
         body.closest('.setlist-accordion-item').classList.remove('expanded');
