@@ -373,6 +373,7 @@
                     <button class="filter-btn active" data-filter="all" onclick="setTimelineFilter('all')">All</button>
                     <button class="filter-btn" data-filter="production" onclick="setTimelineFilter('production')">Production</button>
                     <button class="filter-btn" data-filter="run-of-show" onclick="setTimelineFilter('run-of-show')">Run of Show</button>
+                    <button class="filter-btn" data-filter="screencue" onclick="setTimelineFilter('screencue')">Screen Cue</button>
                     <button class="filter-btn" data-filter="andi" onclick="setTimelineFilter('andi')">Andi</button>
                     <button class="filter-btn" data-filter="pedro" onclick="setTimelineFilter('pedro')">Pedro</button>
                 </div>
@@ -390,6 +391,7 @@
                         <label class="col-toggle"><input type="checkbox" checked onchange="toggleTimelineCol('pedro', this.checked)"> Pedro</label>
                         <label class="col-toggle"><input type="checkbox" checked onchange="toggleTimelineCol('responsible', this.checked)"> Responsible</label>
                         <label class="col-toggle"><input type="checkbox" checked onchange="toggleTimelineCol('staff', this.checked)"> Staff</label>
+                        <label class="col-toggle"><input type="checkbox" checked onchange="toggleTimelineCol('screencue', this.checked)"> Screen Cue</label>
                         <label class="col-toggle"><input type="checkbox" checked onchange="toggleTimelineCol('setlist', this.checked)"> Set List</label>
                         <label class="col-toggle"><input type="checkbox" checked onchange="toggleTimelineCol('stageplot', this.checked)"> Stage Plot</label>
                     </div>
@@ -417,6 +419,7 @@
                                 <th class="pedro-col">Pedro</th>
                                 <th class="responsible-col">Responsible</th>
                                 <th class="staff-col">Staff</th>
+                                <th class="screencue-col">Screen Cue #</th>
                                 <th class="setlist-col">Set List</th>
                                 <th class="stageplot-col">Stage Plot</th>
                                 <th class="actions-col no-print">Actions</th>
@@ -424,7 +427,7 @@
                         </thead>
                         <tbody id="timeline-tbody">
                             <tr>
-                                <td colspan="12" class="empty-state">No tasks for this day</td>
+                                <td colspan="13" class="empty-state">No tasks for this day</td>
                             </tr>
                         </tbody>
                     </table>
@@ -2012,6 +2015,10 @@
                         <div class="form-group">
                             <label for="timeline-staff">Staff</label>
                             <input type="text" id="timeline-staff">
+                        </div>
+                        <div class="form-group">
+                            <label for="timeline-screen-cue">Screen Cue #</label>
+                            <input type="number" id="timeline-screen-cue" min="0" max="999" placeholder="e.g. 17">
                         </div>
                     </div>
                     <div class="form-row">

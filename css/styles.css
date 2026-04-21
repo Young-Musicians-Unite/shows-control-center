@@ -1647,6 +1647,13 @@ body {
     width: 150px;
 }
 
+.timeline-table th.screencue-col,
+.timeline-table td.screencue-col {
+    width: 90px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+
 .timeline-table th.actions-col,
 .timeline-table td.actions-col {
     width: 130px;
@@ -1895,6 +1902,7 @@ body {
 .timeline-table.hide-pedro .pedro-col { display: none; }
 .timeline-table.hide-responsible .responsible-col { display: none; }
 .timeline-table.hide-staff .staff-col { display: none; }
+.timeline-table.hide-screencue .screencue-col { display: none; }
 .timeline-table.hide-setlist .setlist-col { display: none; }
 .timeline-table.hide-stageplot .stageplot-col { display: none; }
 

@@ -1293,6 +1293,10 @@ function renderTimeline() {
             if (!item.time) return false;
             return item.time >= '18:20' && item.time <= '23:00';
         });
+    } else if (state.timelineFilter === 'screencue') {
+        filteredTimeline = filteredTimeline.filter(item =>
+            item.screenCue && String(item.screenCue).trim() !== ''
+        );
     }
 
     // Update day title and subtitle
@@ -1305,7 +1309,7 @@ function renderTimeline() {
         'Sunday': 'April 26, 2026'
     };
 
-    const filterLabels = { 'all': '', 'production': ' — Production', 'run-of-show': ' — Run of Show', 'andi': ' — Andi' };
+    const filterLabels = { 'all': '', 'production': ' — Production', 'run-of-show': ' — Run of Show', 'screencue': ' — Screen Cue', 'andi': ' — Andi', 'pedro': ' — Pedro' };
     if (dayTitle) {
         dayTitle.textContent = `${state.currentDay} Timeline${filterLabels[state.timelineFilter] || ''}`;
     }
@@ -1325,6 +1329,7 @@ function renderTimeline() {
                 <td class="pedro-col"></td>
                 <td class="responsible-col" data-field="responsible" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ responsible</span></td>
                 <td class="staff-col" data-field="staff" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ staff</span></td>
+                <td class="screencue-col" data-field="screenCue" onclick="editTimelineCell(this)"><span class="phantom-placeholder">#</span></td>
                 <td class="setlist-col"></td>
                 <td class="stageplot-col"></td>
                 <td class="actions-col no-print"></td>
@@ -1368,6 +1373,7 @@ function renderTimeline() {
                 <td class="pedro-col"><input type="checkbox" class="tl-checkbox" ${item.pedro === true ? 'checked' : ''} onchange="toggleTimelineField('${item.id}', 'pedro', this.checked)"></td>
                 <td class="responsible-col" data-field="responsible" data-original="${escapeHtml(item.responsible || '')}" onclick="editTimelineCell(this)">${escapeHtml(item.responsible || '')}</td>
                 <td class="staff-col" data-field="staff" data-original="${escapeHtml(item.staff || '')}" onclick="editTimelineCell(this)">${escapeHtml(item.staff || '')}</td>
+                <td class="screencue-col" data-field="screenCue" data-original="${escapeHtml(item.screenCue || '')}" onclick="editTimelineCell(this)">${escapeHtml(item.screenCue || '')}</td>
                 <td class="setlist-col">
                     ${item.performer && state.setLists.some(sl => sl.performer && sl.performer.toLowerCase() === item.performer.toLowerCase()) ? `
                     <button class="action-icon action-icon-link" onclick="goToLinkedSetList('${escapeHtml(item.performer).replace(/'/g, "\\'")}')" title="Go to set list: ${escapeHtml(item.performer)}">
@@ -1430,6 +1436,7 @@ function renderTimeline() {
             <td class="pedro-col"></td>
             <td class="responsible-col" data-field="responsible" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ responsible</span></td>
             <td class="staff-col" data-field="staff" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ staff</span></td>
+            <td class="screencue-col" data-field="screenCue" onclick="editTimelineCell(this)"><span class="phantom-placeholder">#</span></td>
             <td class="setlist-col"></td>
             <td class="stageplot-col"></td>
             <td class="actions-col no-print"></td>
@@ -1683,6 +1690,7 @@ function openTimelineModal(itemId = null) {
             'timeline-event': 'event',
             'timeline-responsible': 'responsible',
             'timeline-staff': 'staff',
+            'timeline-screen-cue': 'screenCue',
             'timeline-production': 'production',
             'timeline-andi': 'andi',
             'timeline-pedro': 'pedro',
@@ -1867,6 +1875,12 @@ async function handleTimelineSubmit(e) {
         durationInput.value = formatDuration(durationInput.value);
     }
 
+    // Normalize screen cue: digits only, max 3 chars
+    const screenCueInput = document.getElementById('timeline-screen-cue');
+    if (screenCueInput) {
+        screenCueInput.value = String(screenCueInput.value || '').replace(/\D/g, '').slice(0, 3);
+    }
+
     const result = await handleFormSubmit(e, {
         collection: 'timeline',
         idFieldId: 'timeline-id',
@@ -1878,6 +1892,7 @@ async function handleTimelineSubmit(e) {
             'timeline-event': 'event',
             'timeline-responsible': 'responsible',
             'timeline-staff': 'staff',
+            'timeline-screen-cue': 'screenCue',
             'timeline-production': 'production',
             'timeline-andi': 'andi',
             'timeline-pedro': 'pedro',
@@ -2509,7 +2524,7 @@ function exportBudgetToExcel() {
 
 // Inline Editing for Timeline
 // Editable cell field order for Tab navigation (skip tag — it has its own <select>)
-const TIMELINE_FIELD_ORDER = ['time', 'duration', 'event', 'responsible', 'staff'];
+const TIMELINE_FIELD_ORDER = ['time', 'duration', 'event', 'responsible', 'staff', 'screenCue'];
 const BUDGET_FIELD_ORDER = ['vendor', 'description', 'owner', 'budgeted', 'actual', 'paymentStatus', 'notes'];
 const STAGE_FIELD_ORDER = ['channel', 'subsnake', 'instrument', 'mics', 'stands', 'notes', 'symbol'];
 
@@ -2665,6 +2680,9 @@ function saveSingleCell(cell, row, keepEditing = false) {
     if (field === 'duration' && newValue) {
         newValue = formatDuration(newValue);
     }
+    if (field === 'screenCue') {
+        newValue = newValue.replace(/\D/g, '').slice(0, 3);
+    }
 
     // Restore cell to display mode immediately (remove input so blur handler won't double-fire)
     cell.dataset.original = newValue;
@@ -2719,7 +2737,8 @@ function saveSingleCell(cell, row, keepEditing = false) {
 function restoreCellDisplay(cell, isPhantom) {
     const field = cell.dataset.field;
     if (isPhantom) {
-        const val = state.pendingNewRow[field] || '';
+        let val = state.pendingNewRow[field] || '';
+        if (field === 'screenCue' && val) val = String(val).replace(/\D/g, '').slice(0, 3);
         if (val) {
             if (field === 'time') {
                 cell.innerHTML = `<span class="tl-time">${formatTime12Hour(val)}</span>`;
@@ -2727,7 +2746,8 @@ function restoreCellDisplay(cell, isPhantom) {
                 cell.textContent = val;
             }
         } else {
-            cell.innerHTML = `<span class="phantom-placeholder">+ ${field}</span>`;
+            const placeholder = field === 'screenCue' ? '#' : `+ ${field}`;
+            cell.innerHTML = `<span class="phantom-placeholder">${placeholder}</span>`;
         }
     } else {
         const original = cell.dataset.original || '';
@@ -2825,6 +2845,7 @@ async function commitNewRow() {
     // Convert time to 24hr
     if (data.time) data.time = convertTo24Hour(data.time);
     if (data.duration) data.duration = formatDuration(data.duration);
+    if (data.screenCue) data.screenCue = String(data.screenCue).replace(/\D/g, '').slice(0, 3);
 
     data.day = state.currentDay;
     data.completed = false;
