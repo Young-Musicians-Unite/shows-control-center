@@ -506,7 +506,7 @@
                         <button class="staff-view-btn active" id="staff-team-view-btn" onclick="setStaffView('team')">Team View</button>
                         <button class="staff-view-btn" id="staff-schedule-view-btn" onclick="setStaffView('schedule')">Schedule</button>
                     </div>
-                    <button class="btn btn-icon" id="print-staff-btn" title="Print" onclick="window.print()">
+                    <button class="btn btn-icon" id="print-staff-btn" title="Print">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
                     </button>
                     <button class="btn btn-icon" id="export-staff-btn" title="Export to Excel">
@@ -1622,6 +1622,28 @@
                 <div class="form-actions">
                     <button type="button" class="btn btn-secondary cancel-btn">Cancel</button>
                     <button type="button" class="btn btn-primary" onclick="confirmPrintCopies()">Print</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Print Staff Teams Modal -->
+    <div id="print-staff-teams-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Print Staff List — Select Teams</h2>
+                <button type="button" class="close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="copies-hint">Choose which teams to include. Each team prints on its own page.</p>
+                <div class="copies-bulk-actions">
+                    <button type="button" class="btn btn-sm btn-secondary" onclick="setAllPrintStaffTeams(true)">Select All</button>
+                    <button type="button" class="btn btn-sm btn-secondary" onclick="setAllPrintStaffTeams(false)">Deselect All</button>
+                </div>
+                <div id="print-staff-teams-list" class="copies-list"></div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary cancel-btn">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="confirmPrintStaffTeams()">Print</button>
                 </div>
             </div>
         </div>

@@ -2351,7 +2351,7 @@ function setupExportAndPrint() {
         timelineUndoBtn.addEventListener('click', () => window.undoTimelineAction());
     }
     if (printStaffBtn) {
-        printStaffBtn.addEventListener('click', () => window.print());
+        printStaffBtn.addEventListener('click', openPrintStaffTeamsModal);
     }
     if (printStageBtn) {
         printStageBtn.addEventListener('click', () => printWithScope('printing-stage-inputs'));
@@ -10582,6 +10582,301 @@ window.openPrintCopiesModal = openPrintCopiesModal;
 window.closePrintCopiesModal = closePrintCopiesModal;
 window.setAllPrintCopies = setAllPrintCopies;
 window.confirmPrintCopies = confirmPrintCopies;
+
+// =============================================
+// STAFF PRINT (team-scoped, new-window)
+// =============================================
+
+function openPrintStaffTeamsModal() {
+    const listEl = document.getElementById('print-staff-teams-list');
+    if (!listEl) return;
+
+    // Collect unique teams from state.staff (use 'Unassigned' for empty teams array)
+    const teamCounts = new Map();
+    for (const m of state.staff) {
+        const teams = (m.teams && m.teams.length > 0) ? m.teams : ['Unassigned'];
+        for (const t of teams) {
+            teamCounts.set(t, (teamCounts.get(t) || 0) + 1);
+        }
+    }
+
+    if (teamCounts.size === 0) {
+        showToast('No staff to print', 'error');
+        return;
+    }
+
+    const sortedTeams = [...teamCounts.keys()].sort((a, b) =>
+        a.localeCompare(b, undefined, { sensitivity: 'base' })
+    );
+
+    const escAttr = (s) => String(s || '').replace(/"/g, '&quot;');
+    listEl.innerHTML = sortedTeams.map(team => {
+        const color = getTeamColor(team);
+        const count = teamCounts.get(team);
+        return `
+            <label class="copies-row staff-team-row">
+                <div class="copies-row-label">
+                    <input type="checkbox" class="staff-team-check" data-team="${escAttr(team)}" checked>
+                    <span class="staff-team-swatch" style="background:${color}"></span>
+                    <span class="copies-row-name">${escapeHtml(team)}</span>
+                    <span class="staff-team-count">(${count})</span>
+                </div>
+            </label>`;
+    }).join('');
+
+    const modal = document.getElementById('print-staff-teams-modal');
+    if (modal) modal.classList.add('active');
+}
+
+function closePrintStaffTeamsModal() {
+    const modal = document.getElementById('print-staff-teams-modal');
+    if (modal) modal.classList.remove('active');
+}
+
+function setAllPrintStaffTeams(checked) {
+    document.querySelectorAll('#print-staff-teams-list .staff-team-check').forEach(cb => {
+        cb.checked = !!checked;
+    });
+}
+
+function confirmPrintStaffTeams() {
+    const selected = [];
+    document.querySelectorAll('#print-staff-teams-list .staff-team-check:checked').forEach(cb => {
+        selected.push(cb.dataset.team);
+    });
+    if (selected.length === 0) {
+        showToast('Select at least one team to print', 'error');
+        return;
+    }
+    closePrintStaffTeamsModal();
+    generateStaffPrintWindow(selected);
+}
+
+function generateStaffPrintWindow(selectedTeams) {
+    const esc = (s) => String(s || '').replace(/[&<>"']/g,
+        c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const selectedSet = new Set(selectedTeams);
+
+    // Expand staff into {team, member} rows, filter to selected, then group
+    const byTeam = new Map();
+    for (const m of state.staff) {
+        const teams = (m.teams && m.teams.length > 0) ? m.teams : ['Unassigned'];
+        for (const t of teams) {
+            if (!selectedSet.has(t)) continue;
+            if (!byTeam.has(t)) byTeam.set(t, []);
+            byTeam.get(t).push(m);
+        }
+    }
+
+    // Drop empty teams (no staff after filtering — shouldn't happen here but guard anyway)
+    const teamOrder = [...byTeam.keys()]
+        .filter(t => byTeam.get(t).length > 0)
+        .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+
+    if (teamOrder.length === 0) {
+        showToast('No staff to print in selected teams', 'error');
+        return;
+    }
+
+    const totalPages = teamOrder.length;
+    const printedDate = new Date().toISOString().split('T')[0];
+
+    const dayKeys = ['thursday', 'friday', 'saturday', 'sunday'];
+    const dayLabels = ['Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+    const pagesHtml = teamOrder.map((team, idx) => {
+        const color = getTeamColor(team);
+        const members = byTeam.get(team).slice().sort((a, b) =>
+            (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' })
+        );
+
+        const rowsHtml = members.map(m => {
+            const otherTeams = (m.teams || []).filter(t => t !== team).join(', ');
+            const sched = m.schedule || {};
+            const dayCells = dayKeys.map(d => {
+                const val = sched[d];
+                return val
+                    ? `<td class="sched">${esc(val)}</td>`
+                    : `<td class="sched empty">—</td>`;
+            }).join('');
+            return `
+                <tr>
+                    <td class="name">${esc(m.name || '')}</td>
+                    <td class="role">${esc(m.role || '')}</td>
+                    <td class="other-teams">${esc(otherTeams)}</td>
+                    ${dayCells}
+                </tr>`;
+        }).join('');
+
+        return `
+            <section class="team-page">
+                <header class="team-banner" style="background:${color}">
+                    <h1 class="team-name">${esc(team)}</h1>
+                    <div class="team-meta">${members.length} STAFF · YMU GALA 2026</div>
+                </header>
+                <table class="staff-table">
+                    <thead>
+                        <tr>
+                            <th class="name">Name</th>
+                            <th class="role">Role</th>
+                            <th class="other-teams">Other Teams</th>
+                            ${dayLabels.map(d => `<th class="sched">${d}</th>`).join('')}
+                        </tr>
+                    </thead>
+                    <tbody>${rowsHtml}</tbody>
+                </table>
+                <footer class="page-footer">Page ${idx + 1} of ${totalPages} · Printed ${printedDate}</footer>
+            </section>`;
+    }).join('');
+
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Staff List — YMU Gala 2026</title>
+<style>
+    @page {
+        size: letter landscape;
+        margin: 0.4in;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+        margin: 0;
+        padding: 0;
+        background: #fff;
+        color: #222;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+    .team-page {
+        page-break-after: always;
+        break-after: page;
+        padding: 0;
+    }
+    .team-page:last-child {
+        page-break-after: auto;
+        break-after: auto;
+    }
+    .team-banner {
+        color: #fff;
+        padding: 18px 22px 14px;
+        margin-bottom: 14px;
+        border-radius: 4px;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+    .team-name {
+        margin: 0;
+        font-size: 28pt;
+        font-weight: 800;
+        letter-spacing: 0.01em;
+        text-transform: uppercase;
+        line-height: 1.05;
+    }
+    .team-meta {
+        margin-top: 4px;
+        font-size: 9pt;
+        font-weight: 600;
+        letter-spacing: 0.15em;
+        opacity: 0.92;
+    }
+    .staff-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 9.5pt;
+    }
+    .staff-table thead th {
+        text-align: left;
+        padding: 6px 8px;
+        background: #f3f4f6;
+        border-bottom: 2px solid #222;
+        font-size: 8pt;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        font-weight: 700;
+        color: #374151;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+    .staff-table tbody td {
+        padding: 5px 8px;
+        border-bottom: 1px solid #e5e7eb;
+        vertical-align: top;
+    }
+    .staff-table tbody tr:nth-child(even) td {
+        background: #fafafa;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+    .staff-table th.name, .staff-table td.name {
+        width: 1.5in;
+        font-weight: 600;
+    }
+    .staff-table th.role, .staff-table td.role {
+        width: 1.8in;
+    }
+    .staff-table th.other-teams, .staff-table td.other-teams {
+        width: 1.5in;
+        color: #6b7280;
+        font-size: 8.5pt;
+    }
+    .staff-table th.sched, .staff-table td.sched {
+        width: 1.3in;
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+    }
+    .staff-table td.sched.empty {
+        color: #d1d5db;
+    }
+    tr { page-break-inside: avoid; }
+    thead { display: table-header-group; }
+    .page-footer {
+        margin-top: 12px;
+        text-align: center;
+        font-size: 8pt;
+        color: #9ca3af;
+        letter-spacing: 0.05em;
+    }
+    @media screen {
+        body { background: #e5e7eb; padding: 20px; }
+        .team-page {
+            background: #fff;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            padding: 32px;
+            margin: 0 auto 20px;
+            max-width: 10in;
+        }
+    }
+</style>
+</head>
+<body>
+    ${pagesHtml}
+    <script>
+        if (document.readyState === 'complete') {
+            setTimeout(() => window.print(), 150);
+        } else {
+            window.addEventListener('load', () => setTimeout(() => window.print(), 150));
+        }
+    <\/script>
+</body>
+</html>`;
+
+    const w = window.open('', '_blank');
+    if (!w) {
+        showToast('Please allow popups to print staff list', 'error');
+        return;
+    }
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+}
+
+window.openPrintStaffTeamsModal = openPrintStaffTeamsModal;
+window.closePrintStaffTeamsModal = closePrintStaffTeamsModal;
+window.setAllPrintStaffTeams = setAllPrintStaffTeams;
+window.confirmPrintStaffTeams = confirmPrintStaffTeams;
 
 function openSetListModal(itemId = null) {
     const modal = document.getElementById('setlist-modal');

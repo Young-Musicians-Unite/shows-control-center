@@ -1247,6 +1247,32 @@ body {
     box-shadow: 0 0 0 2px rgba(201, 169, 97, 0.25);
 }
 
+.staff-team-row {
+    cursor: pointer;
+}
+.staff-team-row:hover {
+    background: #f9fafb;
+}
+.staff-team-swatch {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+}
+.staff-team-count {
+    font-size: 0.8rem;
+    color: #9ca3af;
+    margin-left: 0.4rem;
+}
+.staff-team-check {
+    margin-right: 0.6rem;
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: #c9a961;
+}
+
 /* Form */
 .form-group {
     margin-bottom: 1.5rem;
