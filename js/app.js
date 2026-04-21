@@ -1878,7 +1878,7 @@ async function handleTimelineSubmit(e) {
     // Normalize screen cue: digits only, max 3 chars
     const screenCueInput = document.getElementById('timeline-screen-cue');
     if (screenCueInput) {
-        screenCueInput.value = String(screenCueInput.value || '').replace(/\D/g, '').slice(0, 3);
+        screenCueInput.value = normalizeScreenCue(screenCueInput.value);
     }
 
     const result = await handleFormSubmit(e, {
@@ -2232,6 +2232,15 @@ function formatDuration(raw) {
     if (hours && mins) return `${hours}h ${mins}m`;
     if (hours) return `${hours}h`;
     return `${mins}m`;
+}
+
+function normalizeScreenCue(raw) {
+    if (raw === null || raw === undefined) return '';
+    return String(raw)
+        .split(',')
+        .map(t => t.replace(/\D/g, '').slice(0, 3))
+        .filter(Boolean)
+        .join(', ');
 }
 
 function formatTime12Hour(time24) {
@@ -2681,7 +2690,7 @@ function saveSingleCell(cell, row, keepEditing = false) {
         newValue = formatDuration(newValue);
     }
     if (field === 'screenCue') {
-        newValue = newValue.replace(/\D/g, '').slice(0, 3);
+        newValue = normalizeScreenCue(newValue);
     }
 
     // Restore cell to display mode immediately (remove input so blur handler won't double-fire)
@@ -2738,7 +2747,7 @@ function restoreCellDisplay(cell, isPhantom) {
     const field = cell.dataset.field;
     if (isPhantom) {
         let val = state.pendingNewRow[field] || '';
-        if (field === 'screenCue' && val) val = String(val).replace(/\D/g, '').slice(0, 3);
+        if (field === 'screenCue' && val) val = normalizeScreenCue(val);
         if (val) {
             if (field === 'time') {
                 cell.innerHTML = `<span class="tl-time">${formatTime12Hour(val)}</span>`;
@@ -2845,7 +2854,7 @@ async function commitNewRow() {
     // Convert time to 24hr
     if (data.time) data.time = convertTo24Hour(data.time);
     if (data.duration) data.duration = formatDuration(data.duration);
-    if (data.screenCue) data.screenCue = String(data.screenCue).replace(/\D/g, '').slice(0, 3);
+    if (data.screenCue) data.screenCue = normalizeScreenCue(data.screenCue);
 
     data.day = state.currentDay;
     data.completed = false;

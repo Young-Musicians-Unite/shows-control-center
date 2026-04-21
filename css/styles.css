@@ -1649,9 +1649,10 @@ body {
 
 .timeline-table th.screencue-col,
 .timeline-table td.screencue-col {
-    width: 90px;
+    width: 120px;
     text-align: center;
     font-variant-numeric: tabular-nums;
+    white-space: normal;
 }
 
 .timeline-table th.actions-col,
