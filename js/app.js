@@ -10178,18 +10178,24 @@ function renderSetLists() {
             </div>`
         ).join('');
 
+        const soundchecks = getDerivedSoundcheckTimes(sl.performer);
         const dayRowsHtml = PERFORMER_DAY_KEYS.map(day => {
             const arrival = arrivals[day] || '';
             const override = overrides[day] || '';
             const derivedTimes = (derived[day] || []).filter(Boolean).map(t => formatTime12Hour(t));
+            const soundcheckTimes = (soundchecks[day] || []).filter(Boolean).map(t => formatTime12Hour(t));
             const perfDisplay = override
                 ? `${escapeHtml(override)} <span class="perf-manual-tag">(manual)</span>`
                 : (derivedTimes.length ? derivedTimes.map(escapeHtml).join(', ') : '');
-            if (!arrival && !perfDisplay) return '';
+            const soundcheckDisplay = soundcheckTimes.length
+                ? soundcheckTimes.map(escapeHtml).join(', ')
+                : '';
+            if (!arrival && !soundcheckDisplay && !perfDisplay) return '';
             return `
                 <div class="performer-day-row">
                     <span class="performer-day-label">${PERFORMER_DAY_LABEL[day]}</span>
                     <span class="performer-day-field">${arrival ? `<span class="performer-field-label">Arrival</span> ${escapeHtml(arrival)}` : ''}</span>
+                    <span class="performer-day-field">${soundcheckDisplay ? `<span class="performer-field-label">Soundcheck</span> ${soundcheckDisplay}` : ''}</span>
                     <span class="performer-day-field">${perfDisplay ? `<span class="performer-field-label">Perf</span> ${perfDisplay}` : ''}</span>
                 </div>`;
         }).filter(Boolean).join('');
@@ -10716,27 +10722,31 @@ function generatePerformerContactWindow(items) {
             : sl.stage === 'cocktail' ? 'Cocktail Stage'
             : '';
 
+        const soundchecks = getDerivedSoundcheckTimes(sl.performer);
         const scheduleRows = dayOrder.map(day => {
             const arrival = arrivals[day] || '';
             const override = overrides[day] || '';
             const derivedTimes = (derived[day] || []).filter(Boolean).map(t => formatTime12Hour(t));
+            const soundcheckTimes = (soundchecks[day] || []).filter(Boolean).map(t => formatTime12Hour(t));
             const perf = override || (derivedTimes.join(', '));
             const perfSuffix = override ? ' (manual)' : '';
-            if (!arrival && !perf) return '';
+            const soundcheck = soundcheckTimes.join(', ');
+            if (!arrival && !perf && !soundcheck) return '';
             return `
                 <tr>
                     <td class="day">${dayLabels[day]}</td>
                     <td>${esc(arrival)}</td>
+                    <td>${esc(soundcheck)}</td>
                     <td>${esc(perf)}${esc(perfSuffix)}</td>
                 </tr>`;
         }).filter(Boolean).join('');
 
         const scheduleSection = scheduleRows
             ? `<table class="schedule-table">
-                   <thead><tr><th>Day</th><th>Arrival</th><th>Performance</th></tr></thead>
+                   <thead><tr><th>Day</th><th>Arrival</th><th>Soundcheck</th><th>Performance</th></tr></thead>
                    <tbody>${scheduleRows}</tbody>
                </table>`
-            : '<p class="empty-note">No arrival or performance times recorded.</p>';
+            : '<p class="empty-note">No schedule recorded.</p>';
 
         const membersSection = members.length > 0
             ? `<table class="members-table">
@@ -11310,6 +11320,29 @@ function getDerivedPerformanceTimes(performerName) {
     if (!norm) return result;
     (state.timeline || []).forEach(t => {
         if ((t.performer || '').trim().toLowerCase() !== norm) return;
+        // Performance = timeline row linked to performer that is NOT a soundcheck
+        const ev = (t.event || '').toLowerCase();
+        if (/\bsound\s*check\b/.test(ev)) return;
+        const dayKey = (t.day || '').toLowerCase();
+        if (!result[dayKey]) return;
+        if (t.time) result[dayKey].push(t.time);
+    });
+    return result;
+}
+
+function getDerivedSoundcheckTimes(performerName) {
+    const result = { thursday: [], friday: [], saturday: [], sunday: [] };
+    const norm = (performerName || '').trim().toLowerCase();
+    if (!norm) return result;
+    (state.timeline || []).forEach(t => {
+        const ev = (t.event || '').toLowerCase();
+        const m = ev.match(/^\s*sound\s*check\s*:\s*(.+?)\s*$/i);
+        if (!m) return;
+        const subject = m[1].trim();
+        if (!subject) return;
+        // Bidirectional substring: matches both exact-name bands and shorter
+        // aliases (e.g., "Rock Ensemble" → "Miami Beach Rock Ensemble (Set 1)").
+        if (!(norm.includes(subject) || subject.includes(norm))) return;
         const dayKey = (t.day || '').toLowerCase();
         if (!result[dayKey]) return;
         if (t.time) result[dayKey].push(t.time);
@@ -11522,15 +11555,18 @@ function exportSetListToExcel() {
             const arrivals = sl.arrivals || {};
             const overrides = sl.performanceOverrides || {};
             const derived = getDerivedPerformanceTimes(sl.performer);
+            const soundchecks = getDerivedSoundcheckTimes(sl.performer);
             dayOrder.forEach(day => {
                 const arrival = arrivals[day] || '';
                 const override = overrides[day] || '';
                 const derivedTimes = (derived[day] || []).filter(Boolean).map(t => formatTime12Hour(t));
-                if (!arrival && !override && derivedTimes.length === 0) return;
+                const soundcheckTimes = (soundchecks[day] || []).filter(Boolean).map(t => formatTime12Hour(t));
+                if (!arrival && !override && derivedTimes.length === 0 && soundcheckTimes.length === 0) return;
                 scheduleRows.push({
                     'Performer': sl.performer || '',
                     'Day': dayNames[day],
                     'Arrival': arrival,
+                    'Soundcheck': soundcheckTimes.join(', '),
                     'Performance (derived)': derivedTimes.join(', '),
                     'Performance (override)': override
                 });
@@ -11538,7 +11574,7 @@ function exportSetListToExcel() {
         });
     if (scheduleRows.length) {
         const sched = XLSX.utils.json_to_sheet(scheduleRows);
-        sched['!cols'] = [{ wch: 25 }, { wch: 12 }, { wch: 18 }, { wch: 22 }, { wch: 22 }];
+        sched['!cols'] = [{ wch: 25 }, { wch: 12 }, { wch: 18 }, { wch: 18 }, { wch: 22 }, { wch: 22 }];
         XLSX.utils.book_append_sheet(wb, sched, 'Arrivals & Performance');
     }
 

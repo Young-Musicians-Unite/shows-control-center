@@ -4522,7 +4522,7 @@ body.menu-open::after {
 }
 .performer-day-row {
     display: grid;
-    grid-template-columns: 2.5rem 1fr 1fr;
+    grid-template-columns: 2.5rem 1fr 1fr 1fr;
     gap: 0.6rem;
     align-items: baseline;
     font-size: 0.9rem;
@@ -4609,7 +4609,8 @@ body.menu-open::after {
     .member-edit-row .member-phone-input { flex-basis: 100%; }
     .performer-day-grid { grid-template-columns: repeat(2, 1fr); }
     .performer-day-row { grid-template-columns: 2rem 1fr; }
-    .performer-day-row > .performer-day-field:nth-child(3) { grid-column: 2; }
+    .performer-day-row > .performer-day-field:nth-child(3),
+    .performer-day-row > .performer-day-field:nth-child(4) { grid-column: 2; }
     .performer-members-list { grid-template-columns: 1fr; }
 }
 
