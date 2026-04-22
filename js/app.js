@@ -2409,6 +2409,10 @@ function setupExportAndPrint() {
     if (printSetListBtn) {
         printSetListBtn.addEventListener('click', printSetLists);
     }
+    const printPerformerContactBtn = document.getElementById('print-performer-contact-btn');
+    if (printPerformerContactBtn) {
+        printPerformerContactBtn.addEventListener('click', printPerformerContactSheets);
+    }
     const exportSetListBtn = document.getElementById('export-setlist-btn');
     if (exportSetListBtn) {
         exportSetListBtn.addEventListener('click', exportSetListToExcel);
@@ -10109,10 +10113,12 @@ function renderSetLists() {
 
     const total = state.setLists.length;
     const totalSongs = state.setLists.reduce((sum, sl) => sum + (sl.songs || []).length, 0);
+    const totalMembers = state.setLists.reduce((sum, sl) => sum + (sl.members || []).length, 0);
 
     const setStat = (id, val) => { const e = document.getElementById(id); if (e) e.textContent = val; };
     setStat('setlist-stat-total', total);
     setStat('setlist-stat-songs', totalSongs);
+    setStat('setlist-stat-members', totalMembers);
 
     let items = [...state.setLists];
     if (state.setListStageFilter !== 'all') {
@@ -10124,14 +10130,15 @@ function renderSetLists() {
         const q = state.setListSearch.toLowerCase();
         items = items.filter(sl =>
             (sl.performer || '').toLowerCase().includes(q) ||
-            (sl.songs || []).some(s => (s.title || '').toLowerCase().includes(q))
+            (sl.songs || []).some(s => (s.title || '').toLowerCase().includes(q)) ||
+            (sl.members || []).some(m => (m.name || '').toLowerCase().includes(q) || (m.phone || '').toLowerCase().includes(q))
         );
     }
 
     // Update search count
     const countEl = document.getElementById('setlist-search-count');
     if (countEl) {
-        countEl.textContent = isSearching ? `${items.length} of ${total} set lists` : `${total} set lists`;
+        countEl.textContent = isSearching ? `${items.length} of ${total} performers` : `${total} performers`;
         countEl.style.display = total > 0 ? '' : 'none';
     }
     const clearBtn = document.getElementById('setlist-search-clear');
@@ -10140,18 +10147,26 @@ function renderSetLists() {
     items.sort((a, b) => (a.performer || '').localeCompare(b.performer || ''));
 
     if (total === 0) {
-        container.innerHTML = '<div class="staff-empty-state">No set lists added yet. Click "+ Add Set List" to get started.</div>';
+        container.innerHTML = '<div class="staff-empty-state">No performers added yet. Click "+ Add Performer" to get started.</div>';
         return;
     }
 
     if (items.length === 0) {
-        container.innerHTML = `<div class="staff-empty-state">No set lists match "${escapeHtml(state.setListSearch)}"</div>`;
+        container.innerHTML = `<div class="staff-empty-state">No performers match "${escapeHtml(state.setListSearch)}"</div>`;
         return;
     }
 
+    const PERFORMER_DAY_LABEL = { thursday: 'Thu', friday: 'Fri', saturday: 'Sat', sunday: 'Sun' };
+
     container.innerHTML = '<div class="setlist-accordion">' + items.map((sl, idx) => {
         const songs = sl.songs || [];
-        const stageLabel = sl.stage === 'main' ? 'Main Stage' : 'Cocktail Stage';
+        const members = sl.members || [];
+        const arrivals = sl.arrivals || {};
+        const overrides = sl.performanceOverrides || {};
+        const derived = getDerivedPerformanceTimes(sl.performer);
+        const stageLabel = sl.stage === 'main' ? 'Main Stage'
+            : sl.stage === 'cocktail' ? 'Cocktail Stage'
+            : '';
         const isExpanded = state.setListsExpanded.has(sl.id);
         const songListHtml = songs.map((s, i) =>
             `<div class="setlist-song-row" draggable="true" data-song-index="${i}">
@@ -10163,22 +10178,68 @@ function renderSetLists() {
             </div>`
         ).join('');
 
+        const dayRowsHtml = PERFORMER_DAY_KEYS.map(day => {
+            const arrival = arrivals[day] || '';
+            const override = overrides[day] || '';
+            const derivedTimes = (derived[day] || []).filter(Boolean).map(t => formatTime12Hour(t));
+            const perfDisplay = override
+                ? `${escapeHtml(override)} <span class="perf-manual-tag">(manual)</span>`
+                : (derivedTimes.length ? derivedTimes.map(escapeHtml).join(', ') : '');
+            if (!arrival && !perfDisplay) return '';
+            return `
+                <div class="performer-day-row">
+                    <span class="performer-day-label">${PERFORMER_DAY_LABEL[day]}</span>
+                    <span class="performer-day-field">${arrival ? `<span class="performer-field-label">Arrival</span> ${escapeHtml(arrival)}` : ''}</span>
+                    <span class="performer-day-field">${perfDisplay ? `<span class="performer-field-label">Perf</span> ${perfDisplay}` : ''}</span>
+                </div>`;
+        }).filter(Boolean).join('');
+
+        const scheduleHtml = dayRowsHtml ? `<div class="performer-schedule">${dayRowsHtml}</div>` : '';
+
+        const membersHtml = members.length > 0
+            ? `<div class="performer-members">
+                    <div class="performer-section-title">Members (${members.length})</div>
+                    <div class="performer-members-list">
+                        ${members.map(m => `
+                            <div class="performer-member-row">
+                                <span class="member-name">${escapeHtml(m.name || '')}</span>
+                                ${m.phone ? `<a class="member-phone" href="tel:${escapeHtml((m.phone || '').replace(/\s|-/g, ''))}">${escapeHtml(m.phone)}</a>` : ''}
+                            </div>`).join('')}
+                    </div>
+                </div>`
+            : '';
+
+        const hasSongs = songs.length > 0;
+        const songSection = (hasSongs || sl.generalNotes || sl.stagePlotUrl)
+            ? `<div class="performer-setlist-section">
+                    ${hasSongs ? `<div class="performer-section-title">Set List (${songs.length} song${songs.length !== 1 ? 's' : ''}${sl.estimatedDuration ? ' \u00b7 ' + escapeHtml(sl.estimatedDuration) : ''})</div>
+                        <div class="setlist-songs-list" data-setlist-id="${sl.id}">${songListHtml}</div>` : ''}
+                    ${sl.generalNotes ? `<div class="setlist-notes">${escapeHtml(sl.generalNotes)}</div>` : ''}
+                    ${sl.stagePlotUrl ? `<div class="setlist-stage-plot-link"><a href="${escapeHtml(sl.stagePlotUrl)}" target="_blank" class="btn btn-sm btn-secondary">View Stage Plot</a></div>` : ''}
+               </div>`
+            : '';
+
+        const headerMeta = [
+            members.length ? `${members.length} member${members.length !== 1 ? 's' : ''}` : '',
+            songs.length ? `${songs.length} song${songs.length !== 1 ? 's' : ''}` : ''
+        ].filter(Boolean).join(' \u00b7 ');
+
         return `
         <div class="setlist-accordion-item ${isExpanded ? 'expanded' : ''}" data-setlist-id="${sl.id}" style="animation-delay: ${idx * 40}ms">
             <div class="setlist-accordion-header" onclick="toggleSetListSongs('${sl.id}')">
                 <span class="setlist-toggle-icon" id="setlist-toggle-icon-${sl.id}">${isExpanded ? '&#9660;' : '&#9654;'}</span>
                 <span class="setlist-performer">${escapeHtml(sl.performer || '')}</span>
-                <span class="setlist-stage-badge stage-${sl.stage}">${stageLabel}</span>
-                <span class="setlist-song-count">${songs.length} song${songs.length !== 1 ? 's' : ''}${sl.estimatedDuration ? ' \u00b7 ' + escapeHtml(sl.estimatedDuration) : ''}</span>
+                ${stageLabel ? `<span class="setlist-stage-badge stage-${sl.stage}">${stageLabel}</span>` : ''}
+                <span class="setlist-song-count">${headerMeta}</span>
                 <span class="setlist-header-actions" onclick="event.stopPropagation()">
                     <button class="btn btn-edit btn-sm" onclick="openSetListModal('${sl.id}')">Edit</button>
                     <button class="btn btn-danger btn-sm" onclick="deleteSetList('${sl.id}')">Delete</button>
                 </span>
             </div>
             <div class="setlist-accordion-body" id="setlist-songs-${sl.id}" style="display:${isExpanded ? '' : 'none'}">
-                ${songs.length > 0 ? `<div class="setlist-songs-list" data-setlist-id="${sl.id}">${songListHtml}</div>` : ''}
-                ${sl.generalNotes ? `<div class="setlist-notes">${escapeHtml(sl.generalNotes)}</div>` : ''}
-                ${sl.stagePlotUrl ? `<div class="setlist-stage-plot-link"><a href="${escapeHtml(sl.stagePlotUrl)}" target="_blank" class="btn btn-sm btn-secondary">View Stage Plot</a></div>` : ''}
+                ${scheduleHtml}
+                ${membersHtml}
+                ${songSection}
             </div>
         </div>`;
     }).join('') + '</div>';
@@ -10614,6 +10675,250 @@ window.setAllPrintCopies = setAllPrintCopies;
 window.confirmPrintCopies = confirmPrintCopies;
 
 // =============================================
+// PERFORMER CONTACT SHEET PRINT (new-window)
+// =============================================
+
+function printPerformerContactSheets() {
+    let items = [...state.setLists];
+    if (state.setListStageFilter !== 'all') {
+        items = items.filter(sl => sl.stage === state.setListStageFilter);
+    }
+    if (state.setListSearch && state.setListSearch.trim().length > 0) {
+        const q = state.setListSearch.toLowerCase();
+        items = items.filter(sl =>
+            (sl.performer || '').toLowerCase().includes(q) ||
+            (sl.songs || []).some(s => (s.title || '').toLowerCase().includes(q)) ||
+            (sl.members || []).some(m => (m.name || '').toLowerCase().includes(q) || (m.phone || '').toLowerCase().includes(q))
+        );
+    }
+    if (items.length === 0) {
+        showToast('No performers to print', 'error');
+        return;
+    }
+    items.sort((a, b) => (a.performer || '').localeCompare(b.performer || ''));
+    generatePerformerContactWindow(items);
+}
+
+function generatePerformerContactWindow(items) {
+    const esc = (s) => String(s || '').replace(/[&<>"']/g,
+        c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const dayOrder = ['thursday', 'friday', 'saturday', 'sunday'];
+    const dayLabels = { thursday: 'Thu', friday: 'Fri', saturday: 'Sat', sunday: 'Sun' };
+    const today = new Date().toISOString().split('T')[0];
+    const total = items.length;
+
+    const pagesHtml = items.map((sl, idx) => {
+        const members = sl.members || [];
+        const arrivals = sl.arrivals || {};
+        const overrides = sl.performanceOverrides || {};
+        const derived = getDerivedPerformanceTimes(sl.performer);
+        const stageLabel = sl.stage === 'main' ? 'Main Stage'
+            : sl.stage === 'cocktail' ? 'Cocktail Stage'
+            : '';
+
+        const scheduleRows = dayOrder.map(day => {
+            const arrival = arrivals[day] || '';
+            const override = overrides[day] || '';
+            const derivedTimes = (derived[day] || []).filter(Boolean).map(t => formatTime12Hour(t));
+            const perf = override || (derivedTimes.join(', '));
+            const perfSuffix = override ? ' (manual)' : '';
+            if (!arrival && !perf) return '';
+            return `
+                <tr>
+                    <td class="day">${dayLabels[day]}</td>
+                    <td>${esc(arrival)}</td>
+                    <td>${esc(perf)}${esc(perfSuffix)}</td>
+                </tr>`;
+        }).filter(Boolean).join('');
+
+        const scheduleSection = scheduleRows
+            ? `<table class="schedule-table">
+                   <thead><tr><th>Day</th><th>Arrival</th><th>Performance</th></tr></thead>
+                   <tbody>${scheduleRows}</tbody>
+               </table>`
+            : '<p class="empty-note">No arrival or performance times recorded.</p>';
+
+        const membersSection = members.length > 0
+            ? `<table class="members-table">
+                   <thead><tr><th>Name</th><th>Phone</th></tr></thead>
+                   <tbody>
+                       ${members.map(m => `
+                           <tr>
+                               <td>${esc(m.name || '')}</td>
+                               <td class="phone">${esc(m.phone || '')}</td>
+                           </tr>`).join('')}
+                   </tbody>
+               </table>`
+            : '<p class="empty-note">No members listed.</p>';
+
+        return `
+            <section class="contact-page">
+                <header class="contact-header">
+                    <h1 class="contact-name">${esc(sl.performer || 'Unnamed')}</h1>
+                    ${stageLabel ? `<span class="contact-stage">${esc(stageLabel)}</span>` : ''}
+                </header>
+                <div class="contact-section">
+                    <h2>Schedule</h2>
+                    ${scheduleSection}
+                </div>
+                <div class="contact-section">
+                    <h2>Members</h2>
+                    ${membersSection}
+                </div>
+                <footer class="contact-footer">Page ${idx + 1} of ${total} · Printed ${today}</footer>
+            </section>`;
+    }).join('');
+
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Performer Contact Sheets — YMU Gala 2026</title>
+<style>
+    @page { size: letter portrait; margin: 0.45in; }
+    * { box-sizing: border-box; }
+    html, body {
+        margin: 0; padding: 0;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        color: #222;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+    .contact-page {
+        page-break-after: always;
+        break-after: page;
+        padding: 0;
+    }
+    .contact-page:last-child {
+        page-break-after: auto;
+        break-after: auto;
+    }
+    .contact-header {
+        border-bottom: 3px solid #1a3a35;
+        padding-bottom: 14px;
+        margin-bottom: 22px;
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 1rem;
+    }
+    .contact-name {
+        margin: 0;
+        font-size: 32pt;
+        font-weight: 800;
+        letter-spacing: 0.01em;
+        line-height: 1.05;
+    }
+    .contact-stage {
+        font-size: 11pt;
+        font-weight: 700;
+        letter-spacing: 0.15em;
+        text-transform: uppercase;
+        color: #1a3a35;
+        border: 2px solid #1a3a35;
+        padding: 4px 10px;
+        border-radius: 4px;
+    }
+    .contact-section {
+        margin-bottom: 28px;
+    }
+    .contact-section h2 {
+        font-size: 10pt;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: #6b7280;
+        margin: 0 0 10px;
+        border-bottom: 1px solid #d1d5db;
+        padding-bottom: 4px;
+    }
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 11pt;
+    }
+    th, td {
+        padding: 6px 10px;
+        border-bottom: 1px solid #e5e7eb;
+        text-align: left;
+        vertical-align: top;
+    }
+    thead th {
+        background: #faf8f3;
+        font-size: 9pt;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #374151;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+    .schedule-table .day {
+        width: 60px;
+        font-weight: 700;
+        text-transform: uppercase;
+    }
+    .members-table td.phone {
+        font-variant-numeric: tabular-nums;
+        width: 180px;
+        white-space: nowrap;
+    }
+    .empty-note {
+        color: #9ca3af;
+        font-style: italic;
+        margin: 0;
+    }
+    tr { page-break-inside: avoid; }
+    thead { display: table-header-group; }
+    .contact-footer {
+        position: absolute;
+        bottom: 0.2in;
+        left: 0;
+        right: 0;
+        text-align: center;
+        font-size: 8pt;
+        color: #9ca3af;
+        letter-spacing: 0.05em;
+    }
+    @media screen {
+        body { background: #e5e7eb; padding: 20px; }
+        .contact-page {
+            background: #fff;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            padding: 40px;
+            margin: 0 auto 20px;
+            max-width: 7.5in;
+            min-height: 10in;
+            position: relative;
+        }
+    }
+</style>
+</head>
+<body>
+    ${pagesHtml}
+    <script>
+        if (document.readyState === 'complete') {
+            setTimeout(() => window.print(), 150);
+        } else {
+            window.addEventListener('load', () => setTimeout(() => window.print(), 150));
+        }
+    <\/script>
+</body>
+</html>`;
+
+    const w = window.open('', '_blank');
+    if (!w) {
+        showToast('Please allow popups to print contact sheets', 'error');
+        return;
+    }
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+}
+
+window.printPerformerContactSheets = printPerformerContactSheets;
+
+// =============================================
 // STAFF PRINT (team-scoped, new-window)
 // =============================================
 
@@ -10908,6 +11213,8 @@ window.closePrintStaffTeamsModal = closePrintStaffTeamsModal;
 window.setAllPrintStaffTeams = setAllPrintStaffTeams;
 window.confirmPrintStaffTeams = confirmPrintStaffTeams;
 
+const PERFORMER_DAY_KEYS = ['thursday', 'friday', 'saturday', 'sunday'];
+
 function openSetListModal(itemId = null) {
     const modal = document.getElementById('setlist-modal');
     const form = document.getElementById('setlist-form');
@@ -10921,22 +11228,93 @@ function openSetListModal(itemId = null) {
         data = state.setLists.find(s => s.id === itemId);
     }
 
-    title.textContent = data ? 'Edit Set List' : 'Add Set List';
+    title.textContent = data ? 'Edit Performer' : 'Add Performer';
 
     if (data) {
         document.getElementById('setlist-id').value = itemId;
         document.getElementById('setlist-performer').value = data.performer || '';
-        document.getElementById('setlist-stage').value = data.stage || 'main';
+        document.getElementById('setlist-stage').value = data.stage || '';
         document.getElementById('setlist-duration').value = data.estimatedDuration || '';
         document.getElementById('setlist-notes').value = data.generalNotes || '';
         renderSongRows(data.songs || []);
+        renderMemberRows(data.members || []);
+        populatePerformerDayFields(data);
         updateStagePlotUI(data.stagePlotUrl || null);
     } else {
         renderSongRows([{ title: '', duration: '', notes: '' }]);
+        renderMemberRows([]);
+        populatePerformerDayFields(null);
         updateStagePlotUI(null);
     }
 
     modal.classList.add('active');
+}
+
+function populatePerformerDayFields(data) {
+    const arrivals = (data && data.arrivals) || {};
+    const overrides = (data && data.performanceOverrides) || {};
+    const derived = getDerivedPerformanceTimes(data ? data.performer : '');
+
+    PERFORMER_DAY_KEYS.forEach(day => {
+        const arrivalInput = document.getElementById('setlist-arrival-' + day);
+        const perfInput = document.getElementById('setlist-perf-' + day);
+        const hintSpan = document.getElementById('derived-hint-' + day);
+        if (arrivalInput) arrivalInput.value = arrivals[day] || '';
+        if (perfInput) perfInput.value = overrides[day] || '';
+        if (hintSpan) {
+            const times = (derived[day] || []).filter(Boolean);
+            hintSpan.textContent = times.length
+                ? 'Timeline: ' + times.map(t => formatTime12Hour(t)).join(', ')
+                : '';
+        }
+    });
+}
+
+function renderMemberRows(members) {
+    const container = document.getElementById('setlist-members-container');
+    if (!container) return;
+    container.innerHTML = (members || []).map((m, i) => `
+        <div class="member-edit-row" data-member-index="${i}">
+            <input type="text" class="member-name-input" value="${escapeHtml(m.name || '')}" placeholder="Name">
+            <input type="tel" class="member-phone-input" value="${escapeHtml(m.phone || '')}" placeholder="Phone">
+            <button type="button" class="btn btn-danger btn-sm" onclick="removeMemberRow(this)">×</button>
+        </div>
+    `).join('');
+}
+
+function addMemberRow() {
+    const container = document.getElementById('setlist-members-container');
+    if (!container) return;
+    const row = document.createElement('div');
+    row.className = 'member-edit-row';
+    row.innerHTML = `
+        <input type="text" class="member-name-input" placeholder="Name">
+        <input type="tel" class="member-phone-input" placeholder="Phone">
+        <button type="button" class="btn btn-danger btn-sm" onclick="removeMemberRow(this)">×</button>
+    `;
+    container.appendChild(row);
+    row.querySelector('.member-name-input').focus();
+}
+
+function removeMemberRow(btn) {
+    const row = btn.closest('.member-edit-row');
+    if (row) row.remove();
+}
+
+window.addMemberRow = addMemberRow;
+window.removeMemberRow = removeMemberRow;
+
+function getDerivedPerformanceTimes(performerName) {
+    const result = { thursday: [], friday: [], saturday: [], sunday: [] };
+    const norm = (performerName || '').trim().toLowerCase();
+    if (!norm) return result;
+    (state.timeline || []).forEach(t => {
+        if ((t.performer || '').trim().toLowerCase() !== norm) return;
+        const dayKey = (t.day || '').toLowerCase();
+        if (!result[dayKey]) return;
+        if (t.time) result[dayKey].push(t.time);
+    });
+    return result;
 }
 
 function renderSongRows(songs) {
@@ -10983,10 +11361,30 @@ async function handleSetListSubmit(e) {
         }))
         .filter(s => s.title);
 
+    const memberRows = document.querySelectorAll('#setlist-members-container .member-edit-row');
+    const members = Array.from(memberRows)
+        .map(row => ({
+            name: row.querySelector('.member-name-input').value.trim(),
+            phone: row.querySelector('.member-phone-input').value.trim()
+        }))
+        .filter(m => m.name || m.phone);
+
+    const arrivals = {};
+    const performanceOverrides = {};
+    PERFORMER_DAY_KEYS.forEach(day => {
+        const aEl = document.getElementById('setlist-arrival-' + day);
+        const pEl = document.getElementById('setlist-perf-' + day);
+        arrivals[day] = aEl ? aEl.value.trim() : '';
+        performanceOverrides[day] = pEl ? pEl.value.trim() : '';
+    });
+
     const data = {
         performer: document.getElementById('setlist-performer').value,
         stage: document.getElementById('setlist-stage').value,
         songs: songs,
+        members: members,
+        arrivals: arrivals,
+        performanceOverrides: performanceOverrides,
         estimatedDuration: document.getElementById('setlist-duration').value,
         generalNotes: document.getElementById('setlist-notes').value,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -11006,16 +11404,16 @@ async function handleSetListSubmit(e) {
     try {
         if (id) {
             await collections.setLists.doc(id).update(data);
-            showToast('Set list updated');
+            showToast('Performer updated');
         } else {
             data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
             await collections.setLists.add(data);
-            showToast('Set list added');
+            showToast('Performer added');
         }
         closeAllModals();
     } catch (error) {
-        console.error('Error saving set list:', error);
-        showToast('Error saving set list', 'error');
+        console.error('Error saving performer:', error);
+        showToast('Error saving performer', 'error');
     }
 }
 
@@ -11113,8 +11511,59 @@ function exportSetListToExcel() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Set Lists');
 
+    // Arrivals & Performance sheet
+    const scheduleRows = [];
+    const dayOrder = ['thursday', 'friday', 'saturday', 'sunday'];
+    const dayNames = { thursday: 'Thursday', friday: 'Friday', saturday: 'Saturday', sunday: 'Sunday' };
+    state.setLists
+        .slice()
+        .sort((a, b) => (a.performer || '').localeCompare(b.performer || ''))
+        .forEach(sl => {
+            const arrivals = sl.arrivals || {};
+            const overrides = sl.performanceOverrides || {};
+            const derived = getDerivedPerformanceTimes(sl.performer);
+            dayOrder.forEach(day => {
+                const arrival = arrivals[day] || '';
+                const override = overrides[day] || '';
+                const derivedTimes = (derived[day] || []).filter(Boolean).map(t => formatTime12Hour(t));
+                if (!arrival && !override && derivedTimes.length === 0) return;
+                scheduleRows.push({
+                    'Performer': sl.performer || '',
+                    'Day': dayNames[day],
+                    'Arrival': arrival,
+                    'Performance (derived)': derivedTimes.join(', '),
+                    'Performance (override)': override
+                });
+            });
+        });
+    if (scheduleRows.length) {
+        const sched = XLSX.utils.json_to_sheet(scheduleRows);
+        sched['!cols'] = [{ wch: 25 }, { wch: 12 }, { wch: 18 }, { wch: 22 }, { wch: 22 }];
+        XLSX.utils.book_append_sheet(wb, sched, 'Arrivals & Performance');
+    }
+
+    // Members sheet
+    const memberRows = [];
+    state.setLists
+        .slice()
+        .sort((a, b) => (a.performer || '').localeCompare(b.performer || ''))
+        .forEach(sl => {
+            (sl.members || []).forEach(m => {
+                memberRows.push({
+                    'Performer': sl.performer || '',
+                    'Name': m.name || '',
+                    'Phone': m.phone || ''
+                });
+            });
+        });
+    if (memberRows.length) {
+        const mem = XLSX.utils.json_to_sheet(memberRows);
+        mem['!cols'] = [{ wch: 25 }, { wch: 25 }, { wch: 20 }];
+        XLSX.utils.book_append_sheet(wb, mem, 'Members');
+    }
+
     const today = new Date().toISOString().split('T')[0];
-    XLSX.writeFile(wb, `Set_Lists_${today}.xlsx`);
+    XLSX.writeFile(wb, `Performers_${today}.xlsx`);
 }
 
 // Stage Plot PDF Upload

@@ -4469,6 +4469,121 @@ body.menu-open::after {
 .song-edit-row input { flex: 1; }
 .song-edit-row .song-duration-input { flex: 0 0 70px; }
 
+/* Member edit rows in modal */
+.member-edit-row {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+    align-items: center;
+}
+.member-edit-row input { flex: 1; }
+.member-edit-row .member-phone-input { flex: 0 0 180px; }
+
+/* Performer day grid (arrivals + perf overrides) */
+.performer-day-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+.performer-day-grid > div {
+    display: flex;
+    flex-direction: column;
+}
+.performer-day-grid .day-input-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #6b7280;
+    margin-bottom: 0.2rem;
+}
+.performer-day-grid .derived-hint {
+    font-size: 0.72rem;
+    color: #9ca3af;
+    margin-top: 0.2rem;
+    font-style: italic;
+}
+.form-helper {
+    font-size: 0.8rem;
+    color: #6b7280;
+    margin: -0.2rem 0 0.3rem;
+}
+
+/* Performer accordion body — new sections */
+.performer-schedule {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    margin-bottom: 0.75rem;
+    padding: 0.6rem 0.75rem;
+    background: #faf8f3;
+    border-radius: 6px;
+}
+.performer-day-row {
+    display: grid;
+    grid-template-columns: 2.5rem 1fr 1fr;
+    gap: 0.6rem;
+    align-items: baseline;
+    font-size: 0.9rem;
+}
+.performer-day-label {
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #1a3a35;
+}
+.performer-field-label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #9ca3af;
+    margin-right: 0.3rem;
+}
+.perf-manual-tag {
+    font-size: 0.7rem;
+    color: #c9a961;
+    font-style: italic;
+    margin-left: 0.2rem;
+}
+
+.performer-section-title {
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #6b7280;
+    margin: 0.75rem 0 0.4rem;
+}
+.performer-members {
+    margin-bottom: 0.5rem;
+}
+.performer-members-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 0.25rem 1rem;
+}
+.performer-member-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 0.2rem 0;
+    border-bottom: 1px dotted #e5e7eb;
+    gap: 0.5rem;
+}
+.member-name {
+    font-weight: 500;
+    color: #1f2937;
+}
+.member-phone {
+    font-variant-numeric: tabular-nums;
+    color: #4a90a4;
+    text-decoration: none;
+    font-size: 0.9rem;
+}
+.member-phone:hover { text-decoration: underline; }
+.performer-setlist-section { margin-top: 0.5rem; }
+
 /* Wider modal for set lists */
 .modal-lg { max-width: 700px; }
 
@@ -4490,6 +4605,12 @@ body.menu-open::after {
         flex-wrap: wrap;
     }
     .song-edit-row .song-notes-input { flex-basis: 100%; }
+    .member-edit-row { flex-wrap: wrap; }
+    .member-edit-row .member-phone-input { flex-basis: 100%; }
+    .performer-day-grid { grid-template-columns: repeat(2, 1fr); }
+    .performer-day-row { grid-template-columns: 2rem 1fr; }
+    .performer-day-row > .performer-day-field:nth-child(3) { grid-column: 2; }
+    .performer-members-list { grid-template-columns: 1fr; }
 }
 
 /* Print: expand all accordion items */

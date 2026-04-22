@@ -48,7 +48,7 @@
                         </a>
                         <a href="#set-lists" class="nav-link" data-page="set-lists">
                             <svg class="nav-icon" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="13" r="3"/><line x1="8" y1="13" x2="8" y2="2"/><path d="M8 2 C10 2 15 1 15 4 C15 7 10 6 8 6"/></svg>
-                            <span class="nav-label">Set Lists</span>
+                            <span class="nav-label">Performers</span>
                         </a>
                     </div>
                 </div>
@@ -1153,18 +1153,21 @@
             </div>
         </div>
 
-        <!-- Set Lists Page -->
+        <!-- Performers Page -->
         <div id="set-lists" class="page">
             <div class="page-header">
-                <h1>Set Lists</h1>
+                <h1>Performers</h1>
                 <div class="header-actions">
-                    <button class="btn btn-icon" id="print-setlist-btn" title="Print">
+                    <button class="btn btn-icon" id="print-setlist-btn" title="Print Set Lists">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+                    </button>
+                    <button class="btn btn-icon" id="print-performer-contact-btn" title="Print Contact Sheets">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"></path><circle cx="9" cy="10" r="2.5"></circle><path d="M4.5 18c.5-2.5 2.5-4 4.5-4s4 1.5 4.5 4"></path><line x1="14" y1="8" x2="20" y2="8"></line><line x1="14" y1="12" x2="20" y2="12"></line><line x1="14" y1="16" x2="18" y2="16"></line></svg>
                     </button>
                     <button class="btn btn-icon" id="export-setlist-btn" title="Export to Excel">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                     </button>
-                    <button class="btn btn-primary-gold" id="add-setlist-btn">+ Add Set List</button>
+                    <button class="btn btn-primary-gold" id="add-setlist-btn">+ Add Performer</button>
                 </div>
             </div>
 
@@ -1174,7 +1177,7 @@
                     <svg class="page-search-icon" viewBox="0 0 20 20" fill="currentColor" width="18" height="18">
                         <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"/>
                     </svg>
-                    <input type="text" id="setlist-search-input" class="search-input" placeholder="Search performers, songs..." oninput="handleSetListSearch(this.value)">
+                    <input type="text" id="setlist-search-input" class="search-input" placeholder="Search performers, members, songs..." oninput="handleSetListSearch(this.value)">
                     <button type="button" id="setlist-search-clear" class="page-search-clear" onclick="clearSetListSearch()" style="display: none;">&times;</button>
                 </div>
                 <span id="setlist-search-count" class="page-search-count"></span>
@@ -1192,8 +1195,14 @@
                 <div class="stats-grid">
                     <div class="stat-card">
                         <div class="stat-content">
-                            <div class="stat-label">Total Set Lists</div>
+                            <div class="stat-label">Total Performers</div>
                             <div class="stat-value" id="setlist-stat-total">0</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-content">
+                            <div class="stat-label">Total Members</div>
+                            <div class="stat-value" id="setlist-stat-members">0</div>
                         </div>
                     </div>
                     <div class="stat-card">
@@ -1211,7 +1220,7 @@
 
             <!-- Accordion list -->
             <div id="setlist-grid">
-                <p class="empty-state">No set lists added</p>
+                <p class="empty-state">No performers added</p>
             </div>
         </div>
         <!-- Printed Materials Page -->
@@ -1547,11 +1556,11 @@
         </div>
     </div>
 
-    <!-- Set List Modal -->
+    <!-- Performer Modal -->
     <div id="setlist-modal" class="modal">
         <div class="modal-content modal-lg">
             <div class="modal-header">
-                <h2 id="setlist-modal-title">Add Set List</h2>
+                <h2 id="setlist-modal-title">Add Performer</h2>
                 <button class="close-btn">&times;</button>
             </div>
             <div class="modal-body">
@@ -1563,21 +1572,52 @@
                             <input type="text" id="setlist-performer" required>
                         </div>
                         <div class="form-group">
-                            <label for="setlist-stage">Stage *</label>
-                            <select id="setlist-stage" required>
+                            <label for="setlist-stage">Stage</label>
+                            <select id="setlist-stage">
+                                <option value="">— None —</option>
                                 <option value="main">Main Stage</option>
                                 <option value="cocktail">Cocktail Stage</option>
                             </select>
                         </div>
                     </div>
+
+                    <div class="form-group form-section-divider">
+                        <label class="form-section-label">Arrival Times</label>
+                        <div class="performer-day-grid">
+                            <div><label for="setlist-arrival-thursday" class="day-input-label">Thu</label><input type="text" id="setlist-arrival-thursday" placeholder="—"></div>
+                            <div><label for="setlist-arrival-friday" class="day-input-label">Fri</label><input type="text" id="setlist-arrival-friday" placeholder="e.g. 3pm"></div>
+                            <div><label for="setlist-arrival-saturday" class="day-input-label">Sat</label><input type="text" id="setlist-arrival-saturday" placeholder="e.g. 5:15pm"></div>
+                            <div><label for="setlist-arrival-sunday" class="day-input-label">Sun</label><input type="text" id="setlist-arrival-sunday" placeholder="—"></div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-section-label">Performance Times (override)</label>
+                        <p class="form-helper">Blank = use time from the Timeline. Enter a value here only to override.</p>
+                        <div class="performer-day-grid">
+                            <div><label for="setlist-perf-thursday" class="day-input-label">Thu</label><input type="text" id="setlist-perf-thursday" placeholder="—"><span class="derived-hint" id="derived-hint-thursday"></span></div>
+                            <div><label for="setlist-perf-friday" class="day-input-label">Fri</label><input type="text" id="setlist-perf-friday" placeholder="—"><span class="derived-hint" id="derived-hint-friday"></span></div>
+                            <div><label for="setlist-perf-saturday" class="day-input-label">Sat</label><input type="text" id="setlist-perf-saturday" placeholder="—"><span class="derived-hint" id="derived-hint-saturday"></span></div>
+                            <div><label for="setlist-perf-sunday" class="day-input-label">Sun</label><input type="text" id="setlist-perf-sunday" placeholder="—"><span class="derived-hint" id="derived-hint-sunday"></span></div>
+                        </div>
+                    </div>
+
+                    <div class="form-group form-section-divider">
+                        <label class="form-section-label">Members</label>
+                        <div id="setlist-members-container"></div>
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="addMemberRow()">+ Add Member</button>
+                    </div>
+
+                    <div class="form-group form-section-divider">
+                        <label class="form-section-label">Set List</label>
+                        <label for="setlist-duration" style="margin-top:0.5rem">Estimated Total Duration</label>
+                        <input type="text" id="setlist-duration" placeholder="e.g., 45:00">
+                    </div>
+
                     <div class="form-group">
                         <label>Songs</label>
                         <div id="setlist-songs-container"></div>
                         <button type="button" class="btn btn-secondary btn-sm" onclick="addSongRow()">+ Add Song</button>
-                    </div>
-                    <div class="form-group">
-                        <label for="setlist-duration">Estimated Total Duration</label>
-                        <input type="text" id="setlist-duration" placeholder="e.g., 45:00">
                     </div>
                     <div class="form-group">
                         <label for="setlist-notes">Notes for Crew</label>
@@ -1598,7 +1638,7 @@
                     </div>
                     <div class="form-actions">
                         <button type="button" class="btn btn-secondary cancel-btn">Cancel</button>
-                        <button type="submit" class="btn btn-primary">Save Set List</button>
+                        <button type="submit" class="btn btn-primary">Save Performer</button>
                     </div>
                 </form>
             </div>
