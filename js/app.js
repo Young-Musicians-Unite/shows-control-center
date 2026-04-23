@@ -1673,24 +1673,44 @@ function openBudgetModal(itemId = null) {
         suggestionDiv.style.display = 'none';
     }
 
-    // Show linked staff info panel
+    // Show linked staff info panel, hide schedule grid when linked (staff side is authoritative)
+    const scheduleSection = document.getElementById('budget-schedule-section');
     if (item && item.linkedStaffId) {
         const ls = getLinkedStaff(item);
         if (ls) {
             const teams = (ls.teams || []).join(', ');
+            const schedLine = summarizeLinkedSchedule(ls.schedule);
             infoPanel.innerHTML = '<div class="linked-info-summary">' +
                 '<strong>' + escapeHtml(ls.name) + '</strong>' +
                 (ls.role ? ' — ' + escapeHtml(ls.role) : '') +
                 (teams ? '<br>Teams: ' + escapeHtml(teams) : '') +
+                '<br>Schedule: ' + schedLine +
                 '<br><button type="button" class="btn btn-sm" onclick="closeAllModals(); setTimeout(function(){ openStaffModal(\'' + ls.id + '\'); }, 200);">View Staff Entry</button>' +
                 '</div>';
             infoPanel.style.display = '';
+            if (scheduleSection) scheduleSection.style.display = 'none';
         } else {
             infoPanel.style.display = 'none';
+            if (scheduleSection) scheduleSection.style.display = '';
         }
     } else {
         infoPanel.style.display = 'none';
+        if (scheduleSection) scheduleSection.style.display = '';
     }
+}
+
+function summarizeLinkedSchedule(schedule) {
+    if (!schedule) return '<span style="color:#9ca3af;">— (open staff entry to schedule)</span>';
+    const days = [['thursday','Thu'],['friday','Fri'],['saturday','Sat'],['sunday','Sun']];
+    const parts = [];
+    for (const [key, label] of days) {
+        const val = schedule[key];
+        if (val && String(val).trim()) {
+            parts.push(label + ' ' + normalizeTimeForPrint(val));
+        }
+    }
+    if (parts.length === 0) return '<span style="color:#9ca3af;">— (open staff entry to schedule)</span>';
+    return escapeHtml(parts.join(' · '));
 }
 
 function openTimelineModal(itemId = null) {
@@ -1862,17 +1882,19 @@ async function handleBudgetSubmit(e) {
             console.error('Error saving budget link:', err);
         }
 
-        // Save on-site schedule (nested object, also not in fieldMap)
-        try {
-            const schedule = {
-                thursday: document.getElementById('budget-sched-thursday').value.trim() || null,
-                friday:   document.getElementById('budget-sched-friday').value.trim() || null,
-                saturday: document.getElementById('budget-sched-saturday').value.trim() || null,
-                sunday:   document.getElementById('budget-sched-sunday').value.trim() || null
-            };
-            await collections.budget.doc(resolvedBudgetId).update({ schedule });
-        } catch (err) {
-            console.error('Error saving vendor schedule:', err);
+        // Save on-site schedule only for unlinked vendors — staff entry is authoritative when linked
+        if (!newLinkedStaffId) {
+            try {
+                const schedule = {
+                    thursday: document.getElementById('budget-sched-thursday').value.trim() || null,
+                    friday:   document.getElementById('budget-sched-friday').value.trim() || null,
+                    saturday: document.getElementById('budget-sched-saturday').value.trim() || null,
+                    sunday:   document.getElementById('budget-sched-sunday').value.trim() || null
+                };
+                await collections.budget.doc(resolvedBudgetId).update({ schedule });
+            } catch (err) {
+                console.error('Error saving vendor schedule:', err);
+            }
         }
 
         // Clear old staff link if it changed
