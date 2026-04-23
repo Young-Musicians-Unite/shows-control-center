@@ -14,7 +14,9 @@
       "WebFetch(domain:dev.to)",
       "mcp__plugin_playwright_playwright__browser_select_option",
       "mcp__plugin_playwright_playwright__browser_run_code",
-      "mcp__plugin_playwright_playwright__browser_tabs"
+      "mcp__plugin_playwright_playwright__browser_tabs",
+      "Bash(pkill -f \"http.server 8765\")",
+      "Bash(rm -f \"/Users/zachlarmer/Desktop/Claude Projects/Gala Manager App/gala-management/.playwright-screenshots/\"*.png \"/Users/zachlarmer/Desktop/Claude Projects/Gala Manager App/gala-management/.playwright-mcp/\"*)"
     ]
   }
 }

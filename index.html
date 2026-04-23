@@ -512,6 +512,7 @@
                     <button class="btn btn-icon" id="print-staff-btn" title="Print">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
                     </button>
+                    <button class="btn btn-secondary" id="print-checkin-btn" title="Check-in list (staff + on-site vendors)">Check-In List</button>
                     <button class="btn btn-icon" id="export-staff-btn" title="Export to Excel">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                     </button>
@@ -1692,6 +1693,24 @@
         </div>
     </div>
 
+    <!-- Print Check-In List Modal -->
+    <div id="print-checkin-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Print Check-In List</h2>
+                <button type="button" class="close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="copies-hint">Combines all staff and on-site vendors. One page per selected day.</p>
+                <div id="print-checkin-days-list" class="copies-list"></div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary cancel-btn">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="confirmPrintCheckInList()">Print</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Staff Modal -->
     <div id="staff-modal" class="modal">
         <div class="modal-content">
@@ -1710,6 +1729,16 @@
                         <div class="form-group">
                             <label for="staff-role">Role *</label>
                             <input type="text" id="staff-role" required>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="staff-phone">Phone</label>
+                            <input type="tel" id="staff-phone">
+                        </div>
+                        <div class="form-group">
+                            <label for="staff-email">Email</label>
+                            <input type="email" id="staff-email">
                         </div>
                     </div>
                     <div class="form-group">
@@ -1974,6 +2003,28 @@
                             <label for="budget-email">Email</label>
                             <input type="email" id="budget-email">
                         </div>
+                    </div>
+                    <div class="form-group">
+                        <label>On-Site Schedule</label>
+                        <div class="staff-schedule-grid">
+                            <div class="staff-schedule-row">
+                                <span class="staff-schedule-day">Thu</span>
+                                <input type="text" id="budget-sched-thursday" placeholder="e.g. 10:00am - 6pm">
+                            </div>
+                            <div class="staff-schedule-row">
+                                <span class="staff-schedule-day">Fri</span>
+                                <input type="text" id="budget-sched-friday" placeholder="e.g. 10:00am - 6pm">
+                            </div>
+                            <div class="staff-schedule-row">
+                                <span class="staff-schedule-day">Sat</span>
+                                <input type="text" id="budget-sched-saturday" placeholder="e.g. 10:00am - 6pm">
+                            </div>
+                            <div class="staff-schedule-row">
+                                <span class="staff-schedule-day">Sun</span>
+                                <input type="text" id="budget-sched-sunday" placeholder="e.g. 10:00am - 6pm">
+                            </div>
+                        </div>
+                        <p class="form-helper">Filling any day adds this vendor to the check-in sheet for that day. Leave all blank for off-site / shipping-only vendors.</p>
                     </div>
                     <div class="form-row">
                         <div class="form-group">

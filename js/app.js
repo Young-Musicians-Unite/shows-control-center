@@ -702,6 +702,15 @@ function toggleVendorCategorySection(categoryId) {
 }
 window.toggleVendorCategorySection = toggleVendorCategorySection;
 
+function summarizeVendorSchedule(sched) {
+    if (!sched) return '';
+    const days = [
+        ['thursday', 'Thu'], ['friday', 'Fri'], ['saturday', 'Sat'], ['sunday', 'Sun']
+    ].filter(([k]) => sched[k]).map(([, label]) => label);
+    if (days.length === 0) return '';
+    return `<div class="vendor-detail"><span class="vendor-detail-icon">📅</span> On-site ${days.join(', ')}</div>`;
+}
+
 function renderVendors() {
     const container = document.getElementById('vendor-grid');
     if (!container) return;
@@ -807,6 +816,7 @@ function renderVendors() {
                         ${item.contact ? `<div class="vendor-detail"><span class="vendor-detail-icon">👤</span> ${escapeHtml(item.contact)}</div>` : ''}
                         ${item.phone ? `<div class="vendor-detail"><span class="vendor-detail-icon">📞</span> <a href="tel:${escapeHtml(item.phone)}">${escapeHtml(item.phone)}</a></div>` : ''}
                         ${item.email ? `<div class="vendor-detail"><span class="vendor-detail-icon">✉</span> <a href="mailto:${escapeHtml(item.email)}">${escapeHtml(item.email)}</a></div>` : ''}
+                        ${summarizeVendorSchedule(item.schedule)}
                     </div>
                     <div class="vendor-card-budget">
                         ${item.inKind ? '<span class="vendor-in-kind-badge">In-Kind</span>' : ''}
@@ -1625,6 +1635,14 @@ function openBudgetModal(itemId = null) {
     const noContact = document.getElementById('budget-no-contact-needed').checked;
     document.getElementById('budget-contact-fields').style.display = noContact ? 'none' : '';
 
+    // Populate on-site schedule (nested, not in fieldMap)
+    const editItem = itemId ? state.budget.find(b => b.id === itemId) : null;
+    const sched = (editItem && editItem.schedule) || {};
+    document.getElementById('budget-sched-thursday').value = sched.thursday || '';
+    document.getElementById('budget-sched-friday').value = sched.friday || '';
+    document.getElementById('budget-sched-saturday').value = sched.saturday || '';
+    document.getElementById('budget-sched-sunday').value = sched.sunday || '';
+
     // Populate staff link dropdown
     const item = itemId ? state.budget.find(b => b.id === itemId) : null;
     const staffSelect = document.getElementById('budget-linked-staff');
@@ -1842,6 +1860,19 @@ async function handleBudgetSubmit(e) {
             await collections.budget.doc(resolvedBudgetId).update({ linkedStaffId: newLinkedStaffId });
         } catch (err) {
             console.error('Error saving budget link:', err);
+        }
+
+        // Save on-site schedule (nested object, also not in fieldMap)
+        try {
+            const schedule = {
+                thursday: document.getElementById('budget-sched-thursday').value.trim() || null,
+                friday:   document.getElementById('budget-sched-friday').value.trim() || null,
+                saturday: document.getElementById('budget-sched-saturday').value.trim() || null,
+                sunday:   document.getElementById('budget-sched-sunday').value.trim() || null
+            };
+            await collections.budget.doc(resolvedBudgetId).update({ schedule });
+        } catch (err) {
+            console.error('Error saving vendor schedule:', err);
         }
 
         // Clear old staff link if it changed
@@ -2376,6 +2407,10 @@ function setupExportAndPrint() {
     }
     if (printStaffBtn) {
         printStaffBtn.addEventListener('click', openPrintStaffTeamsModal);
+    }
+    const printCheckinBtn = document.getElementById('print-checkin-btn');
+    if (printCheckinBtn) {
+        printCheckinBtn.addEventListener('click', openPrintCheckInModal);
     }
     if (printStageBtn) {
         printStageBtn.addEventListener('click', () => printWithScope('printing-stage-inputs'));
@@ -4247,6 +4282,8 @@ function openStaffModal(memberId = null) {
             document.getElementById('staff-id').value = member.id;
             document.getElementById('staff-name').value = member.name || '';
             document.getElementById('staff-role').value = member.role || '';
+            document.getElementById('staff-phone').value = member.phone || '';
+            document.getElementById('staff-email').value = member.email || '';
             document.getElementById('staff-placeholder').checked = member.isPlaceholder || false;
             staffModalTeams = [...(member.teams || [])];
 
@@ -4261,6 +4298,8 @@ function openStaffModal(memberId = null) {
     } else {
         title.textContent = 'Add Staff Member';
         document.getElementById('staff-id').value = '';
+        document.getElementById('staff-phone').value = '';
+        document.getElementById('staff-email').value = '';
         document.getElementById('staff-sched-thursday').value = '';
         document.getElementById('staff-sched-friday').value = '';
         document.getElementById('staff-sched-saturday').value = '';
@@ -4416,6 +4455,8 @@ async function handleStaffSubmit(e) {
     const staffData = {
         name: newName,
         role: document.getElementById('staff-role').value,
+        phone: document.getElementById('staff-phone').value.trim() || null,
+        email: document.getElementById('staff-email').value.trim() || null,
         teams: [...staffModalTeams],
         schedule: {
             thursday: document.getElementById('staff-sched-thursday').value.trim() || null,
@@ -11222,6 +11263,369 @@ window.openPrintStaffTeamsModal = openPrintStaffTeamsModal;
 window.closePrintStaffTeamsModal = closePrintStaffTeamsModal;
 window.setAllPrintStaffTeams = setAllPrintStaffTeams;
 window.confirmPrintStaffTeams = confirmPrintStaffTeams;
+
+// --- Check-In List (staff + on-site vendors) ---
+const CHECKIN_DAY_KEYS = ['thursday', 'friday', 'saturday', 'sunday'];
+const CHECKIN_DAY_LABELS = { thursday: 'Thursday', friday: 'Friday', saturday: 'Saturday', sunday: 'Sunday' };
+const CHECKIN_DAY_COLORS = { thursday: '#4a90a4', friday: '#7b6cb0', saturday: '#d4795c', sunday: '#4aaa7a' };
+
+function hasAnySchedule(sched) {
+    if (!sched) return false;
+    return CHECKIN_DAY_KEYS.some(d => sched[d]);
+}
+
+function buildCheckInPeople() {
+    const people = [];
+
+    for (const m of state.staff) {
+        const linked = getLinkedBudget(m);
+        const team = (m.teams && m.teams.length > 0) ? m.teams[0] : 'Staff';
+        const displayName = m.name || m.role || 'TBD';
+        people.push({
+            id: 's_' + m.id,
+            name: displayName,
+            role: m.role || '',
+            team,
+            schedule: m.schedule || {},
+            phone: m.phone || (linked && linked.phone) || '',
+            email: m.email || (linked && linked.email) || '',
+            source: 'staff',
+            isPlaceholder: !!m.isPlaceholder
+        });
+    }
+
+    for (const b of state.budget) {
+        if (b.linkedStaffId) continue; // represented by the linked staff entry
+        if (!hasAnySchedule(b.schedule)) continue;
+        const hasContact = !!(b.contact && b.contact.trim());
+        people.push({
+            id: 'b_' + b.id,
+            name: hasContact ? b.contact : (b.vendor || 'Unnamed vendor'),
+            role: hasContact ? (b.vendor || '') : (b.description || ''),
+            team: 'Vendor',
+            schedule: b.schedule || {},
+            phone: b.phone || '',
+            email: b.email || '',
+            source: 'vendor',
+            isPlaceholder: false
+        });
+    }
+
+    return people.sort((a, b) =>
+        (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' })
+    );
+}
+
+function openPrintCheckInModal() {
+    const listEl = document.getElementById('print-checkin-days-list');
+    if (!listEl) return;
+
+    const people = buildCheckInPeople();
+    const counts = {};
+    for (const d of CHECKIN_DAY_KEYS) {
+        counts[d] = people.filter(p => p.schedule[d]).length;
+    }
+
+    listEl.innerHTML = CHECKIN_DAY_KEYS.map(d => `
+        <label class="copies-row staff-team-row">
+            <div class="copies-row-label">
+                <input type="checkbox" class="checkin-day-check" data-day="${d}" checked>
+                <span class="staff-team-swatch" style="background:${CHECKIN_DAY_COLORS[d]}"></span>
+                <span class="copies-row-name">${CHECKIN_DAY_LABELS[d]}</span>
+                <span class="staff-team-count">(${counts[d]})</span>
+            </div>
+        </label>`).join('');
+
+    // Surface people with no schedule at all — they won't appear on any printed day.
+    const unscheduled = people.filter(p => !CHECKIN_DAY_KEYS.some(d => p.schedule[d]));
+    let hintEl = document.getElementById('print-checkin-unscheduled-hint');
+    if (!hintEl) {
+        hintEl = document.createElement('div');
+        hintEl.id = 'print-checkin-unscheduled-hint';
+        hintEl.className = 'form-helper';
+        hintEl.style.marginTop = '12px';
+        listEl.parentNode.insertBefore(hintEl, listEl.nextSibling);
+    }
+    if (unscheduled.length > 0) {
+        const staffCount = unscheduled.filter(p => p.source === 'staff').length;
+        const vendorCount = unscheduled.length - staffCount;
+        const parts = [];
+        if (staffCount) parts.push(staffCount + ' staff');
+        if (vendorCount) parts.push(vendorCount + ' vendor' + (vendorCount === 1 ? '' : 's'));
+        hintEl.innerHTML = '⚠ ' + parts.join(' and ') + ' have no schedule on any day and won\'t appear on the printout. Open them to set Thu/Fri/Sat/Sun times.';
+        hintEl.style.display = '';
+    } else {
+        hintEl.style.display = 'none';
+    }
+
+    const modal = document.getElementById('print-checkin-modal');
+    if (modal) modal.classList.add('active');
+}
+
+function closePrintCheckInModal() {
+    const modal = document.getElementById('print-checkin-modal');
+    if (modal) modal.classList.remove('active');
+}
+
+function confirmPrintCheckInList() {
+    const selected = [];
+    document.querySelectorAll('#print-checkin-days-list .checkin-day-check:checked').forEach(cb => {
+        selected.push(cb.dataset.day);
+    });
+    if (selected.length === 0) {
+        showToast('Select at least one day', 'error');
+        return;
+    }
+    closePrintCheckInModal();
+    generateCheckInPrintWindow(selected);
+}
+
+function abbreviateTeam(team) {
+    if (!team) return '';
+    let t = String(team).trim().replace(/\s+team\s*$/i, '');
+    if (/^mainstage production$/i.test(t)) t = 'Mainstage';
+    return t;
+}
+
+function formatCheckInHours(h) {
+    // h = decimal hours, may exceed 24 for past-midnight ranges. Collapse to 12-hour label.
+    let hh = ((Math.floor(h) % 24) + 24) % 24;
+    let mm = Math.round((h - Math.floor(h)) * 60);
+    if (mm === 60) { hh = (hh + 1) % 24; mm = 0; }
+    const ampm = hh >= 12 ? 'pm' : 'am';
+    const display = hh === 0 ? 12 : (hh > 12 ? hh - 12 : hh);
+    return display + (mm === 0 ? '' : ':' + String(mm).padStart(2, '0')) + ampm;
+}
+
+function normalizeTimeForPrint(raw) {
+    if (!raw) return '';
+    // Accept semicolon-for-colon typos and double-seconds forms like "10:30:00 PM"
+    let cleaned = String(raw)
+        .replace(/;/g, ':')
+        .replace(/(\d{1,2}:\d{2}):\d{2}\b/g, '$1'); // strip trailing :SS
+
+    // Split on "/" for multi-range schedules (e.g. "1-5pm / 10:30pm - 2:30am")
+    const parts = cleaned.split('/').map(p => p.trim()).filter(Boolean);
+    const formatted = [];
+    // Detect am/pm anywhere — just look for 'a' or 'p' adjacent to digits or at word boundary
+    const hasAmPm = s => /[ap]m?\b/i.test(s);
+
+    for (const part of parts) {
+        const halves = part.split(/\s*[-–—]\s*/);
+        if (halves.length !== 2) { formatted.push(part); continue; }
+        let [startStr, endStr] = halves.map(h => h.trim());
+        // If start lacks am/pm but end has it, inherit — "1-5pm" → "1pm-5pm"
+        if (!hasAmPm(startStr) && hasAmPm(endStr)) {
+            const suffix = /p/i.test(endStr) ? 'pm' : 'am';
+            startStr = startStr + suffix;
+        }
+        const start = parseStaffTime(startStr);
+        let end = parseStaffTime(endStr);
+        if (start === null || end === null) { formatted.push(part); continue; }
+        if (end <= start) end += 24;
+        formatted.push(formatCheckInHours(start) + '–' + formatCheckInHours(end));
+    }
+    return formatted.join(' / ');
+}
+
+function normalizePhoneForPrint(raw) {
+    if (!raw) return '';
+    const digits = String(raw).replace(/\D/g, '');
+    if (digits.length === 10) {
+        return '(' + digits.slice(0,3) + ') ' + digits.slice(3,6) + '-' + digits.slice(6);
+    }
+    if (digits.length === 11 && digits[0] === '1') {
+        return '(' + digits.slice(1,4) + ') ' + digits.slice(4,7) + '-' + digits.slice(7);
+    }
+    // Not a recognizable phone — suppress obvious junk (e.g. names in the phone field)
+    if (digits.length < 7) return '';
+    return String(raw).trim();
+}
+
+function generateCheckInPrintWindow(days) {
+    const esc = (s) => String(s || '').replace(/[&<>"']/g,
+        c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const dash = '<span class="empty">—</span>';
+    const printedDate = new Date().toISOString().split('T')[0];
+
+    const people = buildCheckInPeople();
+
+    const pagesHtml = days.map(day => {
+        const color = CHECKIN_DAY_COLORS[day];
+        const label = CHECKIN_DAY_LABELS[day];
+        const dayPeople = people
+            .filter(p => p.schedule[day])
+            .sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }));
+
+        if (dayPeople.length === 0) {
+            return `
+                <section class="team-page">
+                    <header class="team-banner" style="background:${color}">
+                        <h1 class="team-name">${esc(label)} Check-In</h1>
+                        <div class="team-meta">0 PEOPLE · YMU GALA 2026 · PRINTED ${printedDate}</div>
+                    </header>
+                    <div class="empty-day">No one scheduled for ${esc(label)}.</div>
+                </section>`;
+        }
+
+        const rows = dayPeople.map(p => {
+            const phone = normalizePhoneForPrint(p.phone);
+            const email = (p.email || '').trim();
+            const time = normalizeTimeForPrint(p.schedule[day]);
+            const nameCell = p.isPlaceholder
+                ? `<span class="tbd-tag">TBD</span> ${esc(p.name)}`
+                : esc(p.name);
+            return `
+                <tr class="${p.isPlaceholder ? 'placeholder-row' : ''}">
+                    <td class="check"><span class="checkbox-cell"></span></td>
+                    <td class="name">${nameCell}</td>
+                    <td class="role">${esc(p.role)}</td>
+                    <td class="team">${esc(abbreviateTeam(p.team))}</td>
+                    <td class="sched">${esc(time)}</td>
+                    <td class="phone">${phone ? esc(phone) : dash}</td>
+                    <td class="email">${email ? esc(email) : dash}</td>
+                </tr>`;
+        }).join('');
+
+        return `
+            <section class="team-page">
+                <table class="staff-table">
+                    <thead>
+                        <tr class="running-header">
+                            <th colspan="7" class="running-banner" style="background:${color}">
+                                <span class="rb-title">${esc(label)} Check-In</span>
+                                <span class="rb-meta">${dayPeople.length} people · YMU Gala 2026 · Printed ${printedDate}</span>
+                            </th>
+                        </tr>
+                        <tr class="col-headers">
+                            <th class="check"></th>
+                            <th class="name">Name</th>
+                            <th class="role">Role / Company</th>
+                            <th class="team">Team</th>
+                            <th class="sched">Time</th>
+                            <th class="phone">Phone</th>
+                            <th class="email">Email</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            </section>`;
+    }).join('');
+
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Check-In List — YMU Gala 2026</title>
+<style>
+    /* margin:0 on @page suppresses browser-injected header/footer (date, URL, "about:blank", page numbers). Our own padding lives on the section. */
+    @page { size: letter landscape; margin: 0; }
+    * { box-sizing: border-box; }
+    html, body {
+        margin: 0; padding: 0; background: #fff; color: #222;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    }
+    .team-page {
+        page-break-after: always; break-after: page;
+        padding: 0.4in 0.4in 0.3in;
+    }
+    .team-page:last-child { page-break-after: auto; break-after: auto; }
+
+    /* Empty-day section still uses the old big banner (no table means nothing to repeat) */
+    .team-banner {
+        color: #fff; padding: 18px 22px 14px; margin-bottom: 14px; border-radius: 4px;
+        -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    }
+    .team-name { margin: 0; font-size: 28pt; font-weight: 800; letter-spacing: 0.01em; text-transform: uppercase; line-height: 1.05; }
+    .team-meta { margin-top: 4px; font-size: 9pt; font-weight: 600; letter-spacing: 0.15em; opacity: 0.92; }
+
+    .staff-table { width: 100%; border-collapse: collapse; font-size: 9.5pt; }
+
+    /* Running header: lives inside <thead>, repeats on every physical page automatically */
+    .running-banner {
+        color: #fff; text-align: left; padding: 10px 14px 9px;
+        border-bottom: 0; border-radius: 3px 3px 0 0;
+        -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    }
+    .running-banner .rb-title {
+        font-size: 15pt; font-weight: 800; letter-spacing: 0.01em;
+        text-transform: uppercase; margin-right: 12px;
+    }
+    .running-banner .rb-meta {
+        font-size: 8.5pt; font-weight: 500; letter-spacing: 0.08em;
+        opacity: 0.92; text-transform: uppercase;
+    }
+
+    .col-headers th {
+        text-align: left; padding: 6px 8px; background: #f3f4f6;
+        border-bottom: 2px solid #222; font-size: 8pt; text-transform: uppercase;
+        letter-spacing: 0.05em; font-weight: 700; color: #374151;
+        -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    }
+    .staff-table tbody td { padding: 5px 8px; border-bottom: 1px solid #e5e7eb; vertical-align: top; }
+    .staff-table tbody tr:nth-child(even) td {
+        background: #fafafa;
+        -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    }
+    .staff-table th.check, .staff-table td.check { width: 0.35in; text-align: center; }
+    .checkbox-cell { display: inline-block; width: 14px; height: 14px; border: 1.5px solid #222; border-radius: 2px; }
+    .staff-table th.name, .staff-table td.name { width: 1.85in; font-weight: 600; }
+    .staff-table th.role, .staff-table td.role { width: 1.9in; color: #374151; }
+    .staff-table th.team, .staff-table td.team { width: 0.85in; color: #6b7280; font-size: 8.5pt; }
+    .staff-table th.sched, .staff-table td.sched { width: 1.3in; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .staff-table th.phone, .staff-table td.phone { width: 1.15in; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .staff-table th.email, .staff-table td.email { font-size: 8.5pt; overflow-wrap: break-word; word-break: normal; }
+    .empty { color: #cbd1d8; }
+    .placeholder-row td.name { color: #6b7280; }
+    .placeholder-row td { background: #fbfbf8 !important; }
+    .tbd-tag {
+        display: inline-block; font-size: 7.5pt; font-weight: 700;
+        letter-spacing: 0.04em; padding: 1px 5px; margin-right: 4px;
+        background: #d97706; color: #fff; border-radius: 2px; vertical-align: 1px;
+        -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    }
+    tr { page-break-inside: avoid; }
+    thead { display: table-header-group; }
+    .empty-day {
+        padding: 40px 20px; text-align: center; color: #9ca3af;
+        font-size: 11pt; font-style: italic; border: 1px dashed #e5e7eb; border-radius: 4px;
+    }
+    @media screen {
+        body { background: #e5e7eb; padding: 20px; }
+        .team-page {
+            background: #fff; box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            padding: 32px; margin: 0 auto 20px; max-width: 10in;
+        }
+    }
+</style>
+</head>
+<body>
+    ${pagesHtml}
+    <script>
+        if (document.readyState === 'complete') {
+            setTimeout(() => window.print(), 150);
+        } else {
+            window.addEventListener('load', () => setTimeout(() => window.print(), 150));
+        }
+    <\/script>
+</body>
+</html>`;
+
+    const w = window.open('', '_blank');
+    if (!w) {
+        showToast('Please allow popups to print check-in list', 'error');
+        return;
+    }
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+}
+
+window.openPrintCheckInModal = openPrintCheckInModal;
+window.closePrintCheckInModal = closePrintCheckInModal;
+window.confirmPrintCheckInList = confirmPrintCheckInList;
 
 const PERFORMER_DAY_KEYS = ['thursday', 'friday', 'saturday', 'sunday'];
 
