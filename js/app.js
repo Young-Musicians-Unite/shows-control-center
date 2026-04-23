@@ -34,6 +34,7 @@ const state = {
     vendorScheduleEditingRowId: null,       // blocks re-render during cell edit
     vendorScheduleRenderPending: false,     // deferred re-render flag
     pendingVendorScheduleEdit: null,        // { id, day, originalValue } — for Esc revert
+    vendorGanttDay: 'saturday',             // selected day for Vendor Schedule gantt
     staffSearch: '',
     staffFilter: 'all',  // 'all' or 'unfilled'
     staffView: 'team',
@@ -427,6 +428,7 @@ function switchPage(pageName) {
             state.vendorScheduleEditingRowId = null;
             state.vendorScheduleRenderPending = false;
             state.pendingVendorScheduleEdit = null;
+            state.vendorGanttDay = 'saturday';
             const vendorSearchInput = document.getElementById('vendor-search-input');
             if (vendorSearchInput) vendorSearchInput.value = '';
             const vendorFilterBtns = document.querySelectorAll('#vendor-card-view .vendor-filter-btn');
@@ -866,7 +868,7 @@ function renderVendorCards() {
                         ${item.contact ? `<div class="vendor-detail"><span class="vendor-detail-icon">👤</span> ${escapeHtml(item.contact)}</div>` : ''}
                         ${item.phone ? `<div class="vendor-detail"><span class="vendor-detail-icon">📞</span> <a href="tel:${escapeHtml(item.phone)}">${escapeHtml(item.phone)}</a></div>` : ''}
                         ${item.email ? `<div class="vendor-detail"><span class="vendor-detail-icon">✉</span> <a href="mailto:${escapeHtml(item.email)}">${escapeHtml(item.email)}</a></div>` : ''}
-                        ${summarizeVendorSchedule(item.schedule)}
+                        ${summarizeVendorSchedule(linkedStaff ? linkedStaff.schedule : item.schedule)}
                     </div>
                     <div class="vendor-card-budget">
                         ${item.inKind ? '<span class="vendor-in-kind-badge">In-Kind</span>' : ''}
@@ -1010,7 +1012,7 @@ function renderVendorSchedule() {
                     return `<td class="vendor-sched-cell" data-field="day" data-day="${key}"><span class="phantom-placeholder">—</span></td>`;
                 }
                 if (isLinked) {
-                    return `<td class="vendor-sched-cell" data-field="day" data-day="${key}" title="Managed on staff entry">${display}</td>`;
+                    return `<td class="vendor-sched-cell" data-field="day" data-day="${key}" data-original="${escapeHtml(raw)}" title="Also editable on staff tab" onclick="editVendorScheduleCell(this)">${display}</td>`;
                 }
                 return `<td class="vendor-sched-cell" data-field="day" data-day="${key}" data-original="${escapeHtml(raw)}" onclick="editVendorScheduleCell(this)">${display}</td>`;
             }).join('');
@@ -1021,7 +1023,7 @@ function renderVendorSchedule() {
             const subtitle = subtitleParts.length ? `<span class="vendor-sched-subtitle">${subtitleParts.join(' · ')}</span>` : '';
 
             const linkedBadge = isLinked
-                ? ` <span class="vendor-sched-linked-badge" onclick="event.stopPropagation(); openStaffModal('${linked.id}')" title="Open staff entry">managed on staff entry</span>`
+                ? ` <span class="vendor-sched-linked-badge" onclick="event.stopPropagation(); openStaffModal('${linked.id}')" title="Open staff entry">also on staff tab</span>`
                 : '';
             const offSitePill = isOffSite ? ` <span class="vendor-sched-offsite-pill">Off-site</span>` : '';
 
@@ -1087,6 +1089,8 @@ function renderVendorSchedule() {
             if (arrow) arrow.textContent = isExpanded ? '▼' : '▶';
         });
     }
+
+    renderVendorGantt();
 }
 
 function editVendorScheduleCell(cell) {
@@ -1197,11 +1201,22 @@ async function saveVendorScheduleCell(cell, row, afterSave) {
 
     const writeValue = newValue === '' ? firebase.firestore.FieldValue.delete() : newValue;
 
+    // Linked pairs: staff is authoritative (see commit 4d48229). Redirect write to the staff doc.
+    const budgetItem = state.budget.find(b => b.id === id);
+    const linkedStaffId = budgetItem && budgetItem.linkedStaffId;
+
     try {
-        await collections.budget.doc(id).update({
-            [`schedule.${day}`]: writeValue,
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
+        if (linkedStaffId) {
+            await collections.staff.doc(linkedStaffId).update({
+                [`schedule.${day}`]: writeValue,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+        } else {
+            await collections.budget.doc(id).update({
+                [`schedule.${day}`]: writeValue,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+        }
         cell.dataset.original = newValue;
         restoreVendorScheduleCellDisplay(cell);
         showToast('Updated');
@@ -1229,6 +1244,127 @@ async function toggleVendorOffSite(id, onSite) {
     }
 }
 window.toggleVendorOffSite = toggleVendorOffSite;
+
+// ---------- Vendor Schedule Gantt ----------
+
+function setVendorGanttDay(day) {
+    state.vendorGanttDay = day;
+    document.querySelectorAll('.vendor-gantt-day-tab').forEach(tab => {
+        tab.classList.toggle('active', tab.dataset.day === day);
+    });
+    renderVendorGantt();
+}
+window.setVendorGanttDay = setVendorGanttDay;
+
+function renderVendorGantt() {
+    const container = document.getElementById('vendor-gantt-container');
+    if (!container) return;
+
+    const day = state.vendorGanttDay;
+    const dayKeys = ['thursday', 'friday', 'saturday', 'sunday'];
+    const dayNames = ['Thu', 'Fri', 'Sat', 'Sun'];
+
+    // Per-day counts for the tab labels
+    const dayCounts = { thursday: 0, friday: 0, saturday: 0, sunday: 0 };
+    for (const b of state.budget) {
+        if (b.offSite === true) continue;
+        const linked = getLinkedStaff(b);
+        const sched = linked ? (linked.schedule || {}) : (b.schedule || {});
+        for (const d of dayKeys) if (sched[d]) dayCounts[d]++;
+    }
+    document.querySelectorAll('.vendor-gantt-day-tab').forEach(tab => {
+        const d = tab.dataset.day;
+        const idx = dayKeys.indexOf(d);
+        if (idx !== -1) tab.textContent = dayNames[idx] + ' (' + dayCounts[d] + ')';
+    });
+
+    // Resolve entries for the selected day
+    const entries = [];
+    for (const item of state.budget) {
+        if (item.offSite === true) continue;
+        const linked = getLinkedStaff(item);
+        const sched = linked ? (linked.schedule || {}) : (item.schedule || {});
+        const timeStr = sched[day];
+        if (!timeStr) continue;
+        entries.push({ item, linked, timeStr });
+    }
+
+    if (entries.length === 0) {
+        container.innerHTML = '<div class="staff-empty-state">No vendors scheduled for this day</div>';
+        return;
+    }
+
+    // Axis — match staff gantt so the two align visually
+    const axisStart = 7;
+    const axisEnd = 27;
+    const axisRange = axisEnd - axisStart;
+
+    const axisLabels = [];
+    for (let h = axisStart; h < axisEnd; h++) {
+        const displayH = h > 24 ? h - 24 : h;
+        const suffix = displayH < 12 || displayH === 24 ? 'a' : 'p';
+        const label = displayH === 0 ? '12a' : displayH === 12 ? '12p' : (displayH > 12 ? displayH - 12 : displayH) + suffix;
+        axisLabels.push(label);
+    }
+
+    const timeAxisHtml = '<div class="vendor-gantt-time-axis">' +
+        axisLabels.map(l => '<span class="vendor-gantt-time-label">' + l + '</span>').join('') +
+        '</div>';
+
+    // Group by category
+    const catMap = new Map();
+    for (const entry of entries) {
+        const cat = entry.item.category || 'Uncategorized';
+        if (!catMap.has(cat)) catMap.set(cat, []);
+        catMap.get(cat).push(entry);
+    }
+    const sortedCats = [...catMap.keys()].sort((a, b) => a.localeCompare(b));
+
+    let html = timeAxisHtml;
+    for (const cat of sortedCats) {
+        const displayCat = cat.replace(/^6811[a-g] - /, '');
+        const color = getTeamColor(cat);
+        const catEntries = catMap.get(cat).sort((a, b) => (a.item.vendor || '').localeCompare(b.item.vendor || ''));
+
+        html += '<div class="vendor-gantt-team">';
+        html += '<div class="vendor-gantt-team-header">' + escapeHtml(displayCat) + '</div>';
+
+        for (const { item, linked, timeStr } of catEntries) {
+            const ranges = parseStaffScheduleRange(timeStr);
+            const onClick = linked
+                ? `openStaffModal('${linked.id}')`
+                : `editBudgetItem('${item.id}')`;
+            const barsHtml = ranges.map(r => {
+                const left = Math.max(0, (r.start - axisStart) / axisRange * 100);
+                const width = Math.min(100 - left, (r.end - r.start) / axisRange * 100);
+                const label = formatScheduleShort(timeStr) || '';
+                const linkedMark = linked ? ' vendor-gantt-bar-linked' : '';
+                const titleText = (item.vendor || 'Unnamed') + ': ' + timeStr + (linked ? ' (staff: ' + linked.name + ')' : '');
+                return '<div class="vendor-gantt-bar' + linkedMark + '"' +
+                    ' style="left:' + left + '%;width:' + width + '%;background:' + color + '"' +
+                    ' onclick="' + onClick + '"' +
+                    ' title="' + escapeHtml(titleText) + '">' +
+                    (ranges.length === 1 ? escapeHtml(label) : '') +
+                '</div>';
+            }).join('');
+
+            const displayName = escapeHtml(item.vendor || 'Unnamed');
+            const linkedTag = linked ? '<span class="multi-team-tag">staff</span>' : '';
+
+            html += '<div class="vendor-gantt-row">' +
+                '<div class="vendor-gantt-name" onclick="' + onClick + '">' +
+                    displayName + linkedTag +
+                '</div>' +
+                '<div class="vendor-gantt-bar-area">' + barsHtml + '</div>' +
+            '</div>';
+        }
+
+        html += '</div>';
+    }
+
+    container.innerHTML = html;
+}
+window.renderVendorGantt = renderVendorGantt;
 
 function setupVendorFilters() {
     const filterBtns = document.querySelectorAll('#vendor-card-view .vendor-filter-btn');

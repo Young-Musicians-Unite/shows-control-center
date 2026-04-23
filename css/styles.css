@@ -3966,7 +3966,8 @@ body.menu-open::after {
     align-items: center;
 }
 
-.staff-day-tab {
+.staff-day-tab,
+.vendor-gantt-day-tab {
     padding: 6px 18px;
     border: none;
     background: #f0ece3;
@@ -3978,7 +3979,8 @@ body.menu-open::after {
     transition: all 0.2s ease;
 }
 
-.staff-day-tab.active {
+.staff-day-tab.active,
+.vendor-gantt-day-tab.active {
     background: #c9a961;
     color: #fff;
 }
@@ -3990,11 +3992,13 @@ body.menu-open::after {
 }
 
 /* Gantt chart */
-.staff-gantt-team {
+.staff-gantt-team,
+.vendor-gantt-team {
     margin-bottom: 1.25rem;
 }
 
-.staff-gantt-team-header {
+.staff-gantt-team-header,
+.vendor-gantt-team-header {
     font-family: 'Cormorant Garamond', Georgia, serif;
     font-size: 1.1rem;
     font-weight: 700;
@@ -4004,7 +4008,8 @@ body.menu-open::after {
     margin-bottom: 0.5rem;
 }
 
-.staff-gantt-time-axis {
+.staff-gantt-time-axis,
+.vendor-gantt-time-axis {
     display: flex;
     margin-left: 140px;
     margin-right: 4px;
@@ -4013,24 +4018,28 @@ body.menu-open::after {
     color: #8a8778;
 }
 
-.staff-gantt-time-label {
+.staff-gantt-time-label,
+.vendor-gantt-time-label {
     flex: 1;
     text-align: left;
 }
 
-.staff-gantt-row {
+.staff-gantt-row,
+.vendor-gantt-row {
     display: flex;
     align-items: center;
     margin-bottom: 3px;
     height: 26px;
 }
 
-.staff-gantt-row:hover {
+.staff-gantt-row:hover,
+.vendor-gantt-row:hover {
     background: rgba(201, 169, 97, 0.04);
     border-radius: 4px;
 }
 
-.staff-gantt-name {
+.staff-gantt-name,
+.vendor-gantt-name {
     width: 140px;
     min-width: 140px;
     font-size: 0.8rem;
@@ -4042,7 +4051,8 @@ body.menu-open::after {
     cursor: pointer;
 }
 
-.staff-gantt-name:hover {
+.staff-gantt-name:hover,
+.vendor-gantt-name:hover {
     color: #c9a961;
 }
 
@@ -4051,7 +4061,8 @@ body.menu-open::after {
     font-style: italic;
 }
 
-.staff-gantt-name .multi-team-tag {
+.staff-gantt-name .multi-team-tag,
+.vendor-gantt-name .multi-team-tag {
     font-size: 0.65rem;
     color: #8888cc;
     margin-left: 4px;
@@ -4063,7 +4074,8 @@ body.menu-open::after {
     margin-left: 2px;
 }
 
-.staff-gantt-bar-area {
+.staff-gantt-bar-area,
+.vendor-gantt-bar-area {
     flex: 1;
     position: relative;
     height: 100%;
@@ -4077,7 +4089,8 @@ body.menu-open::after {
     border-radius: 4px;
 }
 
-.staff-gantt-bar {
+.staff-gantt-bar,
+.vendor-gantt-bar {
     position: absolute;
     top: 3px;
     bottom: 3px;
@@ -4095,12 +4108,38 @@ body.menu-open::after {
     transition: filter 0.15s ease;
 }
 
-.staff-gantt-bar:hover {
+.staff-gantt-bar:hover,
+.vendor-gantt-bar:hover {
     filter: brightness(1.1);
 }
 
 .staff-gantt-bar.placeholder-bar {
     opacity: 0.4;
+}
+
+.vendor-gantt-bar-linked {
+    box-shadow: inset 0 0 0 2px rgba(255,255,255,0.35);
+}
+
+.vendor-gantt-heading {
+    font-family: 'Cormorant Garamond', Georgia, serif;
+    color: #1a3a35;
+    font-size: 1.15rem;
+    font-weight: 700;
+    margin: 0 0 0.75rem 0;
+}
+
+.vendor-gantt-day-tabs {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+    flex-wrap: wrap;
+}
+
+#vendor-gantt-section {
+    margin-top: 2rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid #e8e3d8;
 }
 
 /* Modal team tags input */
@@ -4253,13 +4292,15 @@ body.menu-open::after {
         text-align: center;
     }
 
-    .staff-gantt-name {
+    .staff-gantt-name,
+    .vendor-gantt-name {
         width: 90px;
         min-width: 90px;
         font-size: 0.7rem;
     }
 
-    .staff-gantt-time-axis {
+    .staff-gantt-time-axis,
+    .vendor-gantt-time-axis {
         margin-left: 90px;
         font-size: 0.6rem;
     }
@@ -4842,12 +4883,12 @@ body.menu-open::after {
 
 .vendor-sched-row.linked .vendor-sched-cell[data-field="day"] {
     background-color: rgba(201, 169, 97, 0.05);
-    cursor: default;
+    cursor: cell;
     color: #6b675b;
 }
 
 .vendor-sched-row.linked .vendor-sched-cell[data-field="day"]:hover {
-    background-color: rgba(201, 169, 97, 0.05);
+    background-color: rgba(201, 169, 97, 0.12);
 }
 
 .vendor-sched-linked-badge {

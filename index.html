@@ -288,6 +288,16 @@
                     <button class="vendor-filter-btn" data-schedule-filter="needs-schedule" onclick="setVendorScheduleFilter('needs-schedule')">Needs schedule</button>
                 </div>
                 <div id="vendor-schedule-container"></div>
+                <div id="vendor-gantt-section">
+                    <h2 class="vendor-gantt-heading">Schedule Gantt</h2>
+                    <div class="vendor-gantt-day-tabs">
+                        <button class="vendor-gantt-day-tab" data-day="thursday" onclick="setVendorGanttDay('thursday')">Thu</button>
+                        <button class="vendor-gantt-day-tab" data-day="friday" onclick="setVendorGanttDay('friday')">Fri</button>
+                        <button class="vendor-gantt-day-tab active" data-day="saturday" onclick="setVendorGanttDay('saturday')">Sat</button>
+                        <button class="vendor-gantt-day-tab" data-day="sunday" onclick="setVendorGanttDay('sunday')">Sun</button>
+                    </div>
+                    <div id="vendor-gantt-container"></div>
+                </div>
             </div>
         </div>
 
