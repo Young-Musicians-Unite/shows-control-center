@@ -10184,8 +10184,9 @@ function renderSetLists() {
             const override = overrides[day] || '';
             const derivedTimes = (derived[day] || []).filter(Boolean).map(t => formatTime12Hour(t));
             const soundcheckTimes = (soundchecks[day] || []).filter(Boolean).map(t => formatTime12Hour(t));
-            const perfDisplay = override
-                ? `${escapeHtml(override)} <span class="perf-manual-tag">(manual)</span>`
+            const overrideFormatted = formatPerfOverride(override);
+            const perfDisplay = overrideFormatted
+                ? `${escapeHtml(overrideFormatted)} <span class="perf-manual-tag">(manual)</span>`
                 : (derivedTimes.length ? derivedTimes.map(escapeHtml).join(', ') : '');
             const soundcheckDisplay = soundcheckTimes.length
                 ? soundcheckTimes.map(escapeHtml).join(', ')
@@ -10728,7 +10729,7 @@ function generatePerformerContactWindow(items) {
             const override = overrides[day] || '';
             const derivedTimes = (derived[day] || []).filter(Boolean).map(t => formatTime12Hour(t));
             const soundcheckTimes = (soundchecks[day] || []).filter(Boolean).map(t => formatTime12Hour(t));
-            const perf = override || (derivedTimes.join(', '));
+            const perf = formatPerfOverride(override) || derivedTimes.join(', ');
             const soundcheck = soundcheckTimes.join(', ');
             if (!arrival && !perf && !soundcheck) return '';
             return `
@@ -11332,6 +11333,14 @@ function getDerivedPerformanceTimes(performerName) {
     return result;
 }
 
+// Format a manual performanceOverrides value: if it looks like 24h HH:MM,
+// convert to 12h AM/PM; otherwise preserve whatever the user typed.
+function formatPerfOverride(raw) {
+    const s = (raw || '').trim();
+    if (!s) return '';
+    return /^\d{1,2}:\d{2}$/.test(s) ? formatTime12Hour(s) : s;
+}
+
 function getDerivedSoundcheckTimes(performerName) {
     const result = { thursday: [], friday: [], saturday: [], sunday: [] };
     const norm = (performerName || '').trim().toLowerCase();
@@ -11570,7 +11579,7 @@ function exportSetListToExcel() {
                     'Arrival': arrival,
                     'Soundcheck': soundcheckTimes.join(', '),
                     'Performance (derived)': derivedTimes.join(', '),
-                    'Performance (override)': override
+                    'Performance (override)': formatPerfOverride(override)
                 });
             });
         });
