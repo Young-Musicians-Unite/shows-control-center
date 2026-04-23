@@ -10729,7 +10729,6 @@ function generatePerformerContactWindow(items) {
             const derivedTimes = (derived[day] || []).filter(Boolean).map(t => formatTime12Hour(t));
             const soundcheckTimes = (soundchecks[day] || []).filter(Boolean).map(t => formatTime12Hour(t));
             const perf = override || (derivedTimes.join(', '));
-            const perfSuffix = override ? ' (manual)' : '';
             const soundcheck = soundcheckTimes.join(', ');
             if (!arrival && !perf && !soundcheck) return '';
             return `
@@ -10737,7 +10736,7 @@ function generatePerformerContactWindow(items) {
                     <td class="day">${dayLabels[day]}</td>
                     <td>${esc(arrival)}</td>
                     <td>${esc(soundcheck)}</td>
-                    <td>${esc(perf)}${esc(perfSuffix)}</td>
+                    <td>${esc(perf)}</td>
                 </tr>`;
         }).filter(Boolean).join('');
 
@@ -11314,75 +11313,22 @@ function removeMemberRow(btn) {
 window.addMemberRow = addMemberRow;
 window.removeMemberRow = removeMemberRow;
 
-// Word-based fuzzy match used to relate a timeline event's band-name subject
-// (e.g. "West Little River K-8 + Homestead Senior High School") to a
-// performer record whose name is similar but not a substring.
-const PERFORMER_MATCH_STOPWORDS = new Set([
-    'band', 'the', 'and', 'act', 'set', 'show', 'host', 'intro',
-    'main', 'stage', 'cocktail', 'arrival', 'performance'
-]);
-function performerSubjectMatches(subject, performerName) {
-    const s = (subject || '').toLowerCase().trim();
-    const p = (performerName || '').toLowerCase().trim();
-    if (!s || !p) return false;
-    if (s.includes(p) || p.includes(s)) return true;
-    const words = (str) => new Set(
-        str.split(/\W+/).filter(w => w.length >= 4 && !PERFORMER_MATCH_STOPWORDS.has(w))
-    );
-    const sw = words(s);
-    const pw = words(p);
-    let common = 0;
-    for (const w of sw) if (pw.has(w)) common++;
-    // If either side has only one significant word, substring check above
-    // was the correct gate; don't let a single shared generic-ish word
-    // (e.g. "jazz") cross-match distinct bands.
-    const required = Math.min(2, Math.min(sw.size, pw.size));
-    return required > 0 && common >= required;
-}
-
-// Timeline prefixes that indicate a performance slot (excludes Sound Check,
-// Backstage, Host, Arrival, etc.)
-const PERFORMANCE_EVENT_PREFIX_RE = /^\s*(performance|on\s*stage|main\s*stage|cocktail\s*stage)\s*:\s*(.+?)\s*$/i;
-
 function getDerivedPerformanceTimes(performerName) {
+    // Strict match on timeline row's performer field only. Event-text
+    // matching was too noisy (On Stage / Performance / Backstage rows all
+    // referenced the same band) so we now rely on the modal's manual
+    // override field to be the authoritative display value.
     const result = { thursday: [], friday: [], saturday: [], sunday: [] };
     const norm = (performerName || '').trim().toLowerCase();
     if (!norm) return result;
-    const seen = { thursday: new Set(), friday: new Set(), saturday: new Set(), sunday: new Set() };
     (state.timeline || []).forEach(t => {
-        const ev = t.event || '';
-        const evLow = ev.toLowerCase();
-        if (/\bsound\s*check\b/.test(evLow)) return;
+        if ((t.performer || '').trim().toLowerCase() !== norm) return;
+        const ev = (t.event || '').toLowerCase();
+        if (/\bsound\s*check\b/.test(ev)) return;
         const dayKey = (t.day || '').toLowerCase();
         if (!result[dayKey]) return;
-        if (!t.time) return;
-
-        let include = false;
-
-        // Path 1: timeline row has performer field set explicitly
-        if ((t.performer || '').trim().toLowerCase() === norm) {
-            include = true;
-        }
-
-        // Path 2: event starts with a performance prefix whose subject matches
-        if (!include) {
-            const m = ev.match(PERFORMANCE_EVENT_PREFIX_RE);
-            if (m) {
-                // Strip leading "Act N " (e.g., "Cocktail Stage: Act 1 Lounge Band")
-                const subject = m[2].replace(/^act\s+\d+\s+/i, '').trim();
-                if (performerSubjectMatches(subject, performerName)) {
-                    include = true;
-                }
-            }
-        }
-
-        if (!include) return;
-        if (seen[dayKey].has(t.time)) return;
-        seen[dayKey].add(t.time);
-        result[dayKey].push(t.time);
+        if (t.time) result[dayKey].push(t.time);
     });
-    // Sort each day's times ascending
-    Object.keys(result).forEach(d => result[d].sort());
     return result;
 }
 
