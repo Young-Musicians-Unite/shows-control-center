@@ -23,6 +23,18 @@ try {
 const db = firebase.firestore();
 const storage = firebase.storage();
 
+// Enable offline persistence so edits keep working during WiFi drops
+// and sync automatically when the connection returns.
+db.enablePersistence({ synchronizeTabs: true }).catch((err) => {
+    if (err.code === 'failed-precondition') {
+        console.warn('Firestore persistence unavailable: multiple tabs open without synchronizeTabs support.');
+    } else if (err.code === 'unimplemented') {
+        console.warn('Firestore persistence unsupported in this browser.');
+    } else {
+        console.error('Firestore persistence error:', err);
+    }
+});
+
 // Collection references
 const collections = {
     vendors: db.collection('vendors'),
