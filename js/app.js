@@ -29,6 +29,11 @@ const state = {
     currentDay: 'Thursday',  // For timeline filtering
     vendorFilter: 'all',  // For vendor page filtering (all/confirmed/pending/issues)
     vendorSearch: '',
+    vendorView: 'grid',                     // 'grid' | 'schedule'
+    vendorScheduleFilter: 'all',            // 'all' | 'needs-schedule'
+    vendorScheduleEditingRowId: null,       // blocks re-render during cell edit
+    vendorScheduleRenderPending: false,     // deferred re-render flag
+    pendingVendorScheduleEdit: null,        // { id, day, originalValue } — for Esc revert
     staffSearch: '',
     staffFilter: 'all',  // 'all' or 'unfilled'
     staffView: 'team',
@@ -417,10 +422,23 @@ function switchPage(pageName) {
         if (pageName === 'vendors') {
             state.vendorFilter = 'all';
             state.vendorSearch = '';
+            state.vendorView = 'grid';
+            state.vendorScheduleFilter = 'all';
+            state.vendorScheduleEditingRowId = null;
+            state.vendorScheduleRenderPending = false;
+            state.pendingVendorScheduleEdit = null;
             const vendorSearchInput = document.getElementById('vendor-search-input');
             if (vendorSearchInput) vendorSearchInput.value = '';
-            const vendorFilterBtns = document.querySelectorAll('.vendor-filter-btn');
+            const vendorFilterBtns = document.querySelectorAll('#vendor-card-view .vendor-filter-btn');
             vendorFilterBtns.forEach(b => b.classList.toggle('active', b.dataset.filter === 'all'));
+            const vendorCardBtn = document.getElementById('vendor-card-view-btn');
+            const vendorScheduleBtn = document.getElementById('vendor-schedule-view-btn');
+            if (vendorCardBtn) vendorCardBtn.classList.add('active');
+            if (vendorScheduleBtn) vendorScheduleBtn.classList.remove('active');
+            const vendorCardContainer = document.getElementById('vendor-card-view');
+            const vendorScheduleContainer = document.getElementById('vendor-schedule-view');
+            if (vendorCardContainer) vendorCardContainer.style.display = '';
+            if (vendorScheduleContainer) vendorScheduleContainer.style.display = 'none';
             renderVendors();
         }
         if (pageName === 'staff') {
@@ -652,7 +670,7 @@ function getVendorIssues(item) {
     if (!item.vendor) issues.push('vendor/item');
     if (!item.description) issues.push('description');
     if (!item.inKind && !item.budgeted) issues.push('budgeted');
-    if (!item.noContactNeeded) {
+    if (!item.noContactNeeded && !item.offSite) {
         if (!item.phone) issues.push('phone');
         if (!item.email) issues.push('email');
     }
@@ -712,6 +730,37 @@ function summarizeVendorSchedule(sched) {
 }
 
 function renderVendors() {
+    if (state.vendorView === 'schedule') {
+        renderVendorSchedule();
+    } else {
+        renderVendorCards();
+    }
+}
+
+function setVendorView(view) {
+    state.vendorView = view;
+    const cardBtn = document.getElementById('vendor-card-view-btn');
+    const schedBtn = document.getElementById('vendor-schedule-view-btn');
+    const cardView = document.getElementById('vendor-card-view');
+    const schedView = document.getElementById('vendor-schedule-view');
+    if (cardBtn) cardBtn.classList.toggle('active', view === 'grid');
+    if (schedBtn) schedBtn.classList.toggle('active', view === 'schedule');
+    if (cardView) cardView.style.display = view === 'grid' ? '' : 'none';
+    if (schedView) schedView.style.display = view === 'schedule' ? '' : 'none';
+    renderVendors();
+}
+window.setVendorView = setVendorView;
+
+function setVendorScheduleFilter(filter) {
+    state.vendorScheduleFilter = filter;
+    document.querySelectorAll('#vendor-schedule-view [data-schedule-filter]').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.scheduleFilter === filter);
+    });
+    renderVendorSchedule();
+}
+window.setVendorScheduleFilter = setVendorScheduleFilter;
+
+function renderVendorCards() {
     const container = document.getElementById('vendor-grid');
     if (!container) return;
 
@@ -813,6 +862,7 @@ function renderVendors() {
                     ${linkedStaff ? `<div class="vendor-linked-staff"><span class="vendor-detail-icon">👥</span> Staff: ${escapeHtml(linkedStaff.name)}${linkedStaff.role ? ' (' + escapeHtml(linkedStaff.role) + ')' : ''}</div>` : ''}
                     <div class="vendor-card-details">
                         ${item.noContactNeeded ? `<div class="vendor-detail"><span class="vendor-detail-icon">🌐</span> Online vendor</div>` : ''}
+                        ${item.offSite ? `<div class="vendor-detail"><span class="vendor-detail-icon">🚫</span> Off-site</div>` : ''}
                         ${item.contact ? `<div class="vendor-detail"><span class="vendor-detail-icon">👤</span> ${escapeHtml(item.contact)}</div>` : ''}
                         ${item.phone ? `<div class="vendor-detail"><span class="vendor-detail-icon">📞</span> <a href="tel:${escapeHtml(item.phone)}">${escapeHtml(item.phone)}</a></div>` : ''}
                         ${item.email ? `<div class="vendor-detail"><span class="vendor-detail-icon">✉</span> <a href="mailto:${escapeHtml(item.email)}">${escapeHtml(item.email)}</a></div>` : ''}
@@ -870,8 +920,318 @@ function renderVendors() {
     requestAnimationFrame(() => window.scrollTo(0, scrollY));
 }
 
+// ---------- Vendor Schedule view (inline day-cell edit) ----------
+
+const VENDOR_SCHEDULE_DAYS = [
+    ['thursday', 'Thu'],
+    ['friday', 'Fri'],
+    ['saturday', 'Sat'],
+    ['sunday', 'Sun']
+];
+
+function vendorHasFullSchedule(sched) {
+    if (!sched) return false;
+    return VENDOR_SCHEDULE_DAYS.every(([k]) => sched[k] && String(sched[k]).trim());
+}
+
+function renderVendorSchedule() {
+    const container = document.getElementById('vendor-schedule-container');
+    if (!container) return;
+
+    // Skip re-render if a cell is being inline-edited (Firestore listener may fire mid-edit)
+    if (state.vendorScheduleEditingRowId) {
+        state.vendorScheduleRenderPending = true;
+        return;
+    }
+
+    // Remember expanded categories (reuses same id prefix as cards view — they're never mounted together)
+    const expandedCategories = new Set();
+    container.querySelectorAll('.vendor-category-content').forEach(el => {
+        if (el.style.display !== 'none') expandedCategories.add(el.id);
+    });
+
+    let items = [...state.budget];
+
+    // Apply needs-schedule filter
+    if (state.vendorScheduleFilter === 'needs-schedule') {
+        items = items.filter(item => {
+            if (item.offSite) return false;
+            const linked = getLinkedStaff(item);
+            const sched = linked ? (linked.schedule || {}) : (item.schedule || {});
+            return !vendorHasFullSchedule(sched);
+        });
+    }
+
+    if (items.length === 0) {
+        container.innerHTML = state.vendorScheduleFilter === 'needs-schedule'
+            ? '<div class="vendor-sched-empty">All vendors have complete schedules (or are marked off-site).</div>'
+            : '<div class="vendor-sched-empty">No vendors yet.</div>';
+        return;
+    }
+
+    // Group by category (same ordering as card view)
+    const categorized = {};
+    items.forEach(item => {
+        const cat = item.category || 'Uncategorized';
+        if (!categorized[cat]) categorized[cat] = [];
+        categorized[cat].push(item);
+    });
+    const sortedCategories = Object.entries(categorized).sort((a, b) => a[0].localeCompare(b[0]));
+
+    const html = sortedCategories.map(([category, catItems]) => {
+        const categoryId = category.replace(/[^a-zA-Z0-9]/g, '_');
+        const displayName = category.replace(/^6811[a-g] - /, '');
+
+        // Sort rows: unlinked, on-site, needs-schedule first; then linked; then off-site
+        catItems.sort((a, b) => {
+            const offA = a.offSite ? 1 : 0;
+            const offB = b.offSite ? 1 : 0;
+            if (offA !== offB) return offA - offB;
+            const linkA = a.linkedStaffId ? 1 : 0;
+            const linkB = b.linkedStaffId ? 1 : 0;
+            if (linkA !== linkB) return linkA - linkB;
+            return (a.vendor || '').localeCompare(b.vendor || '');
+        });
+
+        const rowsHtml = catItems.map(item => {
+            const linked = getLinkedStaff(item);
+            const sched = linked ? (linked.schedule || {}) : (item.schedule || {});
+            const isOffSite = item.offSite === true;
+            const isLinked = !!linked;
+            const rowClasses = ['vendor-sched-row'];
+            if (isOffSite) rowClasses.push('off-site');
+            if (isLinked) rowClasses.push('linked');
+
+            const dayCells = VENDOR_SCHEDULE_DAYS.map(([key]) => {
+                const raw = sched[key] || '';
+                const display = raw ? escapeHtml(normalizeTimeForPrint(raw) || raw)
+                                    : '<span class="phantom-placeholder">—</span>';
+                if (isOffSite) {
+                    return `<td class="vendor-sched-cell" data-field="day" data-day="${key}"><span class="phantom-placeholder">—</span></td>`;
+                }
+                if (isLinked) {
+                    return `<td class="vendor-sched-cell" data-field="day" data-day="${key}" title="Managed on staff entry">${display}</td>`;
+                }
+                return `<td class="vendor-sched-cell" data-field="day" data-day="${key}" data-original="${escapeHtml(raw)}" onclick="editVendorScheduleCell(this)">${display}</td>`;
+            }).join('');
+
+            const vendorLabel = escapeHtml(item.vendor || 'Unnamed');
+            const subtitleParts = [];
+            if (item.description) subtitleParts.push(escapeHtml(item.description));
+            const subtitle = subtitleParts.length ? `<span class="vendor-sched-subtitle">${subtitleParts.join(' · ')}</span>` : '';
+
+            const linkedBadge = isLinked
+                ? ` <span class="vendor-sched-linked-badge" onclick="event.stopPropagation(); openStaffModal('${linked.id}')" title="Open staff entry">managed on staff entry</span>`
+                : '';
+            const offSitePill = isOffSite ? ` <span class="vendor-sched-offsite-pill">Off-site</span>` : '';
+
+            const switchDisabled = isLinked ? 'disabled' : '';
+            const switchChecked = !isOffSite ? 'checked' : '';
+            const switchTitle = isLinked
+                ? 'Linked to staff — presence controlled by staff entry'
+                : (isOffSite ? 'Off-site (hidden from check-in list)' : 'On-site (shown on check-in list)');
+
+            const contactLine = item.contact ? escapeHtml(item.contact) : '';
+
+            return `
+                <tr class="${rowClasses.join(' ')}" data-id="${item.id}">
+                    <td>
+                        <span class="vendor-sched-vendor" onclick="editBudgetItem('${item.id}')">${vendorLabel}</span>${linkedBadge}${offSitePill}
+                        ${subtitle}
+                    </td>
+                    <td class="vendor-sched-onsite-cell">
+                        <input type="checkbox" class="vendor-onsite-switch" ${switchChecked} ${switchDisabled}
+                            title="${switchTitle}"
+                            onchange="toggleVendorOffSite('${item.id}', this.checked)">
+                    </td>
+                    ${dayCells}
+                    <td class="vendor-sched-contact">${contactLine}</td>
+                </tr>`;
+        }).join('');
+
+        return `
+            <div class="vendor-category-section">
+                <div class="vendor-category-header" onclick="toggleVendorCategorySection('${categoryId}')">
+                    <span class="category-arrow" id="vendor-arrow-${categoryId}">▼</span>
+                    <h3>${escapeHtml(displayName)}</h3>
+                    <span class="category-count">${catItems.length} vendors</span>
+                </div>
+                <div class="vendor-category-content" id="vendor-content-${categoryId}" style="display:block;">
+                    <table class="vendor-sched-table">
+                        <thead>
+                            <tr>
+                                <th>Vendor</th>
+                                <th class="vendor-sched-onsite-cell">On-site</th>
+                                <th>Thu</th>
+                                <th>Fri</th>
+                                <th>Sat</th>
+                                <th>Sun</th>
+                                <th>Contact</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rowsHtml}</tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    container.innerHTML = html;
+
+    // Restore collapsed/expanded state from previous render (default: expanded on first render)
+    if (expandedCategories.size > 0) {
+        container.querySelectorAll('.vendor-category-content').forEach(el => {
+            const isExpanded = expandedCategories.has(el.id);
+            el.style.display = isExpanded ? 'block' : 'none';
+            const arrow = document.getElementById(el.id.replace('vendor-content-', 'vendor-arrow-'));
+            if (arrow) arrow.textContent = isExpanded ? '▼' : '▶';
+        });
+    }
+}
+
+function editVendorScheduleCell(cell) {
+    if (cell.querySelector('.inline-edit-input')) return;
+    const row = cell.closest('tr');
+    if (!row) return;
+    const id = row.dataset.id;
+    const day = cell.dataset.day;
+    const original = cell.dataset.original || '';
+
+    state.vendorScheduleEditingRowId = id;
+    state.pendingVendorScheduleEdit = { id, day, originalValue: original };
+    row.classList.add('editing');
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'inline-edit-input';
+    input.value = original;
+    input.placeholder = 'e.g. 10am-6pm';
+    cell.textContent = '';
+    cell.appendChild(input);
+    input.focus();
+    input.select();
+
+    input.addEventListener('keydown', (e) => handleVendorScheduleKeydown(e, cell, row));
+    input.addEventListener('blur', () => {
+        setTimeout(() => {
+            if (cell.querySelector('.inline-edit-input')) saveVendorScheduleCell(cell, row);
+        }, 50);
+    });
+}
+window.editVendorScheduleCell = editVendorScheduleCell;
+
+function restoreVendorScheduleCellDisplay(cell) {
+    const raw = cell.dataset.original || '';
+    const display = raw
+        ? escapeHtml(normalizeTimeForPrint(raw) || raw)
+        : '<span class="phantom-placeholder">—</span>';
+    cell.innerHTML = display;
+}
+
+function clearVendorScheduleEditingFlag() {
+    state.vendorScheduleEditingRowId = null;
+    state.pendingVendorScheduleEdit = null;
+    if (state.vendorScheduleRenderPending) {
+        state.vendorScheduleRenderPending = false;
+        renderVendors();
+    }
+}
+
+function handleVendorScheduleKeydown(e, cell, row) {
+    if (e.key === 'Escape') {
+        e.preventDefault();
+        row.classList.remove('editing');
+        restoreVendorScheduleCellDisplay(cell);
+        clearVendorScheduleEditingFlag();
+        return;
+    }
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        const day = cell.dataset.day;
+        saveVendorScheduleCell(cell, row, () => {
+            const nextRow = row.nextElementSibling;
+            if (!nextRow) return;
+            const nextCell = nextRow.querySelector(`td[data-day="${day}"][onclick]`);
+            if (nextCell) editVendorScheduleCell(nextCell);
+        });
+        return;
+    }
+    if (e.key === 'Tab') {
+        e.preventDefault();
+        const day = cell.dataset.day;
+        const forward = !e.shiftKey;
+        saveVendorScheduleCell(cell, row, () => {
+            const idx = VENDOR_SCHEDULE_DAYS.findIndex(([k]) => k === day);
+            const nextIdx = forward ? idx + 1 : idx - 1;
+            if (nextIdx >= 0 && nextIdx < VENDOR_SCHEDULE_DAYS.length) {
+                const nextKey = VENDOR_SCHEDULE_DAYS[nextIdx][0];
+                const nextCell = row.querySelector(`td[data-day="${nextKey}"][onclick]`);
+                if (nextCell) { editVendorScheduleCell(nextCell); return; }
+            }
+            // Wrap to adjacent row
+            const neighborRow = forward ? row.nextElementSibling : row.previousElementSibling;
+            if (!neighborRow) return;
+            const wrapKey = forward ? VENDOR_SCHEDULE_DAYS[0][0] : VENDOR_SCHEDULE_DAYS[VENDOR_SCHEDULE_DAYS.length - 1][0];
+            const wrapCell = neighborRow.querySelector(`td[data-day="${wrapKey}"][onclick]`);
+            if (wrapCell) editVendorScheduleCell(wrapCell);
+        });
+    }
+}
+
+async function saveVendorScheduleCell(cell, row, afterSave) {
+    const input = cell.querySelector('.inline-edit-input');
+    if (!input) return;
+    const id = row.dataset.id;
+    const day = cell.dataset.day;
+    const original = cell.dataset.original || '';
+    const newValue = input.value.trim();
+
+    row.classList.remove('editing');
+
+    if (newValue === original) {
+        restoreVendorScheduleCellDisplay(cell);
+        clearVendorScheduleEditingFlag();
+        if (typeof afterSave === 'function') afterSave();
+        return;
+    }
+
+    const writeValue = newValue === '' ? firebase.firestore.FieldValue.delete() : newValue;
+
+    try {
+        await collections.budget.doc(id).update({
+            [`schedule.${day}`]: writeValue,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        cell.dataset.original = newValue;
+        restoreVendorScheduleCellDisplay(cell);
+        showToast('Updated');
+    } catch (err) {
+        console.error('Error saving vendor schedule cell:', err);
+        restoreVendorScheduleCellDisplay(cell);
+        showToast('Error saving', 'error');
+    } finally {
+        clearVendorScheduleEditingFlag();
+        if (typeof afterSave === 'function') afterSave();
+    }
+}
+window.saveVendorScheduleCell = saveVendorScheduleCell;
+
+async function toggleVendorOffSite(id, onSite) {
+    try {
+        await collections.budget.doc(id).update({
+            offSite: !onSite,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        showToast(onSite ? 'Marked on-site' : 'Marked off-site');
+    } catch (err) {
+        console.error('Error toggling vendor off-site:', err);
+        showToast('Error updating', 'error');
+    }
+}
+window.toggleVendorOffSite = toggleVendorOffSite;
+
 function setupVendorFilters() {
-    const filterBtns = document.querySelectorAll('.vendor-filter-btn');
+    const filterBtns = document.querySelectorAll('#vendor-card-view .vendor-filter-btn');
     filterBtns.forEach(btn => {
         btn.addEventListener('click', () => {
             filterBtns.forEach(b => b.classList.remove('active'));
@@ -11318,6 +11678,7 @@ function buildCheckInPeople() {
 
     for (const b of state.budget) {
         if (b.linkedStaffId) continue; // represented by the linked staff entry
+        if (b.offSite === true) continue; // hidden from check-in list
         if (!hasAnySchedule(b.schedule)) continue;
         const hasContact = !!(b.contact && b.contact.trim());
         people.push({

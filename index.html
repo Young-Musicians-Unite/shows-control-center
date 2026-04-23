@@ -242,6 +242,10 @@
             <div class="page-header">
                 <h1>Vendors</h1>
                 <div class="header-actions">
+                    <div class="vendor-view-toggle">
+                        <button class="vendor-view-btn active" id="vendor-card-view-btn" onclick="setVendorView('grid')">Cards</button>
+                        <button class="vendor-view-btn" id="vendor-schedule-view-btn" onclick="setVendorView('schedule')">Schedule</button>
+                    </div>
                     <button class="btn btn-icon" id="export-vendors-btn" title="Export to Excel">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                     </button>
@@ -251,29 +255,39 @@
                 </div>
             </div>
 
-            <!-- Vendor Search -->
-            <div class="page-search-bar">
-                <div class="page-search-wrapper">
-                    <svg class="page-search-icon" viewBox="0 0 20 20" fill="currentColor" width="18" height="18">
-                        <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"/>
-                    </svg>
-                    <input type="text" id="vendor-search-input" class="search-input" placeholder="Search vendors, categories, contacts..." oninput="handleVendorSearch(this.value)">
-                    <button type="button" id="vendor-search-clear" class="page-search-clear" onclick="clearVendorSearch()" style="display: none;">&times;</button>
+            <div id="vendor-card-view">
+                <!-- Vendor Search -->
+                <div class="page-search-bar">
+                    <div class="page-search-wrapper">
+                        <svg class="page-search-icon" viewBox="0 0 20 20" fill="currentColor" width="18" height="18">
+                            <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"/>
+                        </svg>
+                        <input type="text" id="vendor-search-input" class="search-input" placeholder="Search vendors, categories, contacts..." oninput="handleVendorSearch(this.value)">
+                        <button type="button" id="vendor-search-clear" class="page-search-clear" onclick="clearVendorSearch()" style="display: none;">&times;</button>
+                    </div>
+                    <span id="vendor-search-count" class="page-search-count"></span>
                 </div>
-                <span id="vendor-search-count" class="page-search-count"></span>
+
+                <!-- Filter Tabs -->
+                <div class="vendor-filters">
+                    <button class="vendor-filter-btn active" data-filter="all">All <span class="vendor-filter-count" id="vendor-filter-all-count"></span></button>
+                    <button class="vendor-filter-btn" data-filter="confirmed">Confirmed <span class="vendor-filter-count" id="vendor-filter-confirmed-count"></span></button>
+                    <button class="vendor-filter-btn" data-filter="pending">Pending <span class="vendor-filter-count" id="vendor-filter-pending-count"></span></button>
+                    <button class="vendor-filter-btn" data-filter="issues">Issues <span class="vendor-filter-count" id="vendor-filter-issue-count"></span></button>
+                </div>
+
+                <!-- Vendor Cards (grouped by category) -->
+                <div id="vendor-grid">
+                    <p class="empty-state">No vendors found</p>
+                </div>
             </div>
 
-            <!-- Filter Tabs -->
-            <div class="vendor-filters">
-                <button class="vendor-filter-btn active" data-filter="all">All <span class="vendor-filter-count" id="vendor-filter-all-count"></span></button>
-                <button class="vendor-filter-btn" data-filter="confirmed">Confirmed <span class="vendor-filter-count" id="vendor-filter-confirmed-count"></span></button>
-                <button class="vendor-filter-btn" data-filter="pending">Pending <span class="vendor-filter-count" id="vendor-filter-pending-count"></span></button>
-                <button class="vendor-filter-btn" data-filter="issues">Issues <span class="vendor-filter-count" id="vendor-filter-issue-count"></span></button>
-            </div>
-
-            <!-- Vendor Cards (grouped by category) -->
-            <div id="vendor-grid">
-                <p class="empty-state">No vendors found</p>
+            <div id="vendor-schedule-view" style="display:none;">
+                <div class="vendor-schedule-filters">
+                    <button class="vendor-filter-btn active" data-schedule-filter="all" onclick="setVendorScheduleFilter('all')">All</button>
+                    <button class="vendor-filter-btn" data-schedule-filter="needs-schedule" onclick="setVendorScheduleFilter('needs-schedule')">Needs schedule</button>
+                </div>
+                <div id="vendor-schedule-container"></div>
             </div>
         </div>
 

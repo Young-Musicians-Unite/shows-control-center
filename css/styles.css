@@ -3750,7 +3750,8 @@ body.menu-open::after {
    ============================================= */
 
 /* View toggle */
-.staff-view-toggle {
+.staff-view-toggle,
+.vendor-view-toggle {
     display: flex;
     background: #f0ece3;
     border-radius: 8px;
@@ -3758,7 +3759,8 @@ body.menu-open::after {
     gap: 2px;
 }
 
-.staff-view-btn {
+.staff-view-btn,
+.vendor-view-btn {
     padding: 6px 16px;
     border: none;
     background: transparent;
@@ -3770,7 +3772,8 @@ body.menu-open::after {
     transition: all 0.2s ease;
 }
 
-.staff-view-btn.active {
+.staff-view-btn.active,
+.vendor-view-btn.active {
     background: #c9a961;
     color: #fff;
     box-shadow: 0 1px 3px rgba(0,0,0,0.1);
@@ -4239,11 +4242,13 @@ body.menu-open::after {
         gap: 0.75rem;
     }
 
-    .staff-view-toggle {
+    .staff-view-toggle,
+    .vendor-view-toggle {
         width: 100%;
     }
 
-    .staff-view-btn {
+    .staff-view-btn,
+    .vendor-view-btn {
         flex: 1;
         text-align: center;
     }
@@ -4739,6 +4744,169 @@ body.menu-open::after {
     grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
     gap: 1.5rem;
     padding: 1.5rem 0;
+}
+
+/* Vendor Schedule view */
+.vendor-schedule-filters {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+}
+
+.vendor-sched-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    background: #faf8f3;
+    border: 1px solid #f0ece3;
+    border-top: none;
+    border-radius: 0 0 12px 12px;
+    margin-bottom: 1.5rem;
+    overflow: hidden;
+}
+
+.vendor-sched-table thead th {
+    position: sticky;
+    top: 0;
+    background: #f0ece3;
+    padding: 0.6rem 0.75rem;
+    text-align: left;
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: #6b675b;
+    text-transform: uppercase;
+    border-bottom: 2px solid #e5dfd0;
+    z-index: 1;
+}
+
+.vendor-sched-table tbody td {
+    padding: 0.55rem 0.75rem;
+    border-bottom: 1px solid #f0ece3;
+    font-size: 0.9rem;
+    color: #2a2a2a;
+    vertical-align: middle;
+}
+
+.vendor-sched-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.vendor-sched-table tbody tr:hover {
+    background-color: rgba(250, 248, 243, 0.7);
+}
+
+.vendor-sched-vendor {
+    font-weight: 600;
+    color: #1a3a35;
+    cursor: pointer;
+}
+
+.vendor-sched-vendor:hover {
+    text-decoration: underline;
+}
+
+.vendor-sched-subtitle {
+    display: block;
+    font-weight: 400;
+    font-size: 0.78rem;
+    color: #8a8778;
+    margin-top: 2px;
+}
+
+.vendor-sched-cell[data-field="day"] {
+    min-width: 110px;
+    cursor: cell;
+    color: #2a2a2a;
+}
+
+.vendor-sched-cell[data-field="day"]:hover {
+    background-color: rgba(201, 169, 97, 0.1);
+}
+
+.vendor-sched-row.editing .vendor-sched-cell .inline-edit-input {
+    padding: 0.35rem 0.5rem;
+    font-size: 0.88rem;
+}
+
+.vendor-sched-row.off-site td:not(.vendor-sched-onsite-cell) {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+.vendor-sched-row.off-site .vendor-sched-vendor {
+    text-decoration: line-through;
+    color: #8a8778;
+}
+
+.vendor-sched-row.linked .vendor-sched-cell[data-field="day"] {
+    background-color: rgba(201, 169, 97, 0.05);
+    cursor: default;
+    color: #6b675b;
+}
+
+.vendor-sched-row.linked .vendor-sched-cell[data-field="day"]:hover {
+    background-color: rgba(201, 169, 97, 0.05);
+}
+
+.vendor-sched-linked-badge {
+    display: inline-block;
+    margin-left: 0.5rem;
+    padding: 2px 8px;
+    background: rgba(201, 169, 97, 0.18);
+    color: #8a6e2f;
+    font-size: 0.7rem;
+    font-weight: 600;
+    border-radius: 10px;
+    cursor: pointer;
+    letter-spacing: 0.02em;
+    vertical-align: middle;
+}
+
+.vendor-sched-linked-badge:hover {
+    background: rgba(201, 169, 97, 0.3);
+}
+
+.vendor-sched-onsite-cell {
+    text-align: center;
+    width: 70px;
+}
+
+.vendor-onsite-switch {
+    cursor: pointer;
+    accent-color: #c9a961;
+    transform: scale(1.1);
+}
+
+.vendor-onsite-switch:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.vendor-sched-offsite-pill {
+    display: inline-block;
+    padding: 2px 8px;
+    background: rgba(138, 135, 120, 0.2);
+    color: #6b675b;
+    font-size: 0.7rem;
+    font-weight: 600;
+    border-radius: 10px;
+    margin-left: 0.5rem;
+    letter-spacing: 0.02em;
+    vertical-align: middle;
+}
+
+.vendor-sched-contact {
+    font-size: 0.82rem;
+    color: #6b675b;
+}
+
+.vendor-sched-empty {
+    padding: 2rem;
+    text-align: center;
+    color: #8a8778;
+    font-style: italic;
 }
 
 @keyframes vendor-card-in {
