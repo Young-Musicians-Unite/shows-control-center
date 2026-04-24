@@ -2427,6 +2427,14 @@ body.printing-stage-inputs .stage-phantom-row {
     display: none !important;
 }
 
+/* Hide per-cell empty-cell placeholders ("+ duration", "+ time", etc.)
+   so blank cells print as truly blank instead of leaking the editor hint. */
+body.printing-timeline .phantom-placeholder,
+body.printing-stage-inputs .phantom-placeholder,
+body.printing-cue-sheet .phantom-placeholder {
+    display: none !important;
+}
+
 /* Only the active page prints; force its visibility even if some earlier rule
    tried to hide it. */
 body.printing-timeline .page:not(.active),
