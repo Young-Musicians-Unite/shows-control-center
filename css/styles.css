@@ -2214,64 +2214,146 @@ tr.task-completed td:not(.checkbox-col):not(.actions-col) {
     border-collapse: collapse;
 }
 
-.cue-sheet-table th,
-.cue-sheet-table td {
-    padding: 6px 8px;
-    vertical-align: top;
-    border-bottom: 1px solid #e5e7eb;
-    font-size: 0.85rem;
-    line-height: 1.3;
-    overflow-wrap: anywhere;
-    cursor: pointer;
+/* Cue sheet uses its own header: cream parchment with dark-green text and a
+   thin gold underline accent. We override .data-table thead/th here with
+   higher specificity so the inherited cream-on-dark-green styling doesn't
+   make our light header unreadable. */
+.cue-sheet-card .cue-sheet-table thead {
+    background: #fbf6ea;
 }
 
-.cue-sheet-table th {
-    cursor: default;
-    background: #f9fafb;
-    font-weight: 600;
+.cue-sheet-card .cue-sheet-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: #fbf6ea;
+    color: #1a3a35;
+    border-bottom: 2px solid #c9a961;
+    padding: 0.7rem 0.75rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
     text-align: left;
     white-space: nowrap;
+    cursor: default;
+    box-shadow: 0 1px 0 rgba(26, 58, 53, 0.04);
 }
 
-.cue-sheet-table .cs-time-col { width: 70px; white-space: nowrap; font-weight: 600; }
-.cue-sheet-table .cs-duration-col { width: 70px; white-space: nowrap; }
-.cue-sheet-table .cs-activity-col { width: 14%; }
+.cue-sheet-card .cue-sheet-table tbody td {
+    padding: 0.55rem 0.7rem;
+    vertical-align: top;
+    border-bottom: 1px solid #ece6d3;
+    font-size: 0.86rem;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+    cursor: pointer;
+    color: #2d2d2d;
+}
+
+/* Hairline vertical dividers between cue columns to help the eye stay in
+   the right column across many narrow cells. Only between cue cells, not
+   on the time / duration / activity anchor block or the actions column. */
+.cue-sheet-table tbody td.cs-audio-col,
+.cue-sheet-table tbody td.cs-live-video-col,
+.cue-sheet-table tbody td.cs-lighting-col,
+.cue-sheet-table tbody td.cs-center-screen-col,
+.cue-sheet-table tbody td.cs-side-screens-col,
+.cue-sheet-table tbody td.cs-cue-col,
+.cue-sheet-table tbody td.cs-file-col {
+    border-left: 1px solid #f0ece3;
+}
+
+.cue-sheet-table thead th.cs-audio-col,
+.cue-sheet-table thead th.cs-live-video-col,
+.cue-sheet-table thead th.cs-lighting-col,
+.cue-sheet-table thead th.cs-center-screen-col,
+.cue-sheet-table thead th.cs-side-screens-col,
+.cue-sheet-table thead th.cs-cue-col,
+.cue-sheet-table thead th.cs-file-col {
+    border-left: 1px solid #ede2c4;
+}
+
+/* Anchor columns (time / duration / activity) get slightly stronger weight
+   so the eye locks onto each row's identity. Time gets a touch of gold. */
+.cue-sheet-table tbody td.cs-time-col {
+    font-weight: 600;
+    color: #1a3a35;
+    letter-spacing: 0.01em;
+}
+.cue-sheet-table tbody td.cs-time-col .tl-time {
+    color: #1a3a35;
+    font-weight: 600;
+}
+.cue-sheet-table tbody td.cs-activity-col {
+    font-weight: 500;
+    color: #1f2937;
+}
+
+/* Zebra striping on rows + a stronger row-hover so it's easy to track a
+   single row across many narrow columns. We override .data-table's lighter
+   stripe with a slightly warmer cream that matches the header. */
+.cue-sheet-card .cue-sheet-table tbody tr:nth-child(even) td {
+    background-color: rgba(251, 246, 234, 0.45);
+}
+.cue-sheet-card .cue-sheet-table tbody tr:hover td {
+    background-color: rgba(201, 169, 97, 0.10);
+}
+.cue-sheet-card .cue-sheet-table tbody tr.cs-hidden-row td,
+.cue-sheet-card .cue-sheet-table tbody tr.cs-hidden-row:hover td {
+    background-color: #f3f4f6;
+    color: #9ca3af;
+    font-style: italic;
+}
+
+.cue-sheet-table .cs-time-col { width: 76px; white-space: nowrap; }
+.cue-sheet-table .cs-duration-col { width: 84px; white-space: nowrap; }
+.cue-sheet-table .cs-activity-col { width: 15%; }
 .cue-sheet-table .cs-audio-col { width: 11%; }
-.cue-sheet-table .cs-live-video-col { width: 11%; }
+.cue-sheet-table .cs-live-video-col { width: 10%; }
 .cue-sheet-table .cs-lighting-col { width: 12%; }
 .cue-sheet-table .cs-center-screen-col { width: 9%; }
 .cue-sheet-table .cs-side-screens-col { width: 9%; }
-.cue-sheet-table .cs-cue-col { width: 8%; }
+.cue-sheet-table .cs-cue-col { width: 7%; }
 .cue-sheet-table .cs-file-col { width: 11%; }
-.cue-sheet-table .cs-actions-col { width: 56px; cursor: default; }
+.cue-sheet-table .cs-actions-col { width: 80px; cursor: default; text-align: right; }
 
 .cue-sheet-table td.cs-cell-multiline {
     white-space: pre-wrap;
 }
 
-.cue-sheet-table tr.cs-hidden-row td {
+.cue-sheet-table .cs-action-btn {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 0.7rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    cursor: pointer;
     color: #9ca3af;
-    background: #f3f4f6;
-    font-style: italic;
+    transition: color 120ms ease, border-color 120ms ease, background-color 120ms ease;
 }
 
-.cue-sheet-table .cs-action-btn {
-    background: none;
-    border: 1px solid #d1d5db;
-    border-radius: 4px;
-    padding: 2px 6px;
-    font-size: 0.75rem;
-    cursor: pointer;
-    color: #374151;
+.cue-sheet-card .cue-sheet-table tbody tr:hover .cs-action-btn {
+    color: #6b7280;
+    border-color: #e5e7eb;
 }
 
 .cue-sheet-table .cs-action-btn:hover {
-    background: #f3f4f6;
+    background: #fbf6ea;
+    color: #1a3a35;
+    border-color: #c9a961;
 }
 
+/* The "—" placeholder in empty cue cells should be a hint, not a feature.
+   Bring it way down so populated cells visually dominate. */
 .cue-sheet-table .cs-cell-empty {
-    color: #c9cdd3;
-    font-style: italic;
+    color: #d8d3c3;
+    font-style: normal;
+    font-size: 0.95em;
+    user-select: none;
 }
 
 .cue-sheet-table .inline-edit-input,
