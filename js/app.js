@@ -3063,6 +3063,26 @@ function setupStageTabs() {
     }
 }
 
+function printCueSheet() {
+    let pageStyle = document.getElementById('cue-sheet-page-rule');
+    if (!pageStyle) {
+        pageStyle = document.createElement('style');
+        pageStyle.id = 'cue-sheet-page-rule';
+        pageStyle.textContent = '@page { size: landscape; }';
+        document.head.appendChild(pageStyle);
+    }
+    document.body.classList.add('printing-cue-sheet');
+    requestAnimationFrame(() => {
+        window.print();
+        setTimeout(() => {
+            document.body.classList.remove('printing-cue-sheet');
+            const el = document.getElementById('cue-sheet-page-rule');
+            if (el) el.remove();
+        }, 500);
+    });
+}
+window.printCueSheet = printCueSheet;
+
 // Scoped print helper — tags body with a class so @media print CSS can
 // customize layout per-page without leaking into other prints.
 function printWithScope(scopeClass) {
@@ -3084,6 +3104,11 @@ function setupExportAndPrint() {
 
     if (printTimelineBtn) {
         printTimelineBtn.addEventListener('click', () => printWithScope('printing-timeline'));
+    }
+
+    const printCueSheetBtn = document.getElementById('print-cue-sheet-btn');
+    if (printCueSheetBtn) {
+        printCueSheetBtn.addEventListener('click', printCueSheet);
     }
 
     const timelineUndoBtn = document.getElementById('timeline-undo-btn');

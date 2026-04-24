@@ -2492,6 +2492,116 @@ body.printing-timeline .timeline-card {
     break-inside: auto !important;
 }
 
+/* ---------- Technical Cue Sheet: landscape print ---------- */
+/* NOTE: The `@page { size: landscape; }` rule is injected dynamically by
+   `printCueSheet()` in js/app.js (and removed after print) to avoid forcing
+   landscape on every other print in the app. Do NOT add `@page` here. */
+
+body.printing-cue-sheet .navbar,
+body.printing-cue-sheet .no-print,
+body.printing-cue-sheet .page-header .header-actions,
+body.printing-cue-sheet .cue-show-hidden-toggle {
+    display: none !important;
+}
+
+body.printing-cue-sheet *,
+body.printing-cue-sheet .cs-row {
+    animation: none !important;
+    transition: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+}
+
+body.printing-cue-sheet { background: #fff !important; }
+
+body.printing-cue-sheet .container {
+    max-width: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: #fff !important;
+}
+
+body.printing-cue-sheet .page:not(.active) { display: none !important; }
+body.printing-cue-sheet #technical-cue-sheet.page.active { display: block !important; }
+
+body.printing-cue-sheet .card,
+body.printing-cue-sheet .table-container,
+body.printing-cue-sheet .cue-sheet-card,
+body.printing-cue-sheet .cue-sheet-card .table-container {
+    display: block !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+}
+
+body.printing-cue-sheet .cue-sheet-card-header {
+    padding: 0 0 0.2rem 0 !important;
+    border: none !important;
+    background: none !important;
+    display: block !important;
+}
+body.printing-cue-sheet .cue-sheet-card-header h2 {
+    font-size: 12pt !important;
+    font-weight: 700 !important;
+    margin: 0 !important;
+    color: #000 !important;
+}
+body.printing-cue-sheet .cue-sheet-card-header .cue-sheet-date {
+    font-size: 9pt !important;
+    color: #000 !important;
+    font-weight: 400 !important;
+    margin-left: 0.5rem;
+}
+
+/* Hide rows that are marked hidden, even if "Show hidden" was on */
+body.printing-cue-sheet .cue-sheet-table tr.cs-hidden-row { display: none !important; }
+
+/* Hide the Actions column entirely */
+body.printing-cue-sheet .cue-sheet-table .cs-actions-col { display: none !important; }
+
+body.printing-cue-sheet .cue-sheet-table {
+    width: 100% !important;
+    table-layout: auto !important;
+    border-collapse: collapse !important;
+    background: #fff !important;
+}
+body.printing-cue-sheet .cue-sheet-table thead {
+    background: #fff !important;
+    display: table-header-group !important;
+}
+body.printing-cue-sheet .cue-sheet-table th {
+    background: #fff !important;
+    color: #000 !important;
+    font-weight: 700 !important;
+    text-align: left !important;
+    text-transform: none !important;
+    letter-spacing: 0 !important;
+}
+body.printing-cue-sheet .cue-sheet-table th,
+body.printing-cue-sheet .cue-sheet-table td {
+    padding: 3px 6px !important;
+    font-size: 9pt !important;
+    line-height: 1.25 !important;
+    border: 1px solid #333 !important;
+    background: #fff !important;
+    color: #000 !important;
+    vertical-align: top !important;
+}
+body.printing-cue-sheet .cue-sheet-table tr {
+    background: #fff !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+}
+body.printing-cue-sheet .cue-sheet-table .cs-time-col { white-space: nowrap !important; font-weight: 700 !important; }
+body.printing-cue-sheet .cue-sheet-table .cs-duration-col { white-space: nowrap !important; }
+body.printing-cue-sheet .cue-sheet-table .cs-cell-multiline { white-space: pre-wrap !important; }
+body.printing-cue-sheet .cue-sheet-table .cs-cell-empty { color: #fff !important; } /* hide '—' placeholders in print */
+body.printing-cue-sheet .cue-sheet-table .tl-time { color: #000 !important; font-weight: 700 !important; }
+
 /* ---------- Input List: compact table ---------- */
 body.printing-stage-inputs #stage-table .drag-col,
 body.printing-stage-inputs #stage-table .drag-handle,
