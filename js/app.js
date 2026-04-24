@@ -2126,6 +2126,35 @@ function renderCueSheetRow(item) {
     `;
 }
 
+window.hideCueRow = async (id) => {
+    try {
+        await collections.timeline.doc(id).update({
+            hiddenFromCueSheet: true,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+    } catch (error) {
+        console.error('Error hiding cue row:', error);
+        showToast('Error hiding row', 'error');
+    }
+};
+
+window.unhideCueRow = async (id) => {
+    try {
+        await collections.timeline.doc(id).update({
+            hiddenFromCueSheet: false,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+    } catch (error) {
+        console.error('Error unhiding cue row:', error);
+        showToast('Error unhiding row', 'error');
+    }
+};
+
+window.toggleCueSheetShowHidden = (checked) => {
+    state.cueSheetShowHidden = !!checked;
+    renderCueSheet();
+};
+
 // Modal Management
 function setupModals() {
     // Close buttons
