@@ -2256,7 +2256,8 @@ tr.task-completed td:not(.checkbox-col):not(.actions-col) {
    on the time / duration / activity anchor block or the actions column. */
 .cue-sheet-table tbody td.cs-audio-col,
 .cue-sheet-table tbody td.cs-live-video-col,
-.cue-sheet-table tbody td.cs-lighting-col,
+.cue-sheet-table tbody td.cs-stage-lighting-col,
+.cue-sheet-table tbody td.cs-house-lighting-col,
 .cue-sheet-table tbody td.cs-center-screen-col,
 .cue-sheet-table tbody td.cs-side-screens-col,
 .cue-sheet-table tbody td.cs-cue-col {
@@ -2265,7 +2266,8 @@ tr.task-completed td:not(.checkbox-col):not(.actions-col) {
 
 .cue-sheet-table thead th.cs-audio-col,
 .cue-sheet-table thead th.cs-live-video-col,
-.cue-sheet-table thead th.cs-lighting-col,
+.cue-sheet-table thead th.cs-stage-lighting-col,
+.cue-sheet-table thead th.cs-house-lighting-col,
 .cue-sheet-table thead th.cs-center-screen-col,
 .cue-sheet-table thead th.cs-side-screens-col,
 .cue-sheet-table thead th.cs-cue-col {
@@ -2305,14 +2307,15 @@ tr.task-completed td:not(.checkbox-col):not(.actions-col) {
 }
 
 .cue-sheet-table .cs-time-col { width: 76px; white-space: nowrap; }
-.cue-sheet-table .cs-duration-col { width: 84px; white-space: nowrap; }
-.cue-sheet-table .cs-activity-col { width: 18%; }
-.cue-sheet-table .cs-audio-col { width: 13%; }
-.cue-sheet-table .cs-live-video-col { width: 12%; }
-.cue-sheet-table .cs-lighting-col { width: 14%; }
-.cue-sheet-table .cs-center-screen-col { width: 11%; }
-.cue-sheet-table .cs-side-screens-col { width: 11%; }
-.cue-sheet-table .cs-cue-col { width: 8%; }
+.cue-sheet-table .cs-duration-col { width: 80px; white-space: nowrap; }
+.cue-sheet-table .cs-activity-col { width: 16%; }
+.cue-sheet-table .cs-audio-col { width: 11%; }
+.cue-sheet-table .cs-live-video-col { width: 11%; }
+.cue-sheet-table .cs-stage-lighting-col { width: 11%; }
+.cue-sheet-table .cs-house-lighting-col { width: 10%; }
+.cue-sheet-table .cs-center-screen-col { width: 10%; }
+.cue-sheet-table .cs-side-screens-col { width: 9%; }
+.cue-sheet-table .cs-cue-col { width: 7%; }
 .cue-sheet-table .cs-actions-col { width: 80px; cursor: default; text-align: right; }
 
 .cue-sheet-table td.cs-cell-multiline {
