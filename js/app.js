@@ -3502,6 +3502,169 @@ function clearTimelineEditingFlag() {
     }
 }
 
+// Cue Sheet inline cell editing — parallel to editTimelineCell but supports
+// textarea for multiline tech fields (audio/liveVideo/lighting) and uses the
+// cue-sheet's own field order for Tab navigation. Writes to the same timeline
+// Firestore doc so edits sync to the timeline page.
+function clearCueSheetEditingFlag() {
+    state.cueSheetEditingRowId = null;
+    if (state.cueSheetRenderPending) {
+        state.cueSheetRenderPending = false;
+        renderCueSheet();
+    }
+}
+
+function editCueCell(cell) {
+    if (cell.querySelector('.inline-edit-input, .inline-edit-textarea')) return;
+
+    const row = cell.closest('tr');
+    const field = cell.dataset.field;
+    if (!field || !row || !row.dataset.id) return;
+
+    state.cueSheetEditingRowId = row.dataset.id;
+    row.classList.add('editing');
+
+    const original = cell.dataset.original || '';
+    const isMultiline = CUE_SHEET_MULTILINE_FIELDS.has(field);
+
+    const input = document.createElement(isMultiline ? 'textarea' : 'input');
+    if (!isMultiline) input.type = 'text';
+    input.value = original;
+    input.className = isMultiline ? 'inline-edit-textarea' : 'inline-edit-input';
+    input.dataset.field = field;
+
+    cell.textContent = '';
+    cell.appendChild(input);
+    input.focus();
+    if (!isMultiline) input.select();
+
+    input.addEventListener('keydown', (e) => handleCueCellKeydown(e, cell, row));
+
+    input.addEventListener('blur', () => {
+        setTimeout(() => {
+            const activeEl = document.activeElement;
+            if (row.contains(activeEl) && (activeEl.classList.contains('inline-edit-input') || activeEl.classList.contains('inline-edit-textarea'))) return;
+            if (cell.querySelector('.inline-edit-input, .inline-edit-textarea')) {
+                saveCueSheetCell(cell, row);
+            }
+        }, 50);
+    });
+}
+window.editCueCell = editCueCell;
+
+function handleCueCellKeydown(e, cell, row) {
+    const field = cell.dataset.field;
+    const input = cell.querySelector('.inline-edit-input, .inline-edit-textarea');
+    const isMultiline = CUE_SHEET_MULTILINE_FIELDS.has(field);
+
+    if (e.key === 'Enter' && isMultiline && !e.metaKey && !e.ctrlKey) {
+        // Allow newlines in textarea; only commit on Cmd/Ctrl+Enter
+        return;
+    }
+    if (e.key === 'Tab') {
+        e.preventDefault();
+        const direction = e.shiftKey ? -1 : 1;
+        saveCueSheetCell(cell, row, true);
+        navigateCueAdjacent(row, field, direction);
+    } else if (e.key === 'Enter') {
+        e.preventDefault();
+        saveCueSheetCell(cell, row, true);
+        navigateCueNextRow(row, field);
+    } else if (e.key === 'Escape') {
+        e.preventDefault();
+        restoreCueCellDisplay(cell);
+        row.classList.remove('editing');
+        clearCueSheetEditingFlag();
+    }
+}
+
+function saveCueSheetCell(cell, row, keepEditing = false) {
+    const input = cell.querySelector('.inline-edit-input, .inline-edit-textarea');
+    if (!input) return;
+
+    const field = cell.dataset.field;
+    const id = row.dataset.id;
+    let newValue = input.value;
+    if (!CUE_SHEET_MULTILINE_FIELDS.has(field)) newValue = newValue.trim();
+
+    const item = state.timeline.find(i => i.id === id);
+    const oldValue = item ? (item[field] == null ? '' : String(item[field])) : '';
+
+    if (field === 'time' && newValue) newValue = convertTo24Hour(newValue);
+    if (field === 'duration' && newValue) newValue = formatDuration(newValue);
+    if (field === 'screenCue') newValue = normalizeScreenCue(newValue);
+
+    cell.dataset.original = newValue;
+    restoreCueCellDisplay(cell);
+
+    if (!keepEditing && !row.querySelector('.inline-edit-input, .inline-edit-textarea')) {
+        row.classList.remove('editing');
+        clearCueSheetEditingFlag();
+    }
+
+    if (!item) return;
+    if (newValue === oldValue) return;
+
+    item[field] = newValue;
+
+    const updates = { [field]: newValue, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+    collections.timeline.doc(id).update(updates).catch(err => {
+        console.error('Error saving cue cell:', err);
+        if (item) item[field] = oldValue;
+        cell.dataset.original = oldValue;
+        restoreCueCellDisplay(cell);
+        showToast('Error saving', 'error');
+    });
+}
+
+function restoreCueCellDisplay(cell) {
+    const field = cell.dataset.field;
+    const value = cell.dataset.original || '';
+    if (field === 'time') {
+        cell.innerHTML = `<span class="tl-time">${formatTime12Hour(value)}</span>`;
+    } else if (value === '') {
+        cell.innerHTML = '<span class="cs-cell-empty">—</span>';
+    } else {
+        cell.textContent = value;
+    }
+}
+
+function navigateCueAdjacent(row, currentField, direction) {
+    const idx = CUE_SHEET_FIELD_ORDER.indexOf(currentField);
+    const nextIdx = idx + direction;
+    if (nextIdx >= 0 && nextIdx < CUE_SHEET_FIELD_ORDER.length) {
+        const nextField = CUE_SHEET_FIELD_ORDER[nextIdx];
+        const liveRow = document.querySelector(`#cue-sheet-tbody tr[data-id="${row.dataset.id}"]`) || row;
+        const nextCell = liveRow.querySelector(`td[data-field="${nextField}"]`);
+        if (nextCell) editCueCell(nextCell);
+    } else if (direction > 0) {
+        const liveRow = document.querySelector(`#cue-sheet-tbody tr[data-id="${row.dataset.id}"]`) || row;
+        const nextRow = liveRow.nextElementSibling;
+        if (nextRow && nextRow.querySelector('td[data-field]')) {
+            const firstField = CUE_SHEET_FIELD_ORDER[0];
+            const nextCell = nextRow.querySelector(`td[data-field="${firstField}"]`);
+            if (nextCell) editCueCell(nextCell);
+        }
+    } else if (direction < 0) {
+        const liveRow = document.querySelector(`#cue-sheet-tbody tr[data-id="${row.dataset.id}"]`) || row;
+        const prevRow = liveRow.previousElementSibling;
+        if (prevRow && prevRow.querySelector('td[data-field]')) {
+            const lastField = CUE_SHEET_FIELD_ORDER[CUE_SHEET_FIELD_ORDER.length - 1];
+            const prevCell = prevRow.querySelector(`td[data-field="${lastField}"]`);
+            if (prevCell) editCueCell(prevCell);
+        }
+    }
+}
+
+function navigateCueNextRow(row, field) {
+    const liveRow = document.querySelector(`#cue-sheet-tbody tr[data-id="${row.dataset.id}"]`) || row;
+    const nextRow = liveRow.nextElementSibling;
+    if (nextRow && nextRow.querySelector('td[data-field]')) {
+        const nextCell = nextRow.querySelector(`td[data-field="${field}"]`);
+        if (nextCell) editCueCell(nextCell);
+    }
+}
+
 // Re-query row from live DOM in case a render happened
 function getLiveRow(row) {
     if (row.dataset.phantom === 'true') return document.querySelector('#timeline-tbody tr[data-phantom="true"]') || row;
