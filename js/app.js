@@ -74,6 +74,9 @@ const state = {
     timelineAnimateRows: true,  // Only animate rows on day/filter switch, not data updates
     timelineEditingRowId: null,  // Row ID currently being inline-edited (blocks re-render)
     timelineRenderPending: false,  // True if a Firestore snapshot arrived during editing
+    cueSheetEditingRowId: null,
+    cueSheetRenderPending: false,
+    cueSheetShowHidden: false,
     pendingNewRow: {},  // Accumulates phantom row data before commit
     budgetEditingRowId: null,
     budgetRenderPending: false,
@@ -146,6 +149,47 @@ function getLinkedBudget(member) {
 function getLinkedStaff(budgetItem) {
     if (!budgetItem || !budgetItem.linkedStaffId) return null;
     return state.staff.find(s => s.id === budgetItem.linkedStaffId) || null;
+}
+
+// One-time backfill: copy missing contact info between already-linked staff/budget pairs.
+// Only fills empty fields (never overwrites), so future re-saves use the normal "last edit wins" sync.
+let _linkedContactBackfillDone = false;
+let _linkedContactBackfillRunning = false;
+async function backfillLinkedContactInfo() {
+    if (_linkedContactBackfillDone || _linkedContactBackfillRunning) return;
+    if (!state.staff.length || !state.budget.length) return;
+    _linkedContactBackfillRunning = true;
+
+    const writes = [];
+    for (const member of state.staff) {
+        if (!member.linkedBudgetId) continue;
+        const budgetItem = state.budget.find(b => b.id === member.linkedBudgetId);
+        if (!budgetItem) continue;
+
+        const staffUpdate = {};
+        if (!member.phone && budgetItem.phone) staffUpdate.phone = budgetItem.phone;
+        if (!member.email && budgetItem.email) staffUpdate.email = budgetItem.email;
+
+        const budgetUpdate = {};
+        if (!budgetItem.phone && member.phone) budgetUpdate.phone = member.phone;
+        if (!budgetItem.email && member.email) budgetUpdate.email = member.email;
+        if (!budgetItem.contact && member.name) budgetUpdate.contact = member.name;
+
+        if (Object.keys(staffUpdate).length) writes.push(collections.staff.doc(member.id).update(staffUpdate));
+        if (Object.keys(budgetUpdate).length) writes.push(collections.budget.doc(budgetItem.id).update(budgetUpdate));
+    }
+
+    try {
+        if (writes.length) {
+            await Promise.all(writes);
+            console.log('[backfill] synced contact info for ' + writes.length + ' linked field group(s)');
+        }
+        _linkedContactBackfillDone = true;
+    } catch (e) {
+        console.error('[backfill] linked contact sync failed:', e);
+    } finally {
+        _linkedContactBackfillRunning = false;
+    }
 }
 
 function findBudgetSuggestions(staffName) {
@@ -461,6 +505,13 @@ function switchPage(pageName) {
             if (dayTabs.length > 0) dayTabs[0].classList.add('active');
             renderTimeline();
         }
+        if (pageName === 'technical-cue-sheet') {
+            state.cueSheetEditingRowId = null;
+            state.cueSheetRenderPending = false;
+            const showHiddenCheckbox = document.getElementById('cue-show-hidden-checkbox');
+            if (showHiddenCheckbox) showHiddenCheckbox.checked = state.cueSheetShowHidden;
+            renderCueSheet();
+        }
         if (pageName === 'input-lists') {
             // Reset to first stage tab (Main Stage)
             state.currentStage = 'main';
@@ -588,11 +639,11 @@ function setupCollectionListener(collectionKey, stateKey, renderCallbacks = []) 
 
 // Load all data from Firestore
 function loadAllData() {
-    setupCollectionListener('budget', 'budget', [renderBudget, renderVendors, updateDashboard, renderStaff]);
-    setupCollectionListener('timeline', 'timeline', [renderTimeline, updateDashboard]);
+    setupCollectionListener('budget', 'budget', [renderBudget, renderVendors, updateDashboard, renderStaff, backfillLinkedContactInfo]);
+    setupCollectionListener('timeline', 'timeline', [renderTimeline, renderCueSheet, updateDashboard]);
     setupCollectionListener('mainStageInputs', 'mainStageInputs', [renderStageInputs]);
     setupCollectionListener('cocktailStageInputs', 'cocktailStageInputs', [renderStageInputs]);
-    setupCollectionListener('staff', 'staff', [renderStaff, renderVendors]);
+    setupCollectionListener('staff', 'staff', [renderStaff, renderVendors, backfillLinkedContactInfo]);
     setupCollectionListener('stagePlots', 'stagePlots', [updatePlotSelector, renderTimeline]);
     setupCollectionListener('setLists', 'setLists', [renderSetLists, updateDashboard, renderTimeline]);
     setupCollectionListener('packingList', 'packingList', [renderPackingList]);
@@ -1992,6 +2043,89 @@ function renderTimeline() {
     }
 }
 
+// Technical Cue Sheet — same Firestore docs as timeline, filtered to Saturday >= 18:20.
+// Tech-only fields (audio/liveVideo/lighting/centerScreen/sideScreens/nameOfFile)
+// live on the same timeline document and are ignored by the timeline view.
+const CUE_SHEET_FIELD_ORDER = ['time', 'duration', 'event', 'audio', 'liveVideo', 'lighting', 'centerScreen', 'sideScreens', 'screenCue', 'nameOfFile'];
+const CUE_SHEET_MULTILINE_FIELDS = new Set(['audio', 'liveVideo', 'lighting']);
+
+function renderCueSheet() {
+    const tbody = document.getElementById('cue-sheet-tbody');
+    if (!tbody) return;
+
+    if (state.cueSheetEditingRowId) {
+        state.cueSheetRenderPending = true;
+        return;
+    }
+
+    const all = state.timeline.filter(item =>
+        item.day === 'Saturday' &&
+        typeof item.time === 'string' &&
+        item.time >= '18:20'
+    );
+
+    const hiddenCount = all.filter(item => item.hiddenFromCueSheet === true).length;
+    const countEl = document.getElementById('cue-hidden-count');
+    if (countEl) countEl.textContent = hiddenCount;
+
+    const visible = state.cueSheetShowHidden
+        ? all
+        : all.filter(item => item.hiddenFromCueSheet !== true);
+
+    const sorted = [...visible].sort((a, b) => {
+        if (!a.time) return 1;
+        if (!b.time) return -1;
+        return a.time.localeCompare(b.time);
+    });
+
+    if (sorted.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="11" class="empty-state">No Saturday timeline rows ≥ 6:20 PM yet.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = sorted.map(item => renderCueSheetRow(item)).join('');
+}
+
+function renderCueSheetRow(item) {
+    const isHidden = item.hiddenFromCueSheet === true;
+    const rowClass = isHidden ? 'cs-row cs-hidden-row' : 'cs-row';
+
+    const cell = (field, colClass) => {
+        const raw = item[field];
+        const isMultiline = CUE_SHEET_MULTILINE_FIELDS.has(field);
+        const multilineClass = isMultiline ? ' cs-cell-multiline' : '';
+        let display;
+        if (field === 'time') {
+            display = `<span class="tl-time">${formatTime12Hour(raw)}</span>`;
+        } else if (raw === undefined || raw === null || raw === '') {
+            display = '<span class="cs-cell-empty">—</span>';
+        } else {
+            display = escapeHtml(String(raw));
+        }
+        return `<td class="${colClass}${multilineClass}" data-field="${field}" data-original="${escapeHtml(raw == null ? '' : String(raw))}" onclick="editCueCell(this)">${display}</td>`;
+    };
+
+    const actionBtn = isHidden
+        ? `<button class="cs-action-btn" onclick="unhideCueRow('${item.id}')" title="Unhide">Unhide</button>`
+        : `<button class="cs-action-btn" onclick="hideCueRow('${item.id}')" title="Hide from cue sheet">Hide</button>`;
+
+    return `
+        <tr class="${rowClass}" data-id="${item.id}">
+            ${cell('time', 'cs-time-col')}
+            ${cell('duration', 'cs-duration-col')}
+            ${cell('event', 'cs-activity-col')}
+            ${cell('audio', 'cs-audio-col')}
+            ${cell('liveVideo', 'cs-live-video-col')}
+            ${cell('lighting', 'cs-lighting-col')}
+            ${cell('centerScreen', 'cs-center-screen-col')}
+            ${cell('sideScreens', 'cs-side-screens-col')}
+            ${cell('screenCue', 'cs-cue-col')}
+            ${cell('nameOfFile', 'cs-file-col')}
+            <td class="cs-actions-col no-print">${actionBtn}</td>
+        </tr>
+    `;
+}
+
 // Modal Management
 function setupModals() {
     // Close buttons
@@ -2397,10 +2531,14 @@ async function handleBudgetSubmit(e) {
         if (oldStaffId && oldStaffId !== newLinkedStaffId) {
             try { await collections.staff.doc(oldStaffId).update({ linkedBudgetId: null }); } catch (e) { /* staff may be deleted */ }
         }
-        // Set new staff link + sync name
+        // Set new staff link + sync name and contact info (budget edit wins)
         if (newLinkedStaffId) {
             const staffUpdate = { linkedBudgetId: resolvedBudgetId };
             if (newVendorName) staffUpdate.name = newVendorName;
+            const newPhone = document.getElementById('budget-phone').value.trim() || null;
+            const newEmail = document.getElementById('budget-email').value.trim() || null;
+            staffUpdate.phone = newPhone;
+            staffUpdate.email = newEmail;
             try { await collections.staff.doc(newLinkedStaffId).update(staffUpdate); } catch (e) { console.error('Error syncing to staff:', e); }
         }
     }
@@ -5013,8 +5151,14 @@ async function handleStaffSubmit(e) {
         // Set new budget link
         if (newLinkedBudgetId) {
             const budgetUpdate = { linkedStaffId: resolvedStaffId };
-            // Sync name to budget vendor field
-            if (newName) budgetUpdate.vendor = newName;
+            // Sync name to budget vendor + contact fields
+            if (newName) {
+                budgetUpdate.vendor = newName;
+                budgetUpdate.contact = newName;
+            }
+            // Sync contact info to budget (staff edit wins)
+            budgetUpdate.phone = staffData.phone;
+            budgetUpdate.email = staffData.email;
             await collections.budget.doc(newLinkedBudgetId).update(budgetUpdate);
         }
 
