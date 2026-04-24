@@ -2259,8 +2259,7 @@ tr.task-completed td:not(.checkbox-col):not(.actions-col) {
 .cue-sheet-table tbody td.cs-lighting-col,
 .cue-sheet-table tbody td.cs-center-screen-col,
 .cue-sheet-table tbody td.cs-side-screens-col,
-.cue-sheet-table tbody td.cs-cue-col,
-.cue-sheet-table tbody td.cs-file-col {
+.cue-sheet-table tbody td.cs-cue-col {
     border-left: 1px solid #f0ece3;
 }
 
@@ -2269,8 +2268,7 @@ tr.task-completed td:not(.checkbox-col):not(.actions-col) {
 .cue-sheet-table thead th.cs-lighting-col,
 .cue-sheet-table thead th.cs-center-screen-col,
 .cue-sheet-table thead th.cs-side-screens-col,
-.cue-sheet-table thead th.cs-cue-col,
-.cue-sheet-table thead th.cs-file-col {
+.cue-sheet-table thead th.cs-cue-col {
     border-left: 1px solid #ede2c4;
 }
 
@@ -2308,14 +2306,13 @@ tr.task-completed td:not(.checkbox-col):not(.actions-col) {
 
 .cue-sheet-table .cs-time-col { width: 76px; white-space: nowrap; }
 .cue-sheet-table .cs-duration-col { width: 84px; white-space: nowrap; }
-.cue-sheet-table .cs-activity-col { width: 15%; }
-.cue-sheet-table .cs-audio-col { width: 11%; }
-.cue-sheet-table .cs-live-video-col { width: 10%; }
-.cue-sheet-table .cs-lighting-col { width: 12%; }
-.cue-sheet-table .cs-center-screen-col { width: 9%; }
-.cue-sheet-table .cs-side-screens-col { width: 9%; }
-.cue-sheet-table .cs-cue-col { width: 7%; }
-.cue-sheet-table .cs-file-col { width: 11%; }
+.cue-sheet-table .cs-activity-col { width: 18%; }
+.cue-sheet-table .cs-audio-col { width: 13%; }
+.cue-sheet-table .cs-live-video-col { width: 12%; }
+.cue-sheet-table .cs-lighting-col { width: 14%; }
+.cue-sheet-table .cs-center-screen-col { width: 11%; }
+.cue-sheet-table .cs-side-screens-col { width: 11%; }
+.cue-sheet-table .cs-cue-col { width: 8%; }
 .cue-sheet-table .cs-actions-col { width: 80px; cursor: default; text-align: right; }
 
 .cue-sheet-table td.cs-cell-multiline {

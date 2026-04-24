@@ -2046,7 +2046,7 @@ function renderTimeline() {
 // Technical Cue Sheet — same Firestore docs as timeline, filtered to Saturday >= 18:20.
 // Tech-only fields (audio/liveVideo/lighting/centerScreen/sideScreens/nameOfFile)
 // live on the same timeline document and are ignored by the timeline view.
-const CUE_SHEET_FIELD_ORDER = ['time', 'duration', 'event', 'audio', 'liveVideo', 'lighting', 'centerScreen', 'sideScreens', 'screenCue', 'nameOfFile'];
+const CUE_SHEET_FIELD_ORDER = ['time', 'duration', 'event', 'audio', 'liveVideo', 'lighting', 'centerScreen', 'sideScreens', 'screenCue'];
 const CUE_SHEET_MULTILINE_FIELDS = new Set(['audio', 'liveVideo', 'lighting']);
 
 function renderCueSheet() {
@@ -2079,7 +2079,7 @@ function renderCueSheet() {
     });
 
     if (sorted.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="11" class="empty-state">No Saturday timeline rows ≥ 6:20 PM yet.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" class="empty-state">No Saturday timeline rows ≥ 6:20 PM yet.</td></tr>';
         return;
     }
 
@@ -2120,7 +2120,6 @@ function renderCueSheetRow(item) {
             ${cell('centerScreen', 'cs-center-screen-col')}
             ${cell('sideScreens', 'cs-side-screens-col')}
             ${cell('screenCue', 'cs-cue-col')}
-            ${cell('nameOfFile', 'cs-file-col')}
             <td class="cs-actions-col no-print">${actionBtn}</td>
         </tr>
     `;
