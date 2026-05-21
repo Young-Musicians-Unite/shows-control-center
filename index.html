@@ -94,6 +94,10 @@
                             <svg class="nav-icon" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8V3a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v5"/><path d="M3 8h12v4H3z"/><path d="M5 12v4"/><path d="M13 12v4"/></svg>
                             <span class="nav-label">Seating</span>
                         </a>
+                        <a href="#guests" class="nav-link" data-page="guests">
+                            <svg class="nav-icon" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="5" r="3"/><path d="M1 17c0-3.9 3.6-7 8-7s8 3.1 8 7"/><circle cx="15" cy="5" r="2.2"/><path d="M17 14.5c1.3.5 1 2.5 1 2.5"/></svg>
+                            <span class="nav-label">Guests</span>
+                        </a>
                     </div>
                 </div>
 
@@ -804,6 +808,44 @@
             <!-- Category Accordion Container -->
             <div id="packing-list-container">
                 <p class="empty-state">No packing items added</p>
+            </div>
+        </div>
+
+        <!-- Guests Page -->
+        <div id="guests" class="page">
+            <div class="gi-page">
+                <div class="gi-page-header">
+                    <h1 class="gi-page-title">Guest List</h1>
+                    <div class="gi-toolbar-right">
+                        <div class="gi-search-wrap">
+                            <svg class="gi-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                            <input id="gi-search-input" class="gi-search-input" placeholder="Search guests…" oninput="guestHandleSearch(this.value)" autocomplete="off">
+                        </div>
+                        <button class="gi-btn" onclick="exportGuestCSV()">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            Export
+                        </button>
+                        <div class="gi-col-wrap">
+                            <button class="gi-btn" onclick="toggleGuestColumnsMenu()">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18"/></svg>
+                                Columns
+                            </button>
+                            <div class="gi-col-menu" id="gi-col-menu"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="gi-stats-bar" id="gi-stats-bar"></div>
+                <div class="gi-table-container">
+                    <div class="gi-table-scroll">
+                        <div id="gi-table-wrapper"></div>
+                    </div>
+                </div>
+                <div class="gi-hints" id="gi-hints">
+                    <span><kbd>Click</kbd> cell to edit</span>
+                    <span><kbd>Tab</kbd> next cell</span>
+                    <span><kbd>Enter</kbd> next row</span>
+                    <span><kbd>Esc</kbd> cancel</span>
+                </div>
             </div>
         </div>
 
@@ -2270,6 +2312,20 @@
             pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
         }
     </script>
+
+    <!-- Delete Guest Modal -->
+    <div class="modal-overlay" id="delete-guest-modal" onclick="if(event.target===this)closeDeleteGuestModal()">
+        <div class="modal">
+            <div class="modal-title">Remove Guest</div>
+            <p style="color:rgba(255,255,255,0.55);font-size:14px;margin-bottom:20px;">
+                Remove <strong id="delete-guest-name"></strong> from the guest list?
+            </p>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeDeleteGuestModal()">Cancel</button>
+                <button class="btn btn-danger" id="confirm-delete-guest-btn">Remove</button>
+            </div>
+        </div>
+    </div>
 
     <!-- Toast Notifications -->
     <div class="toast-container" id="toast-container"></div>

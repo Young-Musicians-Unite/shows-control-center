@@ -292,6 +292,7 @@ const ALL_PAGES = [
     { id: 'digital-assets',      label: 'Digital Assets' },
     { id: 'menu',                label: 'Menu' },
     { id: 'venue-map',           label: 'Venue Map' },
+    { id: 'guests',              label: 'Guests' },
 ];
 
 const INTAKE_SCHEMA = [
@@ -420,6 +421,7 @@ function setActiveEvent(eventId) {
         digitalAssets:         ref.collection('digitalAssets'),
         guests:                ref.collection('guests'),
         seatingTables:         ref.collection('seatingTables'),
+        invitees:              ref.collection('invitees'),
         intake:                ref.collection('intake'),
     };
     state.currentEventId = eventId;
@@ -633,9 +635,13 @@ function switchPage(pageName) {
         state.timelineEditingRowId = null;
         state.timelineRenderPending = false;
         state.pendingNewRow = {};
+        state.guestEditingId = null;
+        state.guestRenderPending = false;
+        state.guestPendingNew = {};
 
         // Refresh data for the page
         if (pageName === 'dashboard') updateDashboard();
+        if (pageName === 'guests') initGuestPage();
         if (pageName === 'vendors') {
             state.vendorFilter = 'all';
             state.vendorSearch = '';
@@ -824,6 +830,7 @@ function loadAllData() {
     setupCollectionListener('digitalAssets', 'digitalAssets', [renderDigitalAssets]);
     setupCollectionListener('guests', 'guests', [renderSeatingTable, renderSeatingMap, renderSeatingPanel, updateSeatingStats]);
     setupCollectionListener('seatingTables', 'seatingTables', [renderSeatingTable, renderSeatingMap, renderSeatingPanel, updateSeatingStats]);
+    setupCollectionListener('invitees', 'invitees', [renderGuestList]);
     setupIntakeListener();
 }
 
@@ -15214,6 +15221,498 @@ function exportSeatingToXlsx() {
     const date = new Date().toISOString().slice(0, 10);
     XLSX.writeFile(wb, `gala-seating-${date}.xlsx`);
 }
+
+// ══════════════════════════════════════════════════════════════
+// GUESTS PAGE  (Invite List)
+// ══════════════════════════════════════════════════════════════
+
+const GUEST_FIELD_ORDER = ['name','title','organization','status','seats','tableNumber','invitedBy','interviewPriority','phone','email','notes'];
+const GUEST_STATUS_ORDER = { pending:0, invited:1, confirmed:2, declined:3 };
+const GUEST_PRIORITY_ORDER = { high:0, low:1, na:2, '':3 };
+const GUEST_HEADER_LABELS = {
+    name:'Name', title:'Title', organization:'Organization',
+    status:'Status', seats:'Seats', tableNumber:'Table #', invitedBy:'Invited By',
+    interviewPriority:'Interview?', phone:'Phone', email:'Email', notes:'Notes'
+};
+
+// Extend main state with guest-page state
+Object.assign(state, {
+    invitees:           [],
+    guestSearch:        '',
+    guestSortField:     'status',
+    guestSortDir:       'asc',
+    guestHiddenCols:    new Set(['phone','email','tableNumber']),
+    guestEditingId:     null,
+    guestRenderPending: false,
+    guestPendingNew:    {},
+    guestLastAddedId:   null,
+});
+
+function initGuestPage() {
+    state.guestEditingId    = null;
+    state.guestRenderPending = false;
+    state.guestPendingNew   = {};
+    state.guestSearch       = '';
+    const el = document.getElementById('gi-search-input');
+    if (el) el.value = '';
+    renderGuestColumnsMenu();
+    renderGuestList();
+}
+
+function renderGuestList() {
+    if (state.currentPage !== 'guests') return;
+    if (state.guestEditingId) {
+        state.guestRenderPending = true;
+    } else {
+        renderGuestTable();
+    }
+    renderGuestStats();
+}
+
+function renderGuestStats() {
+    const bar = document.getElementById('gi-stats-bar');
+    if (!bar) return;
+    const invitees = state.invitees || [];
+    const counts = { pending:0, invited:0, confirmed:0, declined:0 };
+    const seats  = { pending:0, invited:0, confirmed:0, declined:0 };
+    invitees.forEach(inv => {
+        const s = inv.status || 'pending';
+        if (s in counts) {
+            counts[s]++;
+            const n = parseInt(inv.seats, 10);
+            seats[s] += isNaN(n) ? 0 : n;
+        }
+    });
+    const total = invitees.length;
+    const pct = n => total > 0 ? ((n / total) * 100).toFixed(1) : 0;
+    const totalSeats = seats.invited + seats.confirmed;
+    bar.innerHTML = `
+        <div class="gi-stat-total">${total} Guest${total !== 1 ? 's' : ''}</div>
+        <div class="gi-chip gi-chip-pending"><span>${counts.pending}</span> Pending</div>
+        <div class="gi-chip gi-chip-declined"><span>${counts.declined}</span> Declined</div>
+        <div class="gi-chip gi-chip-invited"><span>${counts.invited}</span> Invited</div>
+        <div class="gi-chip gi-chip-confirmed"><span>${counts.confirmed}</span> Confirmed</div>
+        <div class="gi-status-bar">
+            <div class="gi-sb-seg gi-sb-pending"   style="width:${pct(counts.pending)}%"></div>
+            <div class="gi-sb-seg gi-sb-declined"  style="width:${pct(counts.declined)}%"></div>
+            <div class="gi-sb-seg gi-sb-invited"   style="width:${pct(counts.invited)}%"></div>
+            <div class="gi-sb-seg gi-sb-confirmed" style="width:${pct(counts.confirmed)}%"></div>
+        </div>
+        <div class="gi-seats-note">
+            ${totalSeats} seat${totalSeats !== 1 ? 's' : ''}
+            <span class="gi-seats-detail">(${seats.invited} invited · ${seats.confirmed} confirmed)</span>
+        </div>`;
+}
+
+function guestGetVisible() {
+    return GUEST_FIELD_ORDER.filter(f => !state.guestHiddenCols.has(f));
+}
+
+function renderGuestTable() {
+    const wrapper = document.getElementById('gi-table-wrapper');
+    if (!wrapper) return;
+
+    let filtered = [...(state.invitees || [])];
+    if (state.guestSearch) {
+        const q = state.guestSearch.toLowerCase();
+        const sf = ['name','title','organization','invitedBy','notes','email','phone'];
+        filtered = filtered.filter(inv => sf.some(f => (inv[f]||'').toLowerCase().includes(q)));
+    }
+
+    const sf = state.guestSortField;
+    filtered.sort((a, b) => {
+        let cmp = 0;
+        if (sf === 'status') {
+            cmp = (GUEST_STATUS_ORDER[a.status] ?? 99) - (GUEST_STATUS_ORDER[b.status] ?? 99);
+        } else if (sf === 'interviewPriority') {
+            cmp = (GUEST_PRIORITY_ORDER[a.interviewPriority||''] ?? 99) - (GUEST_PRIORITY_ORDER[b.interviewPriority||''] ?? 99);
+        } else {
+            cmp = (a[sf]||'').localeCompare(b[sf]||'');
+        }
+        return state.guestSortDir === 'asc' ? cmp : -cmp;
+    });
+
+    const visible = guestGetVisible();
+    const colW = { name:14, title:11, organization:13, status:8, seats:4, tableNumber:5, invitedBy:11, interviewPriority:9, phone:9, email:12, notes:16 };
+    const actW = 4;
+    const totalW = visible.reduce((s, f) => s + colW[f], 0) + actW;
+    const scale = 96 / totalW;
+
+    const rows = filtered.map(inv => renderGuestRow(inv, visible)).join('');
+    const phantom = renderGuestPhantom(visible);
+
+    wrapper.innerHTML = `
+        <table class="gi-table">
+            <colgroup>
+                ${visible.map(f => `<col style="width:${(colW[f]*scale).toFixed(1)}%">`).join('')}
+                <col style="width:${actW}%">
+            </colgroup>
+            <thead><tr>
+                ${visible.map(field => {
+                    const active = state.guestSortField === field;
+                    const arrow = active ? (state.guestSortDir === 'asc' ? ' ▲' : ' ▼') : '';
+                    return `<th class="${active ? 'gi-th-active' : ''}" onclick="guestSort('${field}')">${GUEST_HEADER_LABELS[field]}${arrow}</th>`;
+                }).join('')}
+                <th></th>
+            </tr></thead>
+            <tbody>${rows}${phantom}</tbody>
+        </table>`;
+
+    if (filtered.length === 0 && state.guestSearch) {
+        wrapper.innerHTML = '<div class="gi-empty">No guests match your search.</div>';
+    }
+
+    if (state.guestLastAddedId) {
+        const row = wrapper.querySelector(`tr[data-id="${state.guestLastAddedId}"]`);
+        if (row) {
+            row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            row.classList.add('gi-row-new');
+            setTimeout(() => row.classList.remove('gi-row-new'), 1500);
+        }
+        state.guestLastAddedId = null;
+    }
+}
+
+function renderGuestRow(inv, visible) {
+    const hasPhoto = inv.headshotUrl && inv.headshotUrl.trim();
+    const avatar   = hasPhoto ? `<img class="gi-avatar" src="${escapeHtml(inv.headshotUrl)}" alt="">` : '';
+    const cells = visible.map(field => {
+        if (field === 'name') {
+            return `<td data-field="name" data-id="${inv.id}" onclick="editGuestCell(this)"><span class="gi-name-cell">${avatar}${escapeHtml(inv.name||'')}</span></td>`;
+        }
+        if (field === 'status') {
+            const s = inv.status || 'pending';
+            return `<td data-field="status" data-id="${inv.id}" onclick="editGuestCell(this)"><span class="gi-status gi-status-${s}">${guestFmtStatus(s)}</span></td>`;
+        }
+        if (field === 'interviewPriority') {
+            return `<td data-field="interviewPriority" data-id="${inv.id}" onclick="editGuestCell(this)">${guestPriorityBadge(inv.interviewPriority)}</td>`;
+        }
+        const val = inv[field] || '';
+        const cls = field === 'notes' ? ' class="gi-notes-cell"' : '';
+        return `<td data-field="${field}" data-id="${inv.id}"${cls} onclick="editGuestCell(this)">${escapeHtml(val)}</td>`;
+    }).join('');
+
+    return `<tr data-id="${inv.id}" data-status="${inv.status||'pending'}">
+        ${cells}
+        <td><div class="gi-row-actions">
+            <button class="gi-del-btn" onclick="showDeleteGuestModal('${inv.id}','${escapeHtml(inv.name||'').replace(/'/g,"\\'")}')">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14z"/></svg>
+            </button>
+        </div></td>
+    </tr>`;
+}
+
+function renderGuestPhantom(visible) {
+    const cells = visible.map(field => {
+        const val = state.guestPendingNew[field] || '';
+        let display;
+        if (val) {
+            if (field === 'status') display = `<span class="gi-status gi-status-${val}">${guestFmtStatus(val)}</span>`;
+            else if (field === 'interviewPriority') display = guestPriorityBadge(val);
+            else display = escapeHtml(val);
+        } else if (field === 'name') {
+            display = `<span class="gi-phantom-hint">+ Add guest…</span>`;
+        } else {
+            display = '';
+        }
+        return `<td data-field="${field}" onclick="editGuestCell(this)">${display}</td>`;
+    }).join('');
+    return `<tr class="gi-phantom" data-phantom="true">${cells}<td></td></tr>`;
+}
+
+function guestFmtStatus(s) {
+    return s ? s.charAt(0).toUpperCase() + s.slice(1) : 'Pending';
+}
+
+function guestPriorityBadge(p) {
+    if (!p || p === 'na') return '';
+    return `<span class="gi-priority gi-priority-${p}">${p === 'high' ? 'High' : 'Low'}</span>`;
+}
+
+function guestSort(field) {
+    if (state.guestSortField === field) {
+        state.guestSortDir = state.guestSortDir === 'asc' ? 'desc' : 'asc';
+    } else {
+        state.guestSortField = field;
+        state.guestSortDir = 'asc';
+    }
+    renderGuestTable();
+}
+window.guestSort = guestSort;
+
+function guestHandleSearch(val) {
+    state.guestSearch = val;
+    renderGuestTable();
+}
+window.guestHandleSearch = guestHandleSearch;
+
+function renderGuestColumnsMenu() {
+    const menu = document.getElementById('gi-col-menu');
+    if (!menu) return;
+    menu.innerHTML = GUEST_FIELD_ORDER.map(field => `
+        <label class="gi-col-item">
+            <input type="checkbox" ${state.guestHiddenCols.has(field) ? '' : 'checked'}
+                   onchange="toggleGuestColumn('${field}')">
+            ${GUEST_HEADER_LABELS[field]}
+        </label>`).join('');
+}
+
+function toggleGuestColumnsMenu() {
+    const menu = document.getElementById('gi-col-menu');
+    if (menu) menu.classList.toggle('gi-col-menu-open');
+    // Close on outside click
+    if (menu?.classList.contains('gi-col-menu-open')) {
+        setTimeout(() => {
+            const close = (e) => {
+                if (!e.target.closest('.gi-col-wrap')) {
+                    menu.classList.remove('gi-col-menu-open');
+                    document.removeEventListener('click', close);
+                }
+            };
+            document.addEventListener('click', close);
+        }, 50);
+    }
+}
+window.toggleGuestColumnsMenu = toggleGuestColumnsMenu;
+
+function toggleGuestColumn(field) {
+    if (state.guestHiddenCols.has(field)) state.guestHiddenCols.delete(field);
+    else state.guestHiddenCols.add(field);
+    renderGuestTable();
+}
+window.toggleGuestColumn = toggleGuestColumn;
+
+// ── Inline Cell Editing ──────────────────────────────────────
+function editGuestCell(cell) {
+    if (cell.querySelector('input,textarea,.gi-status-picker,.gi-priority-picker')) return;
+    const row   = cell.closest('tr');
+    const field = cell.dataset.field;
+    const invId = cell.dataset.id;
+    if (!field) return;
+    const isPhantom = row?.dataset.phantom === 'true';
+    state.guestEditingId = isPhantom ? 'phantom' : (invId || null);
+    row?.classList.add('gi-editing');
+
+    const original = isPhantom ? (state.guestPendingNew[field] || '') : (cell.textContent.trim());
+
+    if (field === 'status')            { openGuestStatusPicker(cell, row, original, isPhantom, invId);   return; }
+    if (field === 'interviewPriority') { openGuestPriorityPicker(cell, row, original, isPhantom, invId); return; }
+
+    const input = document.createElement('input');
+    input.type  = 'text';
+    input.value = original;
+    input.className = 'gi-inline-input';
+    cell.innerHTML = '';
+    cell.appendChild(input);
+    input.focus();
+    input.select();
+
+    const saveVal = async (val) => {
+        const v = val.trim();
+        if (isPhantom) {
+            if (v) state.guestPendingNew[field] = v;
+            else   delete state.guestPendingNew[field];
+        } else if (invId && v !== original) {
+            await saveGuestField(invId, field, v);
+        }
+    };
+
+    input.addEventListener('keydown', e => guestCellKeydown(e, input, cell, row, isPhantom, invId, saveVal));
+    input.addEventListener('blur', async () => {
+        await saveVal(input.value);
+        state.guestEditingId = null;
+        row?.classList.remove('gi-editing');
+        if (isPhantom) {
+            restoreGuestPhantomCell(cell, field);
+        } else {
+            cell.textContent = input.value.trim();
+        }
+        if (state.guestRenderPending) {
+            state.guestRenderPending = false;
+            renderGuestTable();
+            renderGuestStats();
+        }
+    });
+}
+window.editGuestCell = editGuestCell;
+
+function guestCellKeydown(e, input, cell, row, isPhantom, invId, saveVal) {
+    if (e.key === 'Escape') {
+        e.preventDefault();
+        input.value = isPhantom ? (state.guestPendingNew[cell.dataset.field] || '') : (cell.dataset.original || '');
+        input.blur();
+        return;
+    }
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        const v = input.value.trim();
+        if (isPhantom && v) state.guestPendingNew[cell.dataset.field] = v;
+        input.blur();
+        if (isPhantom && state.guestPendingNew.name) {
+            saveNewGuest();
+        } else {
+            // move to next row same column
+            const tbody = row.closest('tbody');
+            const rows  = [...tbody.querySelectorAll('tr')];
+            const next  = rows[rows.indexOf(row) + 1];
+            if (next) setTimeout(() => next.querySelector(`[data-field="${cell.dataset.field}"]`)?.click(), 30);
+        }
+        return;
+    }
+    if (e.key === 'Tab') {
+        e.preventDefault();
+        const v = input.value.trim();
+        if (isPhantom && v) state.guestPendingNew[cell.dataset.field] = v;
+        input.blur();
+        const visible = guestGetVisible();
+        const fi = visible.indexOf(cell.dataset.field);
+        setTimeout(() => {
+            let targetRow = row, tfi = fi + 1;
+            if (tfi >= visible.length) {
+                const tbody = row.closest('tbody');
+                const rows  = [...tbody.querySelectorAll('tr')];
+                targetRow = rows[rows.indexOf(row) + 1] || row;
+                tfi = 0;
+            }
+            targetRow?.querySelector(`[data-field="${visible[tfi]}"]`)?.click();
+        }, 30);
+    }
+}
+
+function restoreGuestPhantomCell(cell, field) {
+    const val = state.guestPendingNew[field] || '';
+    if (val) {
+        cell.textContent = val;
+    } else if (field === 'name') {
+        cell.innerHTML = '<span class="gi-phantom-hint">+ Add guest…</span>';
+    } else {
+        cell.textContent = '';
+    }
+}
+
+async function saveGuestField(invId, field, value) {
+    if (!state.currentEventId || !collections.invitees) return;
+    try {
+        await collections.invitees.doc(invId).update({
+            [field]: value,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+    } catch(e) { console.error('saveGuestField:', e); }
+}
+
+// ── Status Picker ────────────────────────────────────────────
+function openGuestStatusPicker(cell, row, current, isPhantom, invId) {
+    const statuses = ['pending','invited','confirmed','declined'];
+    const picker = document.createElement('div');
+    picker.className = 'gi-status-picker';
+    picker.innerHTML = statuses.map(s =>
+        `<button class="gi-sp-opt gi-sp-${s}${s===current?' gi-sp-active':''}" data-val="${s}"
+                 onclick="selectGuestStatus(this,'${invId||''}',${isPhantom})">${guestFmtStatus(s)}</button>`
+    ).join('');
+    cell.innerHTML = '';
+    cell.appendChild(picker);
+    picker.querySelector('button')?.focus();
+    picker.addEventListener('keydown', e => {
+        if (e.key === 'Escape') { state.guestEditingId = null; row?.classList.remove('gi-editing'); renderGuestTable(); }
+    });
+}
+
+async function selectGuestStatus(btn, invId, isPhantom) {
+    const val = btn.dataset.val;
+    if (isPhantom) {
+        state.guestPendingNew.status = val;
+    } else if (invId) {
+        await saveGuestField(invId, 'status', val);
+    }
+    state.guestEditingId = null;
+    btn.closest('tr')?.classList.remove('gi-editing');
+    renderGuestTable();
+    renderGuestStats();
+}
+window.selectGuestStatus = selectGuestStatus;
+
+// ── Priority Picker ──────────────────────────────────────────
+function openGuestPriorityPicker(cell, row, current, isPhantom, invId) {
+    const opts = [{val:'high',label:'High'},{val:'low',label:'Low'},{val:'na',label:'N/A'},{val:'',label:'None'}];
+    const picker = document.createElement('div');
+    picker.className = 'gi-priority-picker';
+    picker.innerHTML = opts.map(o =>
+        `<button class="gi-pp-opt${o.val===current?' gi-pp-active':''}" data-val="${o.val}"
+                 onclick="selectGuestPriority(this,'${invId||''}',${isPhantom})">${o.label}</button>`
+    ).join('');
+    cell.innerHTML = '';
+    cell.appendChild(picker);
+    picker.querySelector('button')?.focus();
+}
+
+async function selectGuestPriority(btn, invId, isPhantom) {
+    const val = btn.dataset.val;
+    if (isPhantom) state.guestPendingNew.interviewPriority = val;
+    else if (invId) await saveGuestField(invId, 'interviewPriority', val);
+    state.guestEditingId = null;
+    btn.closest('tr')?.classList.remove('gi-editing');
+    renderGuestTable();
+}
+window.selectGuestPriority = selectGuestPriority;
+
+// ── Add / Delete ─────────────────────────────────────────────
+async function saveNewGuest() {
+    const r = state.guestPendingNew;
+    if (!r.name?.trim() || !state.currentEventId || !collections.invitees) return;
+    const data = {
+        name: r.name||'', title: r.title||'', organization: r.organization||'',
+        status: r.status||'pending', seats: r.seats||'', tableNumber: r.tableNumber||'',
+        invitedBy: r.invitedBy||'', interviewPriority: r.interviewPriority||'',
+        phone: r.phone||'', email: r.email||'', notes: r.notes||'',
+        headshotUrl: '', bio: '',
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    };
+    state.guestPendingNew = {};
+    try {
+        const doc = await collections.invitees.add(data);
+        state.guestLastAddedId = doc.id;
+    } catch(e) { console.error('saveNewGuest:', e); }
+}
+
+function showDeleteGuestModal(invId, name) {
+    const modal  = document.getElementById('delete-guest-modal');
+    const nameEl = document.getElementById('delete-guest-name');
+    if (nameEl) nameEl.textContent = name;
+    if (modal)  {
+        modal.classList.add('active');
+        document.getElementById('confirm-delete-guest-btn').onclick = () => confirmDeleteGuest(invId);
+    }
+}
+window.showDeleteGuestModal = showDeleteGuestModal;
+
+function closeDeleteGuestModal() {
+    document.getElementById('delete-guest-modal')?.classList.remove('active');
+}
+window.closeDeleteGuestModal = closeDeleteGuestModal;
+
+async function confirmDeleteGuest(invId) {
+    closeDeleteGuestModal();
+    if (!state.currentEventId || !collections.invitees) return;
+    try { await collections.invitees.doc(invId).delete(); }
+    catch(e) { console.error('confirmDeleteGuest:', e); }
+}
+
+// ── CSV Export ───────────────────────────────────────────────
+function exportGuestCSV() {
+    const invitees = state.invitees || [];
+    if (!invitees.length) { showToast('No guests to export', 'error'); return; }
+    const headers = GUEST_FIELD_ORDER.map(f => GUEST_HEADER_LABELS[f]);
+    const rows = invitees.map(inv =>
+        GUEST_FIELD_ORDER.map(f => `"${(inv[f]||'').toString().replace(/"/g,'""')}"`).join(',')
+    );
+    const csv = [headers.join(','), ...rows].join('\n');
+    const url = URL.createObjectURL(new Blob([csv], {type:'text/csv;charset=utf-8;'}));
+    const a   = Object.assign(document.createElement('a'), { href: url, download: `guest-list.csv` });
+    a.click();
+    URL.revokeObjectURL(url);
+}
+window.exportGuestCSV = exportGuestCSV;
 
 // Window exports
 window.editSeatingCell = editSeatingCell;
