@@ -11078,7 +11078,6 @@ async function vmInitCanvas() {
         wrapper.clientWidth || 0,
         wrapper.offsetWidth || 0
     ) || 1000;
-    console.log('[vmInitCanvas] wrapperWidth:', wrapperWidth, 'canvasArea.clientWidth:', canvasArea?.clientWidth);
     let canvasWidth, canvasHeight;
 
     if (img) {
@@ -11126,11 +11125,12 @@ async function vmInitCanvas() {
 
     vmSetupDrawingEvents();
     vmLoadLayers().then(() => {
-        // Layout is now settled — resize canvas to fill container, then save state
-        setTimeout(() => {
-            vmFitCanvasToContainer();
-            vmSaveCanvasState();
-        }, 100);
+        // Fire vmFitCanvasToContainer at multiple points to guarantee correct sizing
+        // regardless of how long the browser takes to settle layout
+        [50, 200, 500, 1000].forEach(ms =>
+            setTimeout(vmFitCanvasToContainer, ms)
+        );
+        setTimeout(vmSaveCanvasState, 1100);
     });
 
     // Show upload prompt if no background image exists for this event
