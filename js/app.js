@@ -1448,22 +1448,162 @@ function updateDashboard() {
     updateBudgetStats();
     updateVendorStats();
     updateTimelineStats();
-    updateSetListDashboard();
-    updateMenuDashboard();
+    renderDashboard();
 }
 
-function updateMenuDashboard() {
-    const el = document.getElementById('dashboard-menu-count');
-    if (el) el.textContent = state.menuItems.length;
-    const label = document.getElementById('dashboard-menu-label');
-    if (label) label.textContent = state.menuItems.length === 1 ? 'Menu Item' : 'Menu Items';
-}
+// Legacy stubs kept so any stray references don't throw
+function updateMenuDashboard() {}
+function updateSetListDashboard() {}
 
-function updateSetListDashboard() {
-    const el = document.getElementById('dashboard-setlist-count');
-    if (el) el.textContent = state.setLists.length;
-    const label = document.getElementById('dashboard-setlist-label');
-    if (label) label.textContent = state.setLists.length === 1 ? 'Performance' : 'Performances';
+function renderDashboard() {
+    const dash = document.getElementById('dashboard');
+    if (!dash) return;
+
+    const event = state.activeEvent;
+    if (!event) return;
+
+    const enabled = new Set(event.enabledPages || []);
+
+    // ── Budget ────────────────────────────────────────────────────
+    const totalBudget = state.budget.reduce((s, i) => s + (parseFloat(i.budgeted) || 0), 0);
+    const totalSpent  = state.budget.reduce((s, i) => s + (parseFloat(i.actual)   || 0), 0);
+    const remaining   = totalBudget - totalSpent;
+    const budgetPct   = totalBudget > 0 ? Math.round(totalSpent / totalBudget * 100) : 0;
+    const overBudget  = budgetPct > 100;
+
+    // ── Timeline ─────────────────────────────────────────────────
+    const tlTotal   = state.timeline.length;
+    const tlDone    = state.timeline.filter(t => t.completed === true || t.status === 'complete').length;
+    const tlPct     = tlTotal > 0 ? Math.round(tlDone / tlTotal * 100) : 0;
+    const tlOverdue = state.timeline.filter(t => {
+        if (!t.dueDate || t.completed === true || t.status === 'complete') return false;
+        return new Date(t.dueDate) < new Date();
+    });
+
+    // ── Staff ────────────────────────────────────────────────────
+    const staffTotal    = state.staff.length;
+    const unfilledStaff = state.staff.filter(s => s.isPlaceholder);
+    const filledCount   = staffTotal - unfilledStaff.length;
+
+    // ── Issues list ──────────────────────────────────────────────
+    const issues = [];
+    unfilledStaff.forEach(s => issues.push({
+        type: 'staff', page: 'staff',
+        title: (s.name || 'Unnamed role') + ' — unfilled'
+    }));
+    tlOverdue.forEach(t => issues.push({
+        type: 'timeline', page: 'timeline',
+        title: (t.item || t.title || 'Item') + ' — overdue'
+    }));
+
+    // ── Countdown ────────────────────────────────────────────────
+    let countdownHtml = '';
+    const evDate = window._hubEventDate;
+    if (evDate) {
+        const diff = evDate - new Date();
+        if (diff > 0) {
+            const d = Math.floor(diff / 86400000);
+            const h = Math.floor((diff % 86400000) / 3600000);
+            const m = Math.floor((diff % 3600000) / 60000);
+            countdownHtml = `
+                <div class="db-countdown">
+                    <div class="db-cd-block"><span class="db-cd-num">${d}</span><span class="db-cd-lbl">days</span></div>
+                    <div class="db-cd-sep">:</div>
+                    <div class="db-cd-block"><span class="db-cd-num">${h}</span><span class="db-cd-lbl">hrs</span></div>
+                    <div class="db-cd-sep">:</div>
+                    <div class="db-cd-block"><span class="db-cd-num">${m}</span><span class="db-cd-lbl">min</span></div>
+                </div>`;
+        } else {
+            countdownHtml = `<div class="db-cd-past">Event has passed</div>`;
+        }
+    }
+
+    // ── Date string ──────────────────────────────────────────────
+    let dateStr = '';
+    if (event.date) {
+        try {
+            dateStr = new Date(event.date + 'T12:00:00').toLocaleDateString('en-US',
+                { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        } catch(e) { dateStr = event.date; }
+    }
+
+    // ── Arrow icon ───────────────────────────────────────────────
+    const arrow = `<svg class="db-card-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>`;
+
+    // ── Render ───────────────────────────────────────────────────
+    dash.innerHTML = `
+        <div class="db-header">
+            <div>
+                <div class="db-event-name">${escapeHtml(event.name || 'Event')}</div>
+                ${dateStr ? `<div class="db-event-date">${dateStr}</div>` : ''}
+            </div>
+            ${countdownHtml}
+        </div>
+
+        <div class="db-grid">
+
+            <!-- ── Left: Needs Attention ── -->
+            <div class="db-panel">
+                <div class="db-panel-hdr">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="${issues.length > 0 ? '#fc8181' : '#68d391'}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    <span>Needs Attention</span>
+                    <span class="db-badge ${issues.length === 0 ? 'ok' : ''}">${issues.length === 0 ? '✓' : issues.length}</span>
+                </div>
+                ${issues.length > 0 ? `
+                <div class="db-issues-list">
+                    ${issues.map(iss => `
+                    <div class="db-issue" onclick="switchPage('${iss.page}')">
+                        <span class="db-issue-dot ${iss.type}"></span>
+                        <div class="db-issue-body">
+                            <div class="db-issue-title">${escapeHtml(iss.title)}</div>
+                            <div class="db-issue-tag">${iss.type === 'staff' ? 'Staff' : 'Timeline'}</div>
+                        </div>
+                        <span class="db-issue-arrow">›</span>
+                    </div>`).join('')}
+                </div>` : `
+                <div class="db-all-clear">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    All looking good
+                </div>`}
+            </div>
+
+            <!-- ── Right: Section cards ── -->
+            <div class="db-cards">
+
+                ${enabled.has('budget') ? `
+                <div class="db-card" onclick="switchPage('budget')">
+                    <div class="db-card-hdr"><span class="db-card-label">Budget</span>${arrow}</div>
+                    <div class="db-card-main">${formatCurrency(remaining)}<span class="db-card-sub"> remaining</span></div>
+                    <div class="db-card-detail">${formatCurrency(totalSpent)} spent of ${formatCurrency(totalBudget)}</div>
+                    <div class="db-prog">
+                        <div class="db-prog-track"><div class="db-prog-fill${overBudget ? ' over' : ''}" style="width:${Math.min(budgetPct,100)}%"></div></div>
+                        <span class="db-prog-pct">${budgetPct}%</span>
+                    </div>
+                </div>` : ''}
+
+                ${enabled.has('timeline') ? `
+                <div class="db-card" onclick="switchPage('timeline')">
+                    <div class="db-card-hdr"><span class="db-card-label">Timeline</span>${arrow}</div>
+                    <div class="db-card-main">${tlDone}<span class="db-card-sub"> / ${tlTotal} complete</span></div>
+                    <div class="db-card-detail${tlOverdue.length > 0 ? ' db-card-warn' : ''}">${tlOverdue.length > 0 ? `${tlOverdue.length} overdue` : (tlTotal === 0 ? 'No items yet' : 'On track')}</div>
+                    <div class="db-prog">
+                        <div class="db-prog-track"><div class="db-prog-fill" style="width:${tlPct}%"></div></div>
+                        <span class="db-prog-pct">${tlPct}%</span>
+                    </div>
+                </div>` : ''}
+
+                ${enabled.has('staff') ? `
+                <div class="db-card" onclick="switchPage('staff')">
+                    <div class="db-card-hdr"><span class="db-card-label">Staff</span>${arrow}</div>
+                    <div class="db-card-main">${staffTotal}<span class="db-card-sub"> crew</span></div>
+                    <div class="db-pills">
+                        <span class="db-pill neutral">${filledCount} filled</span>
+                        ${unfilledStaff.length > 0 ? `<span class="db-pill warn">${unfilledStaff.length} unfilled</span>` : `<span class="db-pill ok">All filled</span>`}
+                    </div>
+                </div>` : ''}
+
+            </div>
+        </div>`;
 }
 
 function updateBudgetStats() {
@@ -1472,16 +1612,10 @@ function updateBudgetStats() {
     const remaining = totalBudget - totalSpent;
     const percentage = totalBudget > 0 ? (totalSpent / totalBudget * 100).toFixed(1) : 0;
 
-    document.getElementById('total-budget').textContent = formatCurrency(totalBudget);
-    document.getElementById('total-spent').textContent = formatCurrency(totalSpent);
-    document.getElementById('total-remaining').textContent = formatCurrency(remaining);
-    document.getElementById('budget-progress').style.width = `${Math.min(percentage, 100)}%`;
-    document.getElementById('budget-percentage').textContent = `${percentage}%`;
-
-    // Update budget page stats
-    document.getElementById('budget-total').textContent = formatCurrency(totalBudget);
-    document.getElementById('budget-spent').textContent = formatCurrency(totalSpent);
-    document.getElementById('budget-remaining').textContent = formatCurrency(remaining);
+    // Budget page stats
+    const _bt = document.getElementById('budget-total');     if (_bt) _bt.textContent = formatCurrency(totalBudget);
+    const _bs = document.getElementById('budget-spent');     if (_bs) _bs.textContent = formatCurrency(totalSpent);
+    const _br = document.getElementById('budget-remaining'); if (_br) _br.textContent = formatCurrency(remaining);
 }
 
 function updateVendorStats() {
@@ -1490,10 +1624,7 @@ function updateVendorStats() {
     const pending = total - confirmed;
     const issueCount = state.budget.filter(b => getVendorIssues(b).length > 0).length;
 
-    document.getElementById('vendors-confirmed').textContent = confirmed;
-    document.getElementById('vendor-confirmed-count').textContent = confirmed;
-    document.getElementById('vendor-pending-count').textContent = pending;
-    document.getElementById('vendor-issue-count').textContent = issueCount;
+    // (dashboard elements removed — counts rendered dynamically by renderDashboard)
 
     // Update filter button count badges
     const el = (id) => document.getElementById(id);
