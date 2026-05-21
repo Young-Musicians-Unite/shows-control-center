@@ -718,10 +718,9 @@ function switchPage(pageName) {
         if (pageName === 'stage-plots') initializeStagePlots();
         if (pageName === 'venue-map') {
             if (state.vmCanvas) {
-                // Re-render canvas after it becomes visible
-                setTimeout(() => state.vmCanvas.renderAll(), 50);
+                // Re-fit canvas to container in case viewport changed, then render
+                requestAnimationFrame(() => { vmFitCanvasToContainer(); state.vmCanvas?.renderAll(); });
             } else {
-                // First visit — initialize canvas now that the page is visible
                 vmInitCanvas();
             }
         }
@@ -10774,6 +10773,14 @@ function setupVenueMap() {
     // Background image is loaded per-event from Firestore in vmInitCanvas().
     // No static venue-map.png pre-load here.
 
+    // Resize canvas to fit container whenever the window resizes
+    let vmResizeTimer;
+    window.addEventListener('resize', () => {
+        if (state.currentPage !== 'venue-map') return;
+        clearTimeout(vmResizeTimer);
+        vmResizeTimer = setTimeout(vmFitCanvasToContainer, 150);
+    });
+
     // Tool buttons
     document.querySelectorAll('.vm-tool-btn').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -11060,8 +11067,12 @@ async function vmInitCanvas() {
         } catch (e) { /* proceed with blank canvas */ }
     }
 
+    // Wait for layout to settle before reading dimensions
+    await new Promise(resolve => requestAnimationFrame(resolve));
+
     const img = state.vmBgImage;
-    const wrapperWidth = wrapper.clientWidth || 1000;
+    const canvasArea = wrapper.closest('.vm-canvas-area') || wrapper.parentElement;
+    const wrapperWidth = (canvasArea?.clientWidth || wrapper.clientWidth) || 1000;
     let canvasWidth, canvasHeight;
 
     if (img) {
@@ -11117,6 +11128,35 @@ async function vmInitCanvas() {
         const prompt = document.getElementById('vm-upload-prompt');
         if (prompt) prompt.style.display = 'flex';
     }
+}
+
+function vmFitCanvasToContainer() {
+    const c = state.vmCanvas;
+    if (!c) return;
+    const wrapper = document.getElementById('vm-canvas-wrapper');
+    if (!wrapper) return;
+    const canvasArea = wrapper.closest('.vm-canvas-area') || wrapper.parentElement;
+    const newWidth = (canvasArea?.clientWidth || wrapper.clientWidth) || 0;
+    if (!newWidth || Math.abs(newWidth - state.vmBaseWidth) < 2) return;
+
+    const img = state.vmBgImage;
+    let newHeight;
+    if (img) {
+        const newScale = newWidth / img.naturalWidth;
+        newHeight = Math.floor(img.naturalHeight * newScale);
+        state.vmBgScale = newScale;
+        c.setBackgroundImage(
+            new fabric.Image(img, { scaleX: newScale, scaleY: newScale, originX: 'left', originY: 'top' }),
+            c.renderAll.bind(c)
+        );
+    } else {
+        newHeight = Math.floor(newWidth * 0.65);
+    }
+    c.setWidth(newWidth);
+    c.setHeight(newHeight);
+    state.vmBaseWidth = newWidth;
+    state.vmBaseHeight = newHeight;
+    c.renderAll();
 }
 
 function vmUpdateCanvasMode() {
