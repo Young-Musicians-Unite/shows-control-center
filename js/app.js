@@ -10939,7 +10939,9 @@ function setupVenueMap() {
         e.preventDefault();
         if (state.currentPage !== 'venue-map') return;
         const file = e.dataTransfer.files[0];
-        if (!file || !file.type.startsWith('image/')) return;
+        if (!file) return;
+        const ok = file.type.startsWith('image/') || file.type === 'application/pdf';
+        if (!ok) return;
         document.getElementById('vm-upload-drop-zone')?.classList.remove('drag-over');
         vmProcessMapFile(file);
     });
@@ -10956,33 +10958,56 @@ function setupVenueMap() {
 }
 
 async function vmProcessMapFile(file) {
-    const reader = new FileReader();
-    reader.onload = async (ev) => {
+    showToast('Processing map…', 'info');
+    try {
+        let dataUrl;
+        if (file.type === 'application/pdf') {
+            dataUrl = await vmRenderPDFtoDataURL(file);
+            if (!dataUrl) { showToast('Could not render PDF. Try a different file.', 'error'); return; }
+        } else {
+            dataUrl = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = e => resolve(e.target.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
+
+        // Compress to max 1400px wide
         const img = new Image();
-        img.onload = async () => {
-            const maxW = 1200;
-            const scale = Math.min(1, maxW / img.width);
-            const w = Math.floor(img.width * scale);
-            const h = Math.floor(img.height * scale);
-            const tmp = document.createElement('canvas');
-            tmp.width = w; tmp.height = h;
-            tmp.getContext('2d').drawImage(img, 0, 0, w, h);
-            const compressed = tmp.toDataURL('image/jpeg', 0.8);
-            try {
-                await collections.venueMapLayers.doc('default').set(
-                    { bgImageData: compressed }, { merge: true }
-                );
-                const prompt = document.getElementById('vm-upload-prompt');
-                if (prompt) prompt.style.display = 'none';
-                vmResetCanvas();
-                await vmInitCanvas();
-            } catch (err) {
-                showToast('Error saving map image', 'error');
-            }
-        };
-        img.src = ev.target.result;
-    };
-    reader.readAsDataURL(file);
+        await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; img.src = dataUrl; });
+        const maxW = 1400;
+        const scale = Math.min(1, maxW / img.width);
+        const w = Math.floor(img.width * scale);
+        const h = Math.floor(img.height * scale);
+        const tmp = document.createElement('canvas');
+        tmp.width = w; tmp.height = h;
+        tmp.getContext('2d').drawImage(img, 0, 0, w, h);
+        const compressed = tmp.toDataURL('image/jpeg', 0.85);
+
+        await collections.venueMapLayers.doc('default').set({ bgImageData: compressed }, { merge: true });
+        const prompt = document.getElementById('vm-upload-prompt');
+        if (prompt) prompt.style.display = 'none';
+        vmResetCanvas();
+        await vmInitCanvas();
+        showToast('Map uploaded!');
+    } catch (err) {
+        console.error('vmProcessMapFile error:', err);
+        showToast('Error saving map. Please try again.', 'error');
+    }
+}
+
+async function vmRenderPDFtoDataURL(file) {
+    if (!window.pdfjsLib) { showToast('PDF renderer not available. Refresh and try again.', 'error'); return null; }
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    const page = await pdf.getPage(1);
+    const viewport = page.getViewport({ scale: 2.5 }); // high-res render
+    const canvas = document.createElement('canvas');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+    return canvas.toDataURL('image/jpeg', 0.9);
 }
 
 window.vmUploadBackground = function() {

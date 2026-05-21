@@ -1111,7 +1111,7 @@
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                     Upload Map
                 </button>
-                <input type="file" id="vm-bg-upload" accept="image/*" style="display:none">
+                <input type="file" id="vm-bg-upload" accept="image/*,application/pdf" style="display:none">
             </div>
 
             <!-- Main Content: Layers Panel + Canvas -->
@@ -1134,7 +1134,7 @@
                         <div class="vm-upload-prompt-box" id="vm-upload-drop-zone">
                             <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                             <h3>Upload your venue map</h3>
-                            <p>Drag &amp; drop an image here, or click the button below.</p>
+                            <p>Drag &amp; drop an image or PDF here, or click the button below.</p>
                             <button class="btn btn-primary" onclick="vmUploadBackground()">Choose File</button>
                             <button class="vm-upload-skip-btn" onclick="document.getElementById('vm-upload-prompt').style.display='none'">Skip for now</button>
                         </div>
@@ -2374,6 +2374,14 @@
 
     <!-- Fabric.js for Stage Plot Canvas -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.0/fabric.min.js"></script>
+
+    <!-- PDF.js for rendering PDF venue maps -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>
+        if (window.pdfjsLib) {
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        }
+    </script>
 
     <!-- Toast Notifications -->
     <div class="toast-container" id="toast-container"></div>
