@@ -8208,7 +8208,8 @@ body.menu-open::after {
     width: 100%;
     max-width: 520px;
     max-height: 90vh;
-    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
     box-shadow: 0 20px 60px rgba(0,0,0,0.5);
     border: 1px solid rgba(255,255,255,0.08);
 }
@@ -8216,7 +8217,9 @@ body.menu-open::after {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 20px 24px 0;
+    padding: 20px 24px 16px;
+    flex-shrink: 0;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
 }
 .hub-modal-header h2 {
     font-size: 1.15rem;
@@ -8240,12 +8243,17 @@ body.menu-open::after {
     display: flex;
     flex-direction: column;
     gap: 18px;
+    overflow-y: auto;
+    flex: 1;
 }
 .hub-modal-footer {
-    padding: 0 24px 20px;
+    padding: 16px 24px;
     display: flex;
     justify-content: flex-end;
     gap: 10px;
+    flex-shrink: 0;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    background: #1e2d2b;
 }
 .hub-field {
     display: flex;
