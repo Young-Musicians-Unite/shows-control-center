@@ -500,7 +500,13 @@ function initializeApp() {
     // Always start at the events hub; enter a specific event first before navigating to event pages
     document.querySelector('.nav-menu').classList.add('hub-mode');
     switchPage('events-hub');
-    migrateToMultiEvent().then(() => { loadSeasons(); loadEvents(); });
+    // Load hub immediately — don't block on migration
+    loadSeasons();
+    loadEvents();
+    // Run migration in the background; if it fails or hangs, hub is already loaded
+    migrateToMultiEvent()
+        .then(() => loadEvents())  // refresh after migration in case data was copied
+        .catch(e => console.warn('migrateToMultiEvent skipped:', e));
 
     // Browser back/forward navigation
     window.addEventListener('hashchange', () => {
