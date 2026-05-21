@@ -6206,7 +6206,7 @@ body.menu-open::after {
     min-height: 600px;
     display: flex;
     align-items: flex-start;
-    justify-content: center;
+    justify-content: flex-start;
     padding: 0;
 }
 

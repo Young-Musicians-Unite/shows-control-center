@@ -11076,12 +11076,11 @@ async function vmInitCanvas() {
 
     const img = state.vmBgImage;
     const canvasArea = wrapper.closest('.vm-canvas-area') || wrapper.parentElement;
-    const wrapperWidth = Math.max(
-        canvasArea?.clientWidth || 0,
-        canvasArea?.offsetWidth || 0,
-        wrapper.clientWidth || 0,
-        wrapper.offsetWidth || 0
-    ) || 1000;
+    // getBoundingClientRect() forces a synchronous reflow, guaranteeing the
+    // true rendered width even when clientWidth returns a stale/pre-layout value.
+    const wrapperWidth = Math.round(canvasArea?.getBoundingClientRect().width || 0)
+        || Math.round(wrapper.getBoundingClientRect().width || 0)
+        || 1000;
     let canvasWidth, canvasHeight;
 
     if (img) {
@@ -11132,9 +11131,8 @@ async function vmInitCanvas() {
         setTimeout(vmSaveCanvasState, 200);
     });
 
-    // ResizeObserver fires immediately on observe() with the element's true size,
-    // then again whenever the container resizes. This is the most reliable way to
-    // keep the canvas sized correctly regardless of layout-settle timing.
+    // ResizeObserver fires (asynchronously) whenever the container resizes,
+    // including right after observe() is called on a visible element.
     const canvasAreaEl = wrapper.closest('.vm-canvas-area') || wrapper.parentElement;
     if (canvasAreaEl && window.ResizeObserver) {
         state.vmResizeObserver = new ResizeObserver(entries => {
@@ -11143,6 +11141,13 @@ async function vmInitCanvas() {
         });
         state.vmResizeObserver.observe(canvasAreaEl);
     }
+    // Also correct immediately (synchronous), in case the ResizeObserver callback
+    // arrives too late or returns the same stale width as the initial read.
+    // Temporarily zero out vmBaseWidth so the < 2 guard doesn't block a correction.
+    const initialWidth = state.vmBaseWidth;
+    state.vmBaseWidth = 0;
+    vmFitCanvasToContainer();
+    if (state.vmBaseWidth === 0) state.vmBaseWidth = initialWidth; // restore if no resize happened
 
     // Show upload prompt if no background image exists for this event
     if (!state.vmBgImage) {
@@ -11157,7 +11162,8 @@ function vmFitCanvasToContainer() {
     const wrapper = document.getElementById('vm-canvas-wrapper');
     if (!wrapper) return;
     const canvasArea = wrapper.closest('.vm-canvas-area') || wrapper.parentElement;
-    const newWidth = (canvasArea?.clientWidth || wrapper.clientWidth) || 0;
+    // getBoundingClientRect forces a synchronous reflow for an accurate measurement
+    const newWidth = Math.round(canvasArea?.getBoundingClientRect().width || canvasArea?.clientWidth || wrapper.clientWidth || 0);
     if (!newWidth || Math.abs(newWidth - state.vmBaseWidth) < 2) return;
 
     const img = state.vmBgImage;
