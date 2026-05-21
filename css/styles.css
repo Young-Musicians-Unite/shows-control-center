@@ -8074,8 +8074,9 @@ body.menu-open::after {
     display: none;
 }
 
-/* Seasons nav — only in hub-mode */
-.nav-menu:not(.hub-mode) .hub-seasons-nav { display: none; }
+/* Seasons nav — only inside open hamburger dropdown while in hub-mode */
+.hub-seasons-nav { display: none; }
+.nav-menu.active.hub-mode .hub-seasons-nav { display: block; }
 
 .hub-seasons-nav {
     padding: 12px 16px 8px;
