@@ -1544,6 +1544,34 @@ function renderDashboard() {
 
     const panelClear = issues.length === 0;
 
+    // ── Resources ────────────────────────────────────────────────
+    const resources = state.activeEvent.resources || [];
+    const resourcesHtml = `
+        <div class="db-panel db-res-panel">
+            <div class="db-panel-hdr">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(201,169,97,0.65)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                <span>Resources</span>
+                <button class="db-res-add-btn" onclick="toggleDashResourceForm()" title="Add resource">+</button>
+            </div>
+            <div class="db-res-form" id="db-res-form">
+                <input class="db-res-input" id="db-res-name" placeholder="Name…" autocomplete="off" />
+                <input class="db-res-input" id="db-res-url" placeholder="https://…" autocomplete="off" onkeydown="if(event.key==='Enter')addDashboardResource()" />
+                <button class="db-res-submit" onclick="addDashboardResource()">Add Resource</button>
+            </div>
+            ${resources.length > 0 ? `
+            <div class="db-issues-list">
+                ${resources.map((r, i) => `
+                <div class="db-resource">
+                    <a href="${escapeHtml(r.url)}" target="_blank" rel="noopener noreferrer" class="db-res-link" onclick="event.stopPropagation()">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                        ${escapeHtml(r.name)}
+                    </a>
+                    <button class="db-res-remove" onclick="removeDashboardResource(${i})" title="Remove">×</button>
+                </div>`).join('')}
+            </div>` : `
+            <div class="db-res-empty">No resources yet — add links, docs, or briefs</div>`}
+        </div>`;
+
     // ── Render ───────────────────────────────────────────────────
     dash.innerHTML = `
         <div class="db-header">
@@ -1556,29 +1584,32 @@ function renderDashboard() {
 
         <div class="db-grid">
 
-            <!-- ── Left: Needs Attention ── -->
-            <div class="db-panel${panelClear ? ' db-panel-clear' : ''}">
-                <div class="db-panel-hdr">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="${panelClear ? '#68d391' : '#fc8181'}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                    <span>Needs Attention</span>
-                    <span class="db-badge ${panelClear ? 'ok' : ''}">${panelClear ? '✓' : issues.length}</span>
+            <!-- ── Left column ── -->
+            <div class="db-left">
+                <div class="db-panel${panelClear ? ' db-panel-clear' : ''}">
+                    <div class="db-panel-hdr">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="${panelClear ? '#68d391' : '#fc8181'}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                        <span>Needs Attention</span>
+                        <span class="db-badge ${panelClear ? 'ok' : ''}">${panelClear ? '✓' : issues.length}</span>
+                    </div>
+                    ${issues.length > 0 ? `
+                    <div class="db-issues-list">
+                        ${issues.map(iss => `
+                        <div class="db-issue" onclick="switchPage('${iss.page}')">
+                            <span class="db-issue-dot ${iss.type}"></span>
+                            <div class="db-issue-body">
+                                <div class="db-issue-title">${escapeHtml(iss.title)}</div>
+                                <div class="db-issue-tag">${iss.type === 'staff' ? 'Staff' : 'Timeline'}</div>
+                            </div>
+                            <span class="db-issue-arrow">›</span>
+                        </div>`).join('')}
+                    </div>` : `
+                    <div class="db-all-clear">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                        All looking good
+                    </div>`}
                 </div>
-                ${issues.length > 0 ? `
-                <div class="db-issues-list">
-                    ${issues.map(iss => `
-                    <div class="db-issue" onclick="switchPage('${iss.page}')">
-                        <span class="db-issue-dot ${iss.type}"></span>
-                        <div class="db-issue-body">
-                            <div class="db-issue-title">${escapeHtml(iss.title)}</div>
-                            <div class="db-issue-tag">${iss.type === 'staff' ? 'Staff' : 'Timeline'}</div>
-                        </div>
-                        <span class="db-issue-arrow">›</span>
-                    </div>`).join('')}
-                </div>` : `
-                <div class="db-all-clear">
-                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                    All looking good
-                </div>`}
+                ${resourcesHtml}
             </div>
 
             <!-- ── Right: Section cards ── -->
@@ -1622,6 +1653,51 @@ function renderDashboard() {
             </div>
         </div>`;
 }
+
+// ── Dashboard resource helpers ────────────────────────────────────
+function toggleDashResourceForm() {
+    const form = document.getElementById('db-res-form');
+    if (!form) return;
+    const open = form.classList.toggle('db-res-form-open');
+    if (open) {
+        const name = document.getElementById('db-res-name');
+        if (name) setTimeout(() => name.focus(), 50);
+    }
+}
+window.toggleDashResourceForm = toggleDashResourceForm;
+
+async function addDashboardResource() {
+    const nameEl = document.getElementById('db-res-name');
+    const urlEl  = document.getElementById('db-res-url');
+    const name = nameEl?.value?.trim();
+    let   url  = urlEl?.value?.trim();
+    if (!name || !url) return;
+    if (url && !url.match(/^https?:\/\//i)) url = 'https://' + url;
+    if (!state.currentEventId) return;
+    const resources = [...(state.activeEvent.resources || []), { name, url }];
+    state.activeEvent.resources = resources;
+    renderDashboard();
+    try {
+        await eventsCollection.doc(state.currentEventId).update({ resources });
+    } catch(e) {
+        console.error('Failed to save resource:', e);
+    }
+}
+window.addDashboardResource = addDashboardResource;
+
+async function removeDashboardResource(index) {
+    if (!state.currentEventId) return;
+    const resources = (state.activeEvent.resources || []).filter((_, i) => i !== index);
+    state.activeEvent.resources = resources;
+    renderDashboard();
+    try {
+        await eventsCollection.doc(state.currentEventId).update({ resources });
+    } catch(e) {
+        console.error('Failed to remove resource:', e);
+    }
+}
+window.removeDashboardResource = removeDashboardResource;
+// ─────────────────────────────────────────────────────────────────
 
 function updateBudgetStats() {
     const totalBudget = state.budget.reduce((sum, item) => sum + (parseFloat(item.budgeted) || 0), 0);
