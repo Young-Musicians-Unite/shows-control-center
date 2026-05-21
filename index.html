@@ -105,13 +105,9 @@
                         <svg class="nav-chevron" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="2 4 6 8 10 4"/></svg>
                     </button>
                     <div class="nav-dropdown">
-                        <a href="#printed-materials" class="nav-link" data-page="printed-materials">
+                        <a href="#creative" class="nav-link" data-page="creative">
                             <svg class="nav-icon" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="14" height="13" rx="1.5"/><path d="M5 3V1h8v2"/><path d="M2 9h14"/><rect x="5" y="9" width="8" height="7" rx="0.5"/><circle cx="4" cy="6" r="0.8" fill="currentColor"/></svg>
-                            <span class="nav-label">Printed Materials</span>
-                        </a>
-                        <a href="#digital-assets" class="nav-link" data-page="digital-assets">
-                            <svg class="nav-icon" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="14" height="14" rx="2"/><path d="M6 6h6M6 9h6M6 12h4"/></svg>
-                            <span class="nav-label">Digital Assets</span>
+                            <span class="nav-label">Printed &amp; Digital</span>
                         </a>
                     </div>
                 </div>
@@ -1372,17 +1368,28 @@
             </div>
         </div>
         <!-- Printed Materials Page -->
-        <div id="printed-materials" class="page">
+        <div id="creative" class="page">
             <div class="page-header">
-                <h1>Printed Materials</h1>
+                <h1>Creative Assets</h1>
                 <div class="header-actions">
-                    <button class="btn btn-secondary" id="export-print-btn" onclick="exportPrintedMaterialsToExcel()">
+                    <button class="btn btn-secondary" id="creative-export-btn">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                        Export
+                        <span id="creative-export-label">Export Printed Items</span>
                     </button>
-                    <button class="btn btn-primary-gold" id="add-print-item-btn">+ Add Item</button>
+                    <button class="btn btn-primary-gold" id="creative-add-btn">
+                        <span id="creative-add-label">+ Add Printed Item</span>
+                    </button>
                 </div>
             </div>
+
+            <!-- Segmented tab control -->
+            <div class="creative-segmented">
+                <button class="creative-seg-btn active" id="creative-tab-printed" onclick="switchCreativeTab('printed')">Printed Materials</button>
+                <button class="creative-seg-btn" id="creative-tab-digital" onclick="switchCreativeTab('digital')">Digital Assets</button>
+            </div>
+
+            <!-- Printed Materials Section -->
+            <div id="creative-printed-section">
 
             <!-- Search -->
             <div class="page-search-bar">
@@ -1476,18 +1483,14 @@
             </div>
         </div>
 
-        <!-- Digital Assets Page -->
-        <div id="digital-assets" class="page">
-            <div class="page-header">
-                <h1>Digital Assets</h1>
-                <div class="header-actions">
-                    <button class="btn btn-secondary" id="export-da-btn" onclick="exportDigitalAssetsToExcel()">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                        Export
-                    </button>
-                    <button class="btn btn-primary-gold" id="add-da-item-btn">+ Add Item</button>
-                </div>
-            </div>
+            <!-- hidden trigger buttons keep existing JS event listeners working -->
+            <button id="add-print-item-btn" style="display:none"></button>
+
+            </div><!-- end creative-printed-section -->
+
+            <!-- Digital Assets Section -->
+            <div id="creative-digital-section" style="display:none">
+            <button id="add-da-item-btn" style="display:none"></button>
 
             <div class="page-search-bar">
                 <div class="page-search-wrapper">
@@ -1556,7 +1559,8 @@
                     </tbody>
                 </table>
             </div>
-        </div>
+            </div><!-- end creative-digital-section -->
+        </div><!-- end #creative page -->
 
     </div>
 

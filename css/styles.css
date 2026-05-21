@@ -7003,6 +7003,35 @@ body.menu-open::after {
     }
 }
 
+/* ==================== CREATIVE ASSETS PAGE ==================== */
+
+.creative-segmented {
+    display: flex;
+    background: rgba(0,0,0,0.2);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 8px;
+    padding: 3px;
+    width: fit-content;
+    margin-bottom: 20px;
+}
+.creative-seg-btn {
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    color: rgba(255,255,255,0.5);
+    cursor: pointer;
+    font-size: 0.88rem;
+    font-weight: 500;
+    padding: 7px 20px;
+    transition: background 0.15s, color 0.15s;
+}
+.creative-seg-btn:hover { color: rgba(255,255,255,0.8); }
+.creative-seg-btn.active {
+    background: rgba(255,255,255,0.12);
+    color: #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
+
 /* ==================== PRINTED MATERIALS PAGE ==================== */
 
 .print-materials-table {

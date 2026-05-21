@@ -119,6 +119,7 @@ const state = {
     menuCategoryFilter: 'all',
     menuStatusFilter: 'all',
     menuViewMode: 'category',
+    creativeTab: 'printed',
     // Printed materials state
     printedMaterials: [],
     printSearch: '',
@@ -288,8 +289,7 @@ const ALL_PAGES = [
     { id: 'staff',               label: 'Staff' },
     { id: 'packing-list',        label: 'Packing List' },
     { id: 'seating',             label: 'Seating' },
-    { id: 'printed-materials',   label: 'Printed Materials' },
-    { id: 'digital-assets',      label: 'Digital Assets' },
+    { id: 'creative',            label: 'Printed & Digital' },
     { id: 'menu',                label: 'Menu' },
     { id: 'venue-map',           label: 'Venue Map' },
 ];
@@ -725,17 +725,8 @@ function switchPage(pageName) {
                 vmInitCanvas();
             }
         }
-        if (pageName === 'printed-materials') {
-            state.printSearch = '';
-            state.printStatusFilter = 'all';
-            state.printVendorFilter = 'all';
-            const printSearchInput = document.getElementById('print-search-input');
-            if (printSearchInput) printSearchInput.value = '';
-            const printStatusSelect = document.getElementById('print-status-filter');
-            if (printStatusSelect) printStatusSelect.value = 'all';
-            const printVendorSelect = document.getElementById('print-vendor-filter');
-            if (printVendorSelect) printVendorSelect.value = 'all';
-            renderPrintedMaterials();
+        if (pageName === 'creative') {
+            switchCreativeTab(state.creativeTab || 'printed');
         }
         if (pageName === 'seating') {
             state.seatingEditingRowId = null;
@@ -752,15 +743,6 @@ function switchPage(pageName) {
             if (state.seatingView === 'map') {
                 setTimeout(() => seatingInitCanvas(), 50);
             }
-        }
-        if (pageName === 'digital-assets') {
-            state.daSearch = '';
-            state.daStatusFilter = 'all';
-            const daSearchInput = document.getElementById('da-search-input');
-            if (daSearchInput) daSearchInput.value = '';
-            const daStatusSelect = document.getElementById('da-status-filter');
-            if (daStatusSelect) daStatusSelect.value = 'all';
-            renderDigitalAssets();
         }
     }
 }
@@ -1074,7 +1056,19 @@ window.deleteCurrentEvent = async function() {
 async function enterEvent(eventId) {
     const snap = await eventsCollection.doc(eventId).get();
     if (!snap.exists) return;
-    const event = { id: snap.id, ...snap.data() };
+    let event = { id: snap.id, ...snap.data() };
+
+    // Migrate old creative page IDs → 'creative'
+    if (event.enabledPages) {
+        const oldIds = ['printed-materials', 'digital-assets'];
+        const hasOld = event.enabledPages.some(p => oldIds.includes(p));
+        if (hasOld && !event.enabledPages.includes('creative')) {
+            const updated = [...event.enabledPages.filter(p => !oldIds.includes(p)), 'creative'];
+            event.enabledPages = updated;
+            eventsCollection.doc(eventId).update({ enabledPages: updated });
+        }
+    }
+
     state.activeEvent = event;
     // Reset timeline days — will be initialized lazily on first renderTimeline()
     state.timelineDays = null;
@@ -7148,6 +7142,52 @@ function formatSizeWithUnits(size) {
     // Replace bare numbers in dimension patterns like "24 x 36" or "8.5x11"
     return size.replace(/(\d+\.?\d*)\s*x\s*(\d+\.?\d*)/g, '$1" x $2"');
 }
+
+window.switchCreativeTab = function(tab) {
+    state.creativeTab = tab;
+    const isPrinted = tab === 'printed';
+
+    // Segmented control
+    document.getElementById('creative-tab-printed')?.classList.toggle('active', isPrinted);
+    document.getElementById('creative-tab-digital')?.classList.toggle('active', !isPrinted);
+
+    // Sections
+    const printedSection = document.getElementById('creative-printed-section');
+    const digitalSection = document.getElementById('creative-digital-section');
+    if (printedSection) printedSection.style.display = isPrinted ? '' : 'none';
+    if (digitalSection) digitalSection.style.display = isPrinted ? '' : 'none';
+
+    // Header button labels and actions
+    const exportLabel = document.getElementById('creative-export-label');
+    const addLabel = document.getElementById('creative-add-label');
+    const exportBtn = document.getElementById('creative-export-btn');
+    const addBtn = document.getElementById('creative-add-btn');
+
+    if (exportLabel) exportLabel.textContent = isPrinted ? 'Export Printed Items' : 'Export Digital Assets';
+    if (addLabel) addLabel.textContent = isPrinted ? '+ Add Printed Item' : '+ Add Digital Asset';
+    if (exportBtn) exportBtn.onclick = isPrinted ? exportPrintedMaterialsToExcel : exportDigitalAssetsToExcel;
+    if (addBtn) addBtn.onclick = isPrinted ? openPrintModal : openDAModal;
+
+    // Reset filters and render
+    if (isPrinted) {
+        state.printSearch = '';
+        state.printStatusFilter = 'all';
+        state.printVendorFilter = 'all';
+        const el = document.getElementById('print-search-input');
+        if (el) el.value = '';
+        const sf = document.getElementById('print-status-filter');
+        if (sf) sf.value = 'all';
+        renderPrintedMaterials();
+    } else {
+        state.daSearch = '';
+        state.daStatusFilter = 'all';
+        const el = document.getElementById('da-search-input');
+        if (el) el.value = '';
+        const sf = document.getElementById('da-status-filter');
+        if (sf) sf.value = 'all';
+        renderDigitalAssets();
+    }
+};
 
 function renderPrintedMaterials() {
     const tbody = document.getElementById('print-materials-tbody');
