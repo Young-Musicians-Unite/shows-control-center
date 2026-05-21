@@ -1129,6 +1129,16 @@
 
                 <!-- Canvas Area -->
                 <div class="vm-canvas-area">
+                    <!-- Upload prompt overlay — shown when no map has been uploaded yet -->
+                    <div id="vm-upload-prompt" class="vm-upload-prompt" style="display:none;">
+                        <div class="vm-upload-prompt-box" id="vm-upload-drop-zone">
+                            <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                            <h3>Upload your venue map</h3>
+                            <p>Drag &amp; drop an image here, or click the button below.</p>
+                            <button class="btn btn-primary" onclick="vmUploadBackground()">Choose File</button>
+                            <button class="vm-upload-skip-btn" onclick="document.getElementById('vm-upload-prompt').style.display='none'">Skip for now</button>
+                        </div>
+                    </div>
                     <div class="vm-canvas-wrapper" id="vm-canvas-wrapper">
                         <canvas id="vm-canvas"></canvas>
                     </div>

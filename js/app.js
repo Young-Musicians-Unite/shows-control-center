@@ -10929,33 +10929,57 @@ function setupVenueMap() {
             const file = e.target.files[0];
             if (!file) return;
             e.target.value = '';
-            const reader = new FileReader();
-            reader.onload = async (ev) => {
-                const img = new Image();
-                img.onload = async () => {
-                    const maxW = 1200;
-                    const scale = Math.min(1, maxW / img.width);
-                    const w = Math.floor(img.width * scale);
-                    const h = Math.floor(img.height * scale);
-                    const tmp = document.createElement('canvas');
-                    tmp.width = w; tmp.height = h;
-                    tmp.getContext('2d').drawImage(img, 0, 0, w, h);
-                    const compressed = tmp.toDataURL('image/jpeg', 0.8);
-                    try {
-                        await collections.venueMapLayers.doc('default').set(
-                            { bgImageData: compressed }, { merge: true }
-                        );
-                        vmResetCanvas();
-                        await vmInitCanvas();
-                    } catch (err) {
-                        showToast('Error saving map image', 'error');
-                    }
-                };
-                img.src = ev.target.result;
-            };
-            reader.readAsDataURL(file);
+            vmProcessMapFile(file);
         });
     }
+
+    // Drag & drop on the prompt overlay
+    const dropZone = document.getElementById('vm-upload-drop-zone');
+    if (dropZone) {
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('drag-over');
+        });
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('drag-over');
+        });
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('drag-over');
+            const file = e.dataTransfer.files[0];
+            if (file && file.type.startsWith('image/')) vmProcessMapFile(file);
+        });
+    }
+}
+
+async function vmProcessMapFile(file) {
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+        const img = new Image();
+        img.onload = async () => {
+            const maxW = 1200;
+            const scale = Math.min(1, maxW / img.width);
+            const w = Math.floor(img.width * scale);
+            const h = Math.floor(img.height * scale);
+            const tmp = document.createElement('canvas');
+            tmp.width = w; tmp.height = h;
+            tmp.getContext('2d').drawImage(img, 0, 0, w, h);
+            const compressed = tmp.toDataURL('image/jpeg', 0.8);
+            try {
+                await collections.venueMapLayers.doc('default').set(
+                    { bgImageData: compressed }, { merge: true }
+                );
+                const prompt = document.getElementById('vm-upload-prompt');
+                if (prompt) prompt.style.display = 'none';
+                vmResetCanvas();
+                await vmInitCanvas();
+            } catch (err) {
+                showToast('Error saving map image', 'error');
+            }
+        };
+        img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
 }
 
 window.vmUploadBackground = function() {
@@ -11059,6 +11083,12 @@ async function vmInitCanvas() {
     vmLoadLayers().then(() => {
         setTimeout(() => vmSaveCanvasState(), 500);
     });
+
+    // Show upload prompt if no background image exists for this event
+    if (!state.vmBgImage) {
+        const prompt = document.getElementById('vm-upload-prompt');
+        if (prompt) prompt.style.display = 'flex';
+    }
 }
 
 function vmUpdateCanvasMode() {
