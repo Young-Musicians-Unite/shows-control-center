@@ -1086,6 +1086,7 @@ async function enterEvent(eventId) {
     state.currentDay = 'Thursday';
 
     setActiveEvent(eventId);
+    vmResetCanvas();
 
     // Update nav branding
     const brand = document.querySelector('.nav-brand');
@@ -10770,22 +10771,8 @@ function setupVenueMap() {
     const wrapper = document.getElementById('vm-canvas-wrapper');
     if (!wrapper) return;
 
-    // Pre-load the image. Try with CORS first (needed for toDataURL export on
-    // deployed sites). Fall back without CORS for file:// local dev.
-    state.vmBgImage = new Image();
-    state.vmBgImage.crossOrigin = 'anonymous';
-    state.vmBgCORS = true;
-    state.vmBgImage.onerror = () => {
-        // CORS load failed (likely file:// protocol) — retry without crossOrigin
-        state.vmBgCORS = false;
-        const retry = new Image();
-        retry.onload = () => {
-            state.vmBgImage = retry;
-            vmInitCanvas();
-        };
-        retry.src = 'venue-map.png';
-    };
-    state.vmBgImage.src = 'venue-map.png';
+    // Background image is loaded per-event from Firestore in vmInitCanvas().
+    // No static venue-map.png pre-load here.
 
     // Tool buttons
     document.querySelectorAll('.vm-tool-btn').forEach(btn => {
@@ -10934,25 +10921,107 @@ function setupVenueMap() {
             vmRedo();
         }
     });
+
+    // Upload map image file handler
+    const uploadInput = document.getElementById('vm-bg-upload');
+    if (uploadInput) {
+        uploadInput.addEventListener('change', async function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            e.target.value = '';
+            const reader = new FileReader();
+            reader.onload = async (ev) => {
+                const img = new Image();
+                img.onload = async () => {
+                    const maxW = 1200;
+                    const scale = Math.min(1, maxW / img.width);
+                    const w = Math.floor(img.width * scale);
+                    const h = Math.floor(img.height * scale);
+                    const tmp = document.createElement('canvas');
+                    tmp.width = w; tmp.height = h;
+                    tmp.getContext('2d').drawImage(img, 0, 0, w, h);
+                    const compressed = tmp.toDataURL('image/jpeg', 0.8);
+                    try {
+                        await collections.venueMapLayers.doc('default').set(
+                            { bgImageData: compressed }, { merge: true }
+                        );
+                        vmResetCanvas();
+                        await vmInitCanvas();
+                    } catch (err) {
+                        showToast('Error saving map image', 'error');
+                    }
+                };
+                img.src = ev.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
+    }
 }
 
-function vmInitCanvas() {
-    if (state.vmCanvas) return; // Already initialized
+window.vmUploadBackground = function() {
+    document.getElementById('vm-bg-upload').click();
+};
+
+function vmResetCanvas() {
+    if (state.vmCanvas) {
+        state.vmCanvas.dispose();
+        state.vmCanvas = null;
+    }
+    state.vmBgImage = null;
+    state.vmBgCORS = true;
+    state.vmLayers = [];
+    state.vmActiveLayerId = null;
+    state.vmUndoStack = [];
+    state.vmRedoStack = [];
+    state.vmImageLoaded = false;
+    state.vmZoom = 1.0;
+    state.vmBaseWidth = 0;
+    state.vmBaseHeight = 0;
+    state.vmDrawingObj = null;
+    state.vmDrawStart = null;
+    if (state.vmAutoSaveTimeout) {
+        clearTimeout(state.vmAutoSaveTimeout);
+        state.vmAutoSaveTimeout = null;
+    }
+    const wrapper = document.getElementById('vm-canvas-wrapper');
+    if (wrapper) wrapper.innerHTML = '<canvas id="vm-canvas"></canvas>';
+}
+
+async function vmInitCanvas() {
+    if (state.vmCanvas) return;
 
     const wrapper = document.getElementById('vm-canvas-wrapper');
-    const img = state.vmBgImage;
-    if (!wrapper || !img) return;
+    if (!wrapper) return;
 
-    // If image hasn't loaded yet, wait for it
-    if (!img.naturalWidth) {
-        img.onload = () => vmInitCanvas();
-        return;
+    // Load per-event background image from Firestore
+    if (collections.venueMapLayers) {
+        try {
+            const doc = await collections.venueMapLayers.doc('default').get();
+            if (doc.exists && doc.data().bgImageData) {
+                await new Promise((resolve) => {
+                    const img = new Image();
+                    img.onload = () => { state.vmBgImage = img; resolve(); };
+                    img.onerror = () => resolve();
+                    img.src = doc.data().bgImageData;
+                });
+            }
+        } catch (e) { /* proceed with blank canvas */ }
     }
 
+    const img = state.vmBgImage;
     const wrapperWidth = wrapper.clientWidth || 1000;
-    const scale = wrapperWidth / img.naturalWidth;
-    const canvasWidth = Math.floor(img.naturalWidth * scale);
-    const canvasHeight = Math.floor(img.naturalHeight * scale);
+    let canvasWidth, canvasHeight;
+
+    if (img) {
+        const scale = wrapperWidth / img.naturalWidth;
+        canvasWidth = Math.floor(img.naturalWidth * scale);
+        canvasHeight = Math.floor(img.naturalHeight * scale);
+        state.vmBgScale = scale;
+    } else {
+        canvasWidth = wrapperWidth;
+        canvasHeight = Math.floor(wrapperWidth * 0.65);
+        state.vmBgScale = 1;
+    }
 
     state.vmCanvas = new fabric.Canvas('vm-canvas', {
         width: canvasWidth,
@@ -10961,23 +11030,25 @@ function vmInitCanvas() {
         preserveObjectStacking: true
     });
 
-    state.vmCanvas.setBackgroundImage(
-        new fabric.Image(img, {
-            scaleX: scale,
-            scaleY: scale,
-            originX: 'left',
-            originY: 'top'
-        }),
-        state.vmCanvas.renderAll.bind(state.vmCanvas)
-    );
-    state.vmBgScale = scale;
+    if (img) {
+        state.vmCanvas.setBackgroundImage(
+            new fabric.Image(img, {
+                scaleX: state.vmBgScale,
+                scaleY: state.vmBgScale,
+                originX: 'left',
+                originY: 'top'
+            }),
+            state.vmCanvas.renderAll.bind(state.vmCanvas)
+        );
+    } else {
+        state.vmCanvas.setBackgroundColor('#111111', state.vmCanvas.renderAll.bind(state.vmCanvas));
+    }
 
     state.vmImageLoaded = true;
     state.vmBaseWidth = canvasWidth;
     state.vmBaseHeight = canvasHeight;
     state.vmZoom = 1.0;
 
-    // Right-click context menu for z-order
     const wrapperEl = document.getElementById('vm-canvas-wrapper');
     wrapperEl.addEventListener('contextmenu', vmShowContextMenu);
     document.addEventListener('click', vmHideContextMenu);
@@ -10986,7 +11057,6 @@ function vmInitCanvas() {
 
     vmSetupDrawingEvents();
     vmLoadLayers().then(() => {
-        // Save initial state so the first action is undoable
         setTimeout(() => vmSaveCanvasState(), 500);
     });
 }
