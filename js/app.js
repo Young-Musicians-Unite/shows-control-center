@@ -1527,8 +1527,22 @@ function renderDashboard() {
         } catch(e) { dateStr = event.date; }
     }
 
-    // ── Arrow icon ───────────────────────────────────────────────
-    const arrow = `<svg class="db-card-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>`;
+    // ── Icons ────────────────────────────────────────────────────
+    const arrow = `<svg class="db-card-arrow" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>`;
+
+    const budgetIcon = `<div class="db-card-icon" style="background:rgba(201,169,97,0.13);color:#c9a961">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+    </div>`;
+
+    const timelineIcon = `<div class="db-card-icon" style="background:rgba(99,179,237,0.13);color:#63b3ed">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+    </div>`;
+
+    const staffIcon = `<div class="db-card-icon" style="background:rgba(72,187,120,0.13);color:#68d391">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+    </div>`;
+
+    const panelClear = issues.length === 0;
 
     // ── Render ───────────────────────────────────────────────────
     dash.innerHTML = `
@@ -1543,11 +1557,11 @@ function renderDashboard() {
         <div class="db-grid">
 
             <!-- ── Left: Needs Attention ── -->
-            <div class="db-panel">
+            <div class="db-panel${panelClear ? ' db-panel-clear' : ''}">
                 <div class="db-panel-hdr">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="${issues.length > 0 ? '#fc8181' : '#68d391'}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="${panelClear ? '#68d391' : '#fc8181'}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                     <span>Needs Attention</span>
-                    <span class="db-badge ${issues.length === 0 ? 'ok' : ''}">${issues.length === 0 ? '✓' : issues.length}</span>
+                    <span class="db-badge ${panelClear ? 'ok' : ''}">${panelClear ? '✓' : issues.length}</span>
                 </div>
                 ${issues.length > 0 ? `
                 <div class="db-issues-list">
@@ -1571,10 +1585,11 @@ function renderDashboard() {
             <div class="db-cards">
 
                 ${enabled.has('budget') ? `
-                <div class="db-card" onclick="switchPage('budget')">
-                    <div class="db-card-hdr"><span class="db-card-label">Budget</span>${arrow}</div>
-                    <div class="db-card-main">${formatCurrency(remaining)}<span class="db-card-sub"> remaining</span></div>
-                    <div class="db-card-detail">${formatCurrency(totalSpent)} spent of ${formatCurrency(totalBudget)}</div>
+                <div class="db-card" style="--card-accent:#c9a961" onclick="switchPage('budget')">
+                    <div class="db-card-hdr">${budgetIcon}<span class="db-card-label">Budget</span>${arrow}</div>
+                    <div class="db-card-main">${formatCurrency(remaining)}</div>
+                    <span class="db-card-sub">remaining of ${formatCurrency(totalBudget)}</span>
+                    <div class="db-card-detail${overBudget ? ' db-card-warn' : ''}">${overBudget ? '⚠ Over budget' : formatCurrency(totalSpent) + ' spent'}</div>
                     <div class="db-prog">
                         <div class="db-prog-track"><div class="db-prog-fill${overBudget ? ' over' : ''}" style="width:${Math.min(budgetPct,100)}%"></div></div>
                         <span class="db-prog-pct">${budgetPct}%</span>
@@ -1582,20 +1597,22 @@ function renderDashboard() {
                 </div>` : ''}
 
                 ${enabled.has('timeline') ? `
-                <div class="db-card" onclick="switchPage('timeline')">
-                    <div class="db-card-hdr"><span class="db-card-label">Timeline</span>${arrow}</div>
-                    <div class="db-card-main">${tlDone}<span class="db-card-sub"> / ${tlTotal} complete</span></div>
-                    <div class="db-card-detail${tlOverdue.length > 0 ? ' db-card-warn' : ''}">${tlOverdue.length > 0 ? `${tlOverdue.length} overdue` : (tlTotal === 0 ? 'No items yet' : 'On track')}</div>
+                <div class="db-card" style="--card-accent:#63b3ed" onclick="switchPage('timeline')">
+                    <div class="db-card-hdr">${timelineIcon}<span class="db-card-label">Timeline</span>${arrow}</div>
+                    <div class="db-card-main">${tlDone} <span style="font-size:1.3rem;opacity:0.35;font-weight:400">/ ${tlTotal}</span></div>
+                    <span class="db-card-sub">tasks complete</span>
+                    <div class="db-card-detail${tlOverdue.length > 0 ? ' db-card-warn' : ''}">${tlOverdue.length > 0 ? '⚠ ' + tlOverdue.length + ' overdue' : (tlTotal === 0 ? 'No items yet' : 'All on track ✓')}</div>
                     <div class="db-prog">
-                        <div class="db-prog-track"><div class="db-prog-fill" style="width:${tlPct}%"></div></div>
+                        <div class="db-prog-track"><div class="db-prog-fill" style="width:${tlPct}%;background:linear-gradient(90deg,#63b3ed,#90cdf4)"></div></div>
                         <span class="db-prog-pct">${tlPct}%</span>
                     </div>
                 </div>` : ''}
 
                 ${enabled.has('staff') ? `
-                <div class="db-card" onclick="switchPage('staff')">
-                    <div class="db-card-hdr"><span class="db-card-label">Staff</span>${arrow}</div>
-                    <div class="db-card-main">${staffTotal}<span class="db-card-sub"> crew</span></div>
+                <div class="db-card db-card-full" style="--card-accent:#68d391" onclick="switchPage('staff')">
+                    <div class="db-card-hdr">${staffIcon}<span class="db-card-label">Staff &amp; Crew</span>${arrow}</div>
+                    <div class="db-card-main">${staffTotal}</div>
+                    <span class="db-card-sub">crew members</span>
                     <div class="db-pills">
                         <span class="db-pill neutral">${filledCount} filled</span>
                         ${unfilledStaff.length > 0 ? `<span class="db-pill warn">${unfilledStaff.length} unfilled</span>` : `<span class="db-pill ok">All filled</span>`}
