@@ -949,9 +949,14 @@ function renderHub() {
     const heading = document.querySelector('#events-hub .page-header h1');
     if (heading) heading.textContent = state.currentSeason + ' Events';
 
-    const seasonEvents = (state.events || []).filter(ev =>
-        (ev.season || '2025-2026') === state.currentSeason
-    );
+    const seasonEvents = (state.events || [])
+        .filter(ev => (ev.season || '2025-2026') === state.currentSeason)
+        .sort((a, b) => {
+            if (!a.date && !b.date) return 0;
+            if (!a.date) return -1;
+            if (!b.date) return 1;
+            return a.date.localeCompare(b.date);
+        });
 
     if (seasonEvents.length === 0) {
         el.innerHTML = `<div class="hub-empty"><p>No events in ${escapeHtml(state.currentSeason)} yet.</p></div>`;
