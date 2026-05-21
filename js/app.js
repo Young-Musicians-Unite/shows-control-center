@@ -13,6 +13,11 @@ const CLIENT_ID = sessionStorage.getItem('clientId');
 
 // Global state
 const state = {
+    // Multi-event hub
+    events: [],
+    activeEvent: null,
+    currentEventId: null,
+    // Per-event data
     budget: [],
     timeline: [],
     mainStageInputs: [],
@@ -25,7 +30,7 @@ const state = {
     setListsExpanded: new Set(),
     budgetSort: { field: null, direction: 'asc' },
     budgetSearch: '',
-    currentPage: 'dashboard',
+    currentPage: 'events-hub',
     currentDay: 'Thursday',  // For timeline filtering
     vendorFilter: 'all',  // For vendor page filtering (all/confirmed/pending/issues)
     vendorSearch: '',
@@ -251,6 +256,72 @@ function showToast(message, type = 'success', duration = 3000) {
 // Event date
 const eventDate = new Date('2026-04-25T18:00:00-04:00');
 
+// --- Multi-event system ---
+
+const PHASES = [
+    { id: 'phase-0', label: 'Phase 0 (Idea)',                                         color: '#9e9e9e', text: '#fff' },
+    { id: 'phase-1', label: 'Phase 1 (Talks w/Client)',                               color: '#9c6fe4', text: '#fff' },
+    { id: 'phase-2', label: 'Phase 2 (Awaiting Walk Thru)',                           color: '#4db6ac', text: '#fff' },
+    { id: 'phase-3', label: 'Phase 3 (Event Details Confirmed / Quote Exchange)',     color: '#64b5f6', text: '#1a1a1a' },
+    { id: 'phase-4', label: 'Phase 4 (Invoice Sent) waiting on payment',              color: '#795548', text: '#fff' },
+    { id: 'phase-5', label: 'Phase 5 (Docs being made and staffing confirmed)',       color: '#81c784', text: '#1a1a1a' },
+    { id: 'phase-6', label: 'Phase 6 (Crew has received info)',                       color: '#90caf9', text: '#1a1a1a' },
+    { id: 'phase-7', label: 'Phase 7 (Ready for Showday)',                            color: '#ffb74d', text: '#1a1a1a' },
+    { id: 'phase-8', label: 'Phase 8 (Awaiting Final Payment)',                       color: '#ef9a9a', text: '#1a1a1a' },
+    { id: 'phase-9', label: 'Phase 9 (Send Thank you email)',                         color: '#7b1fa2', text: '#fff' },
+    { id: 'completed', label: 'Completed!!!',                                         color: '#2e7d32', text: '#fff' },
+];
+
+const ALL_PAGES = [
+    { id: 'dashboard',           label: 'Dashboard' },
+    { id: 'timeline',            label: 'Timeline' },
+    { id: 'technical-cue-sheet', label: 'Technical Cue Sheet' },
+    { id: 'input-lists',         label: 'Input Lists' },
+    { id: 'stage-plots',         label: 'Stage Plots' },
+    { id: 'set-lists',           label: 'Performers' },
+    { id: 'vendors',             label: 'Vendors' },
+    { id: 'budget',              label: 'Budget' },
+    { id: 'staff',               label: 'Staff' },
+    { id: 'packing-list',        label: 'Packing List' },
+    { id: 'seating',             label: 'Seating' },
+    { id: 'printed-materials',   label: 'Printed Materials' },
+    { id: 'digital-assets',      label: 'Digital Assets' },
+    { id: 'menu',                label: 'Menu' },
+    { id: 'venue-map',           label: 'Venue Map' },
+];
+
+// Tracks active Firestore onSnapshot unsubscribers so we can tear down on event switch
+let _activeListeners = [];
+
+function teardownListeners() {
+    _activeListeners.forEach(fn => { try { fn(); } catch (e) {} });
+    _activeListeners = [];
+}
+
+function setActiveEvent(eventId) {
+    const ref = db.collection('events').doc(eventId);
+    collections = {
+        vendors:               ref.collection('vendors'),
+        budget:                ref.collection('budget'),
+        timeline:              ref.collection('timeline'),
+        mainStageInputs:       ref.collection('mainStageInputs'),
+        cocktailStageInputs:   ref.collection('cocktailStageInputs'),
+        staff:                 ref.collection('staff'),
+        eventInfo:             ref.collection('event-info'),
+        stagePlots:            ref.collection('stagePlots'),
+        venueMapLayers:        ref.collection('venueMapLayers'),
+        setLists:              ref.collection('setLists'),
+        packingList:           ref.collection('packingList'),
+        packingCategoryColors: ref.collection('packingCategoryColors'),
+        menuItems:             ref.collection('menuItems'),
+        printedMaterials:      ref.collection('printedMaterials'),
+        digitalAssets:         ref.collection('digitalAssets'),
+        guests:                ref.collection('guests'),
+        seatingTables:         ref.collection('seatingTables'),
+    };
+    state.currentEventId = eventId;
+}
+
 // Initialize app when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
     initializeApp();
@@ -261,7 +332,7 @@ function initializeApp() {
     setupHamburgerMenu();
     setupModals();
     setupCountdown();
-    loadAllData();
+    // loadAllData() is called inside enterEvent() once an event is selected
     setupFormHandlers();
     setupDayTabs();
     setupVendorFilters();
@@ -321,17 +392,11 @@ function initializeApp() {
         }
     });
 
-    // Restore page from URL hash (or default to dashboard)
-    const hash = location.hash.replace('#', '');
-    if (hash && document.getElementById(hash)) {
-        switchPage(hash);
-        // Update nav link active state to match
-        const navLinks = document.querySelectorAll('.nav-link');
-        navLinks.forEach(l => l.classList.toggle('active', l.dataset.page === hash));
-        updateNavGroupIndicators();
-    } else {
-        switchPage('dashboard');
-    }
+    // Always start at the events hub; enter a specific event first before navigating to event pages
+    document.querySelector('.nav-menu').classList.add('hub-mode');
+    document.getElementById('nav-event-settings-btn').style.display = 'none';
+    switchPage('events-hub');
+    migrateToMultiEvent().then(() => loadEvents());
 
     // Browser back/forward navigation
     window.addEventListener('hashchange', () => {
@@ -442,6 +507,11 @@ function closeHamburgerMenu() {
 }
 
 function switchPage(pageName) {
+    // Guard: non-hub pages require an active event
+    if (pageName !== 'events-hub' && !state.currentEventId) {
+        pageName = 'events-hub';
+    }
+
     const pages = document.querySelectorAll('.page');
     pages.forEach(page => page.classList.remove('active'));
 
@@ -624,21 +694,21 @@ function setupCollectionListener(collectionKey, stateKey, renderCallbacks = []) 
         console.warn(`Collection '${collectionKey}' not configured — skipping listener`);
         return;
     }
-    collections[collectionKey].onSnapshot((snapshot) => {
+    const unsub = collections[collectionKey].onSnapshot((snapshot) => {
         state[stateKey] = snapshot.docs.map(doc => ({
             id: doc.id,
             ...doc.data()
         }));
-
-        // Call all render callbacks
         renderCallbacks.forEach(callback => callback());
     }, (error) => {
         console.error(`Error loading ${collectionKey}:`, error);
     });
+    _activeListeners.push(unsub);
 }
 
-// Load all data from Firestore
+// Load all data from Firestore (tears down any existing listeners first)
 function loadAllData() {
+    teardownListeners();
     setupCollectionListener('budget', 'budget', [renderBudget, renderVendors, updateDashboard, renderStaff, backfillLinkedContactInfo]);
     setupCollectionListener('timeline', 'timeline', [renderTimeline, renderCueSheet, updateDashboard]);
     setupCollectionListener('mainStageInputs', 'mainStageInputs', [renderStageInputs]);
@@ -654,6 +724,246 @@ function loadAllData() {
     setupCollectionListener('guests', 'guests', [renderSeatingTable, renderSeatingMap, renderSeatingPanel, updateSeatingStats]);
     setupCollectionListener('seatingTables', 'seatingTables', [renderSeatingTable, renderSeatingMap, renderSeatingPanel, updateSeatingStats]);
 }
+
+// ============================================================
+// EVENTS HUB
+// ============================================================
+
+async function migrateToMultiEvent() {
+    const existing = await eventsCollection.limit(1).get();
+    if (!existing.empty) return;
+
+    showToast('Setting up multi-event system…', 'info');
+    const eventId = 'ymu-gala-2026';
+    const eventRef = eventsCollection.doc(eventId);
+
+    await eventRef.set({
+        name: 'YMU Gala 2026',
+        date: '2026-04-25',
+        lead: '',
+        phase: 'phase-7',
+        enabledPages: ALL_PAGES.map(p => p.id),
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+
+    const legacyColls = [
+        'vendors', 'budget', 'timeline', 'mainStageInputs', 'cocktailStageInputs',
+        'staff', 'stagePlots', 'venueMapLayers', 'setLists', 'packingList',
+        'packingCategoryColors', 'menuItems', 'printedMaterials', 'digitalAssets',
+        'guests', 'seatingTables',
+    ];
+
+    for (const collName of legacyColls) {
+        const snap = await db.collection(collName).get();
+        if (snap.empty) continue;
+        const dest = eventRef.collection(collName);
+        for (let i = 0; i < snap.docs.length; i += 499) {
+            const batch = db.batch();
+            snap.docs.slice(i, i + 499).forEach(doc => batch.set(dest.doc(doc.id), doc.data()));
+            await batch.commit();
+        }
+    }
+
+    showToast('Migration complete — welcome to the Events Hub!', 'success');
+}
+
+async function loadEvents() {
+    try {
+        const snap = await eventsCollection.orderBy('date', 'asc').get();
+        state.events = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    } catch (e) {
+        state.events = [];
+    }
+    renderHub();
+}
+
+function renderHub() {
+    const el = document.getElementById('events-hub-content');
+    if (!el) return;
+
+    if (!state.events || state.events.length === 0) {
+        el.innerHTML = `<div class="hub-empty"><p>No events yet.</p><button class="hub-new-btn" onclick="openNewEventModal()">+ New Event</button></div>`;
+        return;
+    }
+
+    const rows = state.events.map(ev => {
+        const phase = PHASES.find(p => p.id === ev.phase) || PHASES[0];
+        const dateStr = ev.date
+            ? new Date(ev.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+            : '—';
+        return `<tr>
+            <td class="hub-cell-date">${dateStr}</td>
+            <td class="hub-cell-name">${escapeHtml(ev.name || '—')}</td>
+            <td class="hub-cell-lead">${escapeHtml(ev.lead || '—')}</td>
+            <td class="hub-cell-phase">
+                <span class="phase-badge" style="background:${phase.color};color:${phase.text}">${escapeHtml(phase.label)}</span>
+            </td>
+            <td class="hub-cell-actions">
+                <button class="hub-enter-btn" onclick="enterEvent('${ev.id}')">Enter &rarr;</button>
+            </td>
+        </tr>`;
+    }).join('');
+
+    el.innerHTML = `<table class="hub-table">
+        <thead><tr>
+            <th>Date</th><th>Event Name</th><th>Event Lead</th><th>Phase</th><th></th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+    </table>`;
+}
+
+async function enterEvent(eventId) {
+    const snap = await eventsCollection.doc(eventId).get();
+    if (!snap.exists) return;
+    const event = { id: snap.id, ...snap.data() };
+    state.activeEvent = event;
+
+    setActiveEvent(eventId);
+
+    // Update nav branding
+    const brand = document.querySelector('.nav-brand');
+    brand.innerHTML = `
+        <button class="nav-back-btn" onclick="backToHub()">&#8592; Events</button>
+        <span class="nav-event-title">${escapeHtml(event.name || 'Event')}</span>
+    `;
+
+    // Show nav, settings button
+    document.getElementById('nav-event-settings-btn').style.display = '';
+    document.querySelector('.nav-menu').classList.remove('hub-mode');
+
+    updateNavForEvent(event);
+    loadAllData();
+
+    // Update countdown target to this event's date
+    if (event.date) {
+        window._hubEventDate = new Date(event.date + 'T18:00:00');
+    }
+
+    const firstPage = (event.enabledPages || []).includes('dashboard')
+        ? 'dashboard'
+        : ((event.enabledPages || [])[0] || 'dashboard');
+    switchPage(firstPage);
+}
+
+function backToHub() {
+    teardownListeners();
+    state.currentEventId = null;
+    state.activeEvent = null;
+    collections = {};
+
+    const brand = document.querySelector('.nav-brand');
+    brand.textContent = 'YMU Events';
+    document.getElementById('nav-event-settings-btn').style.display = 'none';
+    document.querySelector('.nav-menu').classList.add('hub-mode');
+    document.querySelectorAll('.nav-link[data-page]').forEach(l => l.classList.remove('nav-link--disabled'));
+
+    switchPage('events-hub');
+    loadEvents();
+}
+
+function updateNavForEvent(event) {
+    const enabled = new Set(event.enabledPages || []);
+    document.querySelectorAll('.nav-link[data-page]').forEach(link => {
+        const page = link.dataset.page;
+        link.classList.toggle('nav-link--disabled', !enabled.has(page));
+    });
+    // Apply/remove locked overlay on each page
+    ALL_PAGES.forEach(p => {
+        const el = document.getElementById(p.id);
+        if (!el) return;
+        el.classList.toggle('page--locked', !enabled.has(p.id));
+    });
+}
+
+function openNewEventModal() {
+    const phaseSelect = document.getElementById('new-event-phase');
+    phaseSelect.innerHTML = PHASES.map(ph =>
+        `<option value="${ph.id}">${ph.label}</option>`
+    ).join('');
+
+    const pagesContainer = document.getElementById('new-event-pages');
+    pagesContainer.innerHTML = ALL_PAGES.map(p =>
+        `<label class="page-toggle-label">
+            <input type="checkbox" value="${p.id}" class="page-toggle-cb"> ${escapeHtml(p.label)}
+        </label>`
+    ).join('');
+
+    document.getElementById('new-event-name').value = '';
+    document.getElementById('new-event-date').value = '';
+    document.getElementById('new-event-lead').value = '';
+    document.getElementById('new-event-modal').classList.add('is-open');
+}
+
+window.closeNewEventModal = function() {
+    document.getElementById('new-event-modal').classList.remove('is-open');
+};
+
+window.createEvent = async function() {
+    const name  = document.getElementById('new-event-name').value.trim();
+    const date  = document.getElementById('new-event-date').value;
+    const lead  = document.getElementById('new-event-lead').value.trim();
+    const phase = document.getElementById('new-event-phase').value;
+    const enabledPages = [...document.querySelectorAll('#new-event-pages .page-toggle-cb:checked')].map(cb => cb.value);
+
+    if (!name) { showToast('Event name is required', 'error'); return; }
+
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    const id = `${slug}-${Date.now()}`;
+
+    await eventsCollection.doc(id).set({
+        name, date, lead, phase, enabledPages,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+
+    closeNewEventModal();
+    showToast(`"${name}" created`, 'success');
+    await loadEvents();
+};
+
+function openEventSettings() {
+    const event = state.activeEvent;
+    if (!event) return;
+    const enabled = new Set(event.enabledPages || []);
+
+    document.getElementById('event-settings-title').textContent = event.name || 'Event Settings';
+
+    const pagesContainer = document.getElementById('event-settings-pages');
+    pagesContainer.innerHTML = ALL_PAGES.map(p =>
+        `<label class="page-toggle-label">
+            <input type="checkbox" value="${p.id}" class="settings-page-cb" ${enabled.has(p.id) ? 'checked' : ''}
+                onchange="toggleEventPage('${p.id}', this.checked)">
+            ${escapeHtml(p.label)}
+        </label>`
+    ).join('');
+
+    document.getElementById('event-settings-modal').classList.add('is-open');
+}
+
+window.closeEventSettings = function() {
+    document.getElementById('event-settings-modal').classList.remove('is-open');
+};
+
+window.toggleEventPage = async function(pageId, isEnabled) {
+    const event = state.activeEvent;
+    if (!event) return;
+    const pages = new Set(event.enabledPages || []);
+    if (isEnabled) pages.add(pageId); else pages.delete(pageId);
+    const enabledPages = [...pages];
+
+    await eventsCollection.doc(event.id).update({
+        enabledPages,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+    state.activeEvent.enabledPages = enabledPages;
+    updateNavForEvent(state.activeEvent);
+};
+
+window.enterEvent = enterEvent;
+window.backToHub = backToHub;
+window.openNewEventModal = openNewEventModal;
+window.openEventSettings = openEventSettings;
 
 // Dashboard
 function updateDashboard() {

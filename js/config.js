@@ -35,23 +35,8 @@ db.enablePersistence({ synchronizeTabs: true }).catch((err) => {
     }
 });
 
-// Collection references
-const collections = {
-    vendors: db.collection('vendors'),
-    budget: db.collection('budget'),
-    timeline: db.collection('timeline'),
-    mainStageInputs: db.collection('mainStageInputs'),
-    cocktailStageInputs: db.collection('cocktailStageInputs'),
-    staff: db.collection('staff'),
-    eventInfo: db.collection('event-info'),
-    stagePlots: db.collection('stagePlots'),
-    venueMapLayers: db.collection('venueMapLayers'),
-    setLists: db.collection('setLists'),
-    packingList: db.collection('packingList'),
-    packingCategoryColors: db.collection('packingCategoryColors'),
-    menuItems: db.collection('menuItems'),
-    printedMaterials: db.collection('printedMaterials'),
-    digitalAssets: db.collection('digitalAssets'),
-    guests: db.collection('guests'),
-    seatingTables: db.collection('seatingTables')
-};
+// Top-level events collection for the hub
+const eventsCollection = db.collection('events');
+
+// Per-event collection references — rebuilt by setActiveEvent() in app.js
+let collections = {};
