@@ -10933,19 +10933,30 @@ function setupVenueMap() {
         });
     }
 
-    // Drag & drop on the prompt overlay
+    // Drag & drop — listen on the full overlay so the whole area accepts drops
+    const vmPromptOverlay = document.getElementById('vm-upload-prompt');
     const dropZone = document.getElementById('vm-upload-drop-zone');
-    if (dropZone) {
-        dropZone.addEventListener('dragover', (e) => {
+    if (vmPromptOverlay) {
+        let dragCounter = 0; // track enter/leave across child elements
+        vmPromptOverlay.addEventListener('dragenter', (e) => {
             e.preventDefault();
-            dropZone.classList.add('drag-over');
+            dragCounter++;
+            if (dropZone) dropZone.classList.add('drag-over');
         });
-        dropZone.addEventListener('dragleave', () => {
-            dropZone.classList.remove('drag-over');
+        vmPromptOverlay.addEventListener('dragleave', () => {
+            dragCounter--;
+            if (dragCounter <= 0) {
+                dragCounter = 0;
+                if (dropZone) dropZone.classList.remove('drag-over');
+            }
         });
-        dropZone.addEventListener('drop', (e) => {
+        vmPromptOverlay.addEventListener('dragover', (e) => {
+            e.preventDefault(); // required to allow drop
+        });
+        vmPromptOverlay.addEventListener('drop', (e) => {
             e.preventDefault();
-            dropZone.classList.remove('drag-over');
+            dragCounter = 0;
+            if (dropZone) dropZone.classList.remove('drag-over');
             const file = e.dataTransfer.files[0];
             if (file && file.type.startsWith('image/')) vmProcessMapFile(file);
         });
