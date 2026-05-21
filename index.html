@@ -826,8 +826,8 @@
                             Export
                         </button>
                         <button class="gi-btn gi-btn-fb" onclick="openFacebookExport()">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg>
-                            Facebook
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                            Directory
                         </button>
                         <div class="gi-col-wrap">
                             <button class="gi-btn" onclick="toggleGuestColumnsMenu()">
@@ -2331,39 +2331,28 @@
         </div>
     </div>
 
-    <!-- Facebook Export Modal -->
+    <!-- Guest Directory (Facebook) Modal -->
     <div class="modal" id="fb-export-modal" onclick="if(event.target===this)closeFacebookExport()">
         <div class="modal-dark-box fb-modal">
             <div class="modal-title">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="#5b9cf6" style="vertical-align:-2px;margin-right:6px"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg>
-                Facebook Post
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#d4845a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                Guest Directory
             </div>
-            <div class="fb-filter-row" id="fb-filter-row">
-                <label class="fb-status-pill fb-status-pill-confirmed" id="fb-pill-confirmed">
-                    <input type="checkbox" id="fb-inc-confirmed" checked onchange="refreshFbModal()"> Confirmed
-                </label>
-                <label class="fb-status-pill fb-status-pill-invited" id="fb-pill-invited">
-                    <input type="checkbox" id="fb-inc-invited" onchange="refreshFbModal()"> Invited
-                </label>
-                <label class="fb-status-pill fb-status-pill-pending" id="fb-pill-pending">
-                    <input type="checkbox" id="fb-inc-pending" onchange="refreshFbModal()"> Pending
-                </label>
-            </div>
-            <div class="fb-modal-body">
-                <div>
-                    <div class="fb-col-label">Guests — click eye to exclude</div>
-                    <div class="fb-guest-list" id="fb-guest-list"></div>
-                </div>
-                <div>
-                    <div class="fb-col-label">Post Preview — edit freely</div>
-                    <div class="fb-count-note" id="fb-count-note"></div>
-                    <textarea class="fb-preview-box" id="fb-preview-text"></textarea>
-                    <button class="fb-copy-btn" onclick="copyFbPost()">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                        Copy to Clipboard
+            <div class="fb-dir-header">
+                <span style="font-size:0.78rem;color:rgba(255,255,255,0.35)">Auto-fetches bios &amp; photos from Wikipedia for guests missing them.</span>
+                <div class="fb-dir-actions">
+                    <button class="fb-dir-btn fb-dir-btn-fetch" id="fb-fetch-all-btn" onclick="fetchAllMissingFbInfo()">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                        Fetch Missing Info
+                    </button>
+                    <button class="fb-dir-btn fb-dir-btn-generate" onclick="generateGuestDirectoryPdf()">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                        Generate PDF
                     </button>
                 </div>
             </div>
+            <div class="fb-dir-list" id="fb-dir-list"></div>
+            <div class="fb-dir-note">Guests marked <strong style="color:rgba(255,255,255,0.5)">excluded</strong> won't appear in the directory. Click <em>Generate PDF</em> then use your browser's Print → Save as PDF.</div>
             <div class="modal-actions">
                 <button class="btn btn-secondary" onclick="closeFacebookExport()">Done</button>
             </div>

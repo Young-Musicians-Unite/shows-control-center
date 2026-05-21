@@ -15698,32 +15698,51 @@ async function confirmDeleteGuest(invId) {
     catch(e) { console.error('confirmDeleteGuest:', e); }
 }
 
-// ── Facebook Export ──────────────────────────────────────────
-const _fbEyeOn  = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
-const _fbEyeOff = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`;
+// ── Guest Directory (Facebook) ───────────────────────────────
 
-function _fbGetStatuses() {
-    const s = [];
-    if (document.getElementById('fb-inc-confirmed')?.checked) s.push('confirmed');
-    if (document.getElementById('fb-inc-invited')?.checked)   s.push('invited');
-    if (document.getElementById('fb-inc-pending')?.checked)   s.push('pending');
-    return s;
+// ---- Wikipedia fetch ----------------------------------------
+async function fetchWikiInfo(name, org) {
+    // Try direct name first, then name+org search as fallback
+    const tryTitle = async (title) => {
+        try {
+            const r = await fetch(
+                `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`,
+                { headers: { 'Accept': 'application/json' } }
+            );
+            if (!r.ok) return null;
+            const d = await r.json();
+            if (d.type === 'disambiguation' || !d.extract) return null;
+            return { bio: d.extract, headshotUrl: d.thumbnail?.source || null };
+        } catch(e) { return null; }
+    };
+
+    // 1. Direct name lookup
+    let result = await tryTitle(name);
+    if (result) return result;
+
+    // 2. Search API with name + org
+    try {
+        const q = [name, org].filter(Boolean).join(' ');
+        const r = await fetch(
+            `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(q)}&srlimit=1&format=json&origin=*`
+        );
+        const d = await r.json();
+        const hit = d.query?.search?.[0];
+        if (hit) {
+            result = await tryTitle(hit.title);
+            if (result) return result;
+        }
+    } catch(e) { /* no search result */ }
+
+    return null;
 }
 
+// ---- Modal open/close ---------------------------------------
 function openFacebookExport() {
     const invitees = state.invitees || [];
     if (!invitees.length) { showToast('No guests to export', 'error'); return; }
-    const modal = document.getElementById('fb-export-modal');
-    if (!modal) return;
-    modal.classList.add('active');
-    // sync pill styles on open
-    ['confirmed','invited','pending'].forEach(s => {
-        const pill = document.getElementById(`fb-pill-${s}`);
-        const cb   = document.getElementById(`fb-inc-${s}`);
-        if (pill && cb) pill.classList.toggle('fb-pill-off', !cb.checked);
-    });
-    renderFbGuestList();
-    renderFbPreview();
+    document.getElementById('fb-export-modal')?.classList.add('active');
+    renderFbDirectoryList();
 }
 window.openFacebookExport = openFacebookExport;
 
@@ -15732,53 +15751,113 @@ function closeFacebookExport() {
 }
 window.closeFacebookExport = closeFacebookExport;
 
-function refreshFbModal() {
-    // Keep pill styling in sync with checkbox state
-    ['confirmed','invited','pending'].forEach(s => {
-        const pill = document.getElementById(`fb-pill-${s}`);
-        const cb   = document.getElementById(`fb-inc-${s}`);
-        if (pill && cb) pill.classList.toggle('fb-pill-off', !cb.checked);
-    });
-    renderFbGuestList();
-    renderFbPreview();
-}
-window.refreshFbModal = refreshFbModal;
-
-function renderFbGuestList() {
-    const list = document.getElementById('fb-guest-list');
+// ---- Directory list render ----------------------------------
+function renderFbDirectoryList() {
+    const list = document.getElementById('fb-dir-list');
     if (!list) return;
-    const statuses = _fbGetStatuses();
-    const guests = (state.invitees || [])
-        .filter(inv => statuses.includes(inv.status || 'pending'))
+    const invitees = (state.invitees || [])
+        .filter(inv => (inv.status || 'pending') !== 'declined')
         .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
-    if (!guests.length) {
-        list.innerHTML = `<div class="fb-empty-msg">No guests match the selected statuses</div>`;
+    if (!invitees.length) {
+        list.innerHTML = '<div style="padding:1rem;text-align:center;color:rgba(255,255,255,0.3);font-size:0.82rem">No guests</div>';
         return;
     }
-    list.innerHTML = guests.map(inv => {
-        const excl = !!inv.excludeFromFacebook;
-        const sub  = [inv.title, inv.organization].filter(Boolean).map(escapeHtml).join(', ');
-        return `<div class="fb-guest-item${excl ? ' fb-excluded' : ''}" id="fb-item-${inv.id}">
-            <button class="fb-toggle-btn" onclick="toggleFbExclude('${inv.id}')" title="${excl ? 'Include in post' : 'Exclude from post'}">
-                ${excl ? _fbEyeOff : _fbEyeOn}
-            </button>
-            <div class="fb-guest-info">
-                <span class="fb-guest-name">${escapeHtml(inv.name || '')}</span>
-                ${sub ? `<span class="fb-guest-sub">${sub}</span>` : ''}
+
+    const ph = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`;
+
+    list.innerHTML = invitees.map(inv => {
+        const excl    = !!inv.excludeFromFacebook;
+        const hasPhoto = inv.headshotUrl?.trim();
+        const hasBio   = inv.bio?.trim();
+        const sub      = [inv.title, inv.organization].filter(Boolean).map(s => s.replace(/</g,'&lt;')).join(', ');
+        const thumb    = hasPhoto
+            ? `<img class="fb-dir-thumb" src="${inv.headshotUrl}" alt="" onerror="this.style.display='none'">`
+            : `<div class="fb-dir-thumb-ph">${ph}</div>`;
+        const photoBadge = `<span class="fb-dir-badge ${hasPhoto ? 'fb-dir-badge-ok' : 'fb-dir-badge-miss'}">📷 ${hasPhoto ? '✓' : '✗'}</span>`;
+        const bioBadge   = `<span class="fb-dir-badge ${hasBio   ? 'fb-dir-badge-ok' : 'fb-dir-badge-miss'}">bio ${hasBio ? '✓' : '✗'}</span>`;
+        const fetchBtn   = (!hasPhoto || !hasBio)
+            ? `<button class="fb-dir-fetch-one" id="fb-fetch-${inv.id}" onclick="fetchOneFbGuest('${inv.id}')">Fetch</button>`
+            : '';
+        const exclBtn = `<button class="fb-dir-fetch-one" onclick="toggleFbExclude('${inv.id}')" title="${excl ? 'Include' : 'Exclude'}" style="color:${excl?'rgba(252,129,129,0.6)':'rgba(255,255,255,0.25)'}">${excl ? 'Excluded' : '—'}</button>`;
+
+        return `<div class="fb-dir-row" id="fb-row-${inv.id}" style="${excl?'opacity:0.4':''}">
+            ${thumb}
+            <div class="fb-dir-info">
+                <div class="fb-dir-name">${(inv.name||'').replace(/</g,'&lt;')}</div>
+                ${sub ? `<div class="fb-dir-sub">${sub}</div>` : ''}
             </div>
+            <div class="fb-dir-badges">${photoBadge}${bioBadge}</div>
+            ${fetchBtn}
+            ${exclBtn}
         </div>`;
     }).join('');
 }
 
+// ---- Per-guest fetch ----------------------------------------
+async function fetchOneFbGuest(invId) {
+    const inv = (state.invitees || []).find(i => i.id === invId);
+    if (!inv) return;
+
+    const btn = document.getElementById(`fb-fetch-${invId}`);
+    if (btn) { btn.textContent = '…'; btn.disabled = true; }
+
+    const result = await fetchWikiInfo(inv.name, inv.organization);
+    const updates = {};
+    if (result) {
+        if (!inv.bio?.trim()         && result.bio)         { inv.bio         = result.bio;         updates.bio         = result.bio; }
+        if (!inv.headshotUrl?.trim() && result.headshotUrl) { inv.headshotUrl = result.headshotUrl; updates.headshotUrl = result.headshotUrl; }
+    }
+    if (Object.keys(updates).length && collections.invitees) {
+        try { await collections.invitees.doc(invId).update(updates); }
+        catch(e) { console.error('fetchOneFbGuest save:', e); }
+    }
+    renderFbDirectoryList();
+    if (!result || (!result.bio && !result.headshotUrl)) {
+        showToast(`No Wikipedia entry found for "${inv.name}"`, 'error');
+    }
+}
+window.fetchOneFbGuest = fetchOneFbGuest;
+
+// ---- Batch fetch --------------------------------------------
+async function fetchAllMissingFbInfo() {
+    const btn = document.getElementById('fb-fetch-all-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Fetching…'; }
+
+    const missing = (state.invitees || []).filter(inv =>
+        (inv.status || 'pending') !== 'declined' &&
+        !inv.excludeFromFacebook &&
+        (!inv.bio?.trim() || !inv.headshotUrl?.trim())
+    );
+
+    let found = 0;
+    for (const inv of missing) {
+        const result = await fetchWikiInfo(inv.name, inv.organization);
+        if (result) {
+            const updates = {};
+            if (!inv.bio?.trim()         && result.bio)         { inv.bio         = result.bio;         updates.bio         = result.bio; }
+            if (!inv.headshotUrl?.trim() && result.headshotUrl) { inv.headshotUrl = result.headshotUrl; updates.headshotUrl = result.headshotUrl; }
+            if (Object.keys(updates).length) {
+                found++;
+                if (collections.invitees) {
+                    try { await collections.invitees.doc(inv.id).update(updates); }
+                    catch(e) { console.error('fetchAllMissingFbInfo save:', e); }
+                }
+            }
+        }
+    }
+    renderFbDirectoryList();
+    if (btn) { btn.disabled = false; btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg> Fetch Missing Info`; }
+    showToast(found > 0 ? `Found info for ${found} guest${found!==1?'s':''}` : 'No new info found — guests may not be on Wikipedia', found > 0 ? 'success' : 'error');
+}
+window.fetchAllMissingFbInfo = fetchAllMissingFbInfo;
+
+// ---- Exclude toggle -----------------------------------------
 async function toggleFbExclude(invId) {
     const inv = (state.invitees || []).find(i => i.id === invId);
     if (!inv) return;
     inv.excludeFromFacebook = !inv.excludeFromFacebook;
-    // optimistic re-render
-    renderFbGuestList();
-    renderFbPreview();
-    // persist
+    renderFbDirectoryList();
     if (collections.invitees) {
         try { await collections.invitees.doc(invId).update({ excludeFromFacebook: inv.excludeFromFacebook }); }
         catch(e) { console.error('toggleFbExclude:', e); }
@@ -15786,65 +15865,117 @@ async function toggleFbExclude(invId) {
 }
 window.toggleFbExclude = toggleFbExclude;
 
-function renderFbPreview() {
-    const el = document.getElementById('fb-preview-text');
-    const note = document.getElementById('fb-count-note');
-    if (!el) return;
-
-    const statuses = _fbGetStatuses();
+// ---- Generate PDF -------------------------------------------
+function generateGuestDirectoryPdf() {
     const event    = state.activeEvent || {};
-    const eventName = escapeHtml(event.name || 'our upcoming event');
+    const invitees = (state.invitees || [])
+        .filter(inv => !inv.excludeFromFacebook && (inv.status || 'pending') !== 'declined')
+        .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
-    let dateStr = '';
+    if (!invitees.length) { showToast('No guests to include', 'error'); return; }
+
+    const esc = s => (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+    const guestEntryHtml = (inv) => {
+        const photoHtml = inv.headshotUrl?.trim()
+            ? `<img class="g-photo" src="${esc(inv.headshotUrl)}" alt="" onerror="this.style.display='none'">`
+            : `<div class="g-photo-ph"><svg viewBox="0 0 24 24" fill="none" stroke="#c0b4a8" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" width="48" height="48"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>`;
+        const bio = inv.bio?.trim()
+            ? esc(inv.bio.length > 400 ? inv.bio.slice(0,400).trimEnd() + '…' : inv.bio)
+            : '';
+        const invitedBy = inv.invitedBy?.trim()
+            ? `<div class="g-invited">Invited by ${esc(inv.invitedBy)}</div>` : '';
+        return `<div class="g-entry">
+            ${photoHtml}
+            <div class="g-info">
+                <div class="g-name">${esc(inv.name||'')}</div>
+                ${inv.title    ? `<div class="g-title">${esc(inv.title)}</div>` : ''}
+                ${inv.organization ? `<div class="g-org">${esc(inv.organization)}</div>` : ''}
+                ${bio ? `<div class="g-bio">${bio}</div>` : ''}
+                ${invitedBy}
+            </div>
+        </div>`;
+    };
+
+    // Pair up guests into spreads (2 per page)
+    const pairs = [];
+    for (let i = 0; i < invitees.length; i += 2) {
+        pairs.push([invitees[i], invitees[i+1] || null]);
+    }
+
+    const spreadsHtml = pairs.map((pair, idx) => {
+        const isLast = idx === pairs.length - 1;
+        return `<div class="spread${isLast ? '' : ' pb'}">
+            ${guestEntryHtml(pair[0])}
+            ${pair[1] ? `<div class="divider"></div>${guestEntryHtml(pair[1])}` : ''}
+        </div>`;
+    }).join('\n');
+
+    let eventDate = '';
     if (event.date) {
-        try {
-            dateStr = new Date(event.date + 'T12:00:00').toLocaleDateString('en-US',
-                { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
-        } catch(e) {}
+        try { eventDate = new Date(event.date+'T12:00:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'}); }
+        catch(e) { eventDate = event.date; }
     }
 
-    const included = (state.invitees || []).filter(inv =>
-        statuses.includes(inv.status || 'pending') && !inv.excludeFromFacebook
-    ).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-
-    if (note) note.textContent = included.length
-        ? `${included.length} guest${included.length !== 1 ? 's' : ''} included`
-        : '';
-
-    if (!included.length) {
-        el.value = 'No guests selected — check the status filters or include more guests.';
-        return;
-    }
-
-    const lines = included.map(inv => {
-        const sub = [inv.title, inv.organization].filter(Boolean).join(', ');
-        return sub ? `${inv.name} | ${sub}` : inv.name;
-    });
-
-    el.value = [
-        `🌟 We are honored to welcome our distinguished guests to the ${eventName}!`,
-        '',
-        ...lines,
-        '',
-        dateStr ? `📅 Join us ${dateStr}` : '',
-        '',
-        '#YMUGala #Fundraiser #Community'
-    ].filter(l => l !== undefined).join('\n').trim();
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>${esc(event.name||'Guest Directory')}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{background:#f4efe9;font-family:'Inter',sans-serif;color:#1a1a1a;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+/* Cover */
+.cover{width:100%;min-height:100vh;display:flex;flex-direction:column;justify-content:center;padding:0 10% 0;position:relative}
+.c-rule{width:50px;height:2px;background:#b05c38;margin-bottom:22px}
+.c-title{font-family:'Cormorant Garamond',serif;font-size:clamp(36px,5vw,58px);font-weight:600;line-height:1.1;max-width:80%;color:#1a1a1a}
+.c-sub{margin-top:18px;font-size:13px;letter-spacing:.18em;text-transform:uppercase;color:#999}
+.c-count{margin-top:8px;font-size:13px;color:#bbb}
+.c-date{margin-top:6px;font-size:13px;color:#bbb}
+.c-bar{position:absolute;bottom:0;left:0;right:0;height:7px;background:#b05c38}
+/* Spreads */
+.spread{min-height:100vh;display:flex;flex-direction:column}
+.pb{page-break-after:always;break-after:page}
+.g-entry{flex:1;display:flex;align-items:flex-start;gap:32px;padding:44px 64px;max-height:50vh;overflow:hidden}
+.g-photo{width:175px;min-width:175px;height:215px;object-fit:cover;object-position:center top;flex-shrink:0;border-radius:2px}
+.g-photo-ph{width:175px;min-width:175px;height:215px;background:#ebe4dc;display:flex;align-items:center;justify-content:center;flex-shrink:0;border-radius:2px}
+.g-info{flex:1;padding-top:6px}
+.g-name{font-family:'Cormorant Garamond',serif;font-size:30px;font-weight:600;line-height:1.1;margin-bottom:6px}
+.g-title{font-size:13px;font-weight:600;color:#b05c38;margin-bottom:2px}
+.g-org{font-size:12.5px;color:#888;margin-bottom:13px}
+.g-bio{font-size:13px;line-height:1.68;color:#2a2a2a;max-height:115px;overflow:hidden}
+.g-invited{margin-top:14px;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:#bbb}
+.divider{height:1px;background:#ddd5cb;margin:0 64px}
+@media print{
+  body{background:#f4efe9!important}
+  .pb{page-break-after:always;break-after:page}
+  .cover{page-break-after:always;break-after:page}
+  @page{size:letter portrait;margin:0}
 }
-window.renderFbPreview = renderFbPreview;
+</style>
+</head>
+<body>
+<div class="cover">
+  <div class="c-rule"></div>
+  <div class="c-title">${esc(event.name||'Guest Directory')}</div>
+  <div class="c-sub">Guest Directory</div>
+  <div class="c-count">${invitees.length} Guest${invitees.length!==1?'s':''}</div>
+  ${eventDate ? `<div class="c-date">${eventDate}</div>` : ''}
+  <div class="c-bar"></div>
+</div>
+${spreadsHtml}
+<script>window.onload=()=>{window.print()}<\/script>
+</body>
+</html>`;
 
-function copyFbPost() {
-    const el = document.getElementById('fb-preview-text');
-    if (!el || !el.value) return;
-    navigator.clipboard.writeText(el.value)
-        .then(() => showToast('Copied to clipboard!', 'success'))
-        .catch(() => {
-            el.select();
-            document.execCommand('copy');
-            showToast('Copied!', 'success');
-        });
+    const win = window.open('', '_blank');
+    if (!win) { showToast('Allow pop-ups to generate the PDF', 'error'); return; }
+    win.document.write(html);
+    win.document.close();
 }
-window.copyFbPost = copyFbPost;
+window.generateGuestDirectoryPdf = generateGuestDirectoryPdf;
 
 // ── CSV Export ───────────────────────────────────────────────
 function exportGuestCSV() {
