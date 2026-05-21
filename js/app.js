@@ -10933,47 +10933,26 @@ function setupVenueMap() {
         });
     }
 
-    // Document-level prevention: stops browser from navigating to dropped file
-    // Must preventDefault at document level for OS file drops to reach custom handlers
-    document.addEventListener('dragover', (e) => {
-        if (document.getElementById('vm-upload-prompt')?.style.display !== 'none') {
-            e.preventDefault();
-        }
-    });
+    // Document-level drag & drop — always intercept so browser never navigates to file
+    document.addEventListener('dragover', (e) => e.preventDefault());
     document.addEventListener('drop', (e) => {
-        const prompt = document.getElementById('vm-upload-prompt');
-        if (prompt?.style.display !== 'none') {
-            e.preventDefault();
-            const file = e.dataTransfer.files[0];
-            if (file && file.type.startsWith('image/')) {
-                const dz = document.getElementById('vm-upload-drop-zone');
-                if (dz) dz.classList.remove('drag-over');
-                vmProcessMapFile(file);
-            }
+        e.preventDefault();
+        if (state.currentPage !== 'venue-map') return;
+        const file = e.dataTransfer.files[0];
+        if (!file || !file.type.startsWith('image/')) return;
+        document.getElementById('vm-upload-drop-zone')?.classList.remove('drag-over');
+        vmProcessMapFile(file);
+    });
+    document.addEventListener('dragenter', () => {
+        if (state.currentPage === 'venue-map') {
+            document.getElementById('vm-upload-drop-zone')?.classList.add('drag-over');
         }
     });
-
-    // Visual highlight on the drop zone box during drag
-    const vmPromptOverlay = document.getElementById('vm-upload-prompt');
-    const dropZone = document.getElementById('vm-upload-drop-zone');
-    if (vmPromptOverlay) {
-        let dragCounter = 0;
-        document.addEventListener('dragenter', (e) => {
-            if (vmPromptOverlay.style.display !== 'none') {
-                dragCounter++;
-                if (dropZone) dropZone.classList.add('drag-over');
-            }
-        });
-        document.addEventListener('dragleave', (e) => {
-            if (vmPromptOverlay.style.display !== 'none') {
-                dragCounter--;
-                if (dragCounter <= 0) {
-                    dragCounter = 0;
-                    if (dropZone) dropZone.classList.remove('drag-over');
-                }
-            }
-        });
-    }
+    document.addEventListener('dragleave', (e) => {
+        if (!e.relatedTarget || e.relatedTarget === document.documentElement) {
+            document.getElementById('vm-upload-drop-zone')?.classList.remove('drag-over');
+        }
+    });
 }
 
 async function vmProcessMapFile(file) {
