@@ -11042,6 +11042,10 @@ function vmResetCanvas() {
         clearTimeout(state.vmAutoSaveTimeout);
         state.vmAutoSaveTimeout = null;
     }
+    if (state.vmResizeObserver) {
+        state.vmResizeObserver.disconnect();
+        state.vmResizeObserver = null;
+    }
     const wrapper = document.getElementById('vm-canvas-wrapper');
     if (wrapper) wrapper.innerHTML = '<canvas id="vm-canvas"></canvas>';
 }
@@ -11125,13 +11129,20 @@ async function vmInitCanvas() {
 
     vmSetupDrawingEvents();
     vmLoadLayers().then(() => {
-        // Fire vmFitCanvasToContainer at multiple points to guarantee correct sizing
-        // regardless of how long the browser takes to settle layout
-        [50, 200, 500, 1000].forEach(ms =>
-            setTimeout(vmFitCanvasToContainer, ms)
-        );
-        setTimeout(vmSaveCanvasState, 1100);
+        setTimeout(vmSaveCanvasState, 200);
     });
+
+    // ResizeObserver fires immediately on observe() with the element's true size,
+    // then again whenever the container resizes. This is the most reliable way to
+    // keep the canvas sized correctly regardless of layout-settle timing.
+    const canvasAreaEl = wrapper.closest('.vm-canvas-area') || wrapper.parentElement;
+    if (canvasAreaEl && window.ResizeObserver) {
+        state.vmResizeObserver = new ResizeObserver(entries => {
+            const w = Math.floor(entries[0]?.contentRect?.width || 0);
+            if (w > 10) vmFitCanvasToContainer();
+        });
+        state.vmResizeObserver.observe(canvasAreaEl);
+    }
 
     // Show upload prompt if no background image exists for this event
     if (!state.vmBgImage) {
