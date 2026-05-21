@@ -3931,7 +3931,8 @@ tr.editing td {
 
     /* Show nav menu when active */
     .nav-menu.active {
-        max-height: 600px;
+        max-height: 90vh;
+        overflow-y: auto;
         box-shadow: 0 12px 24px rgba(0,0,0,0.4);
     }
 
@@ -4030,7 +4031,8 @@ tr.editing td {
 /* Landscape phones */
 @media (max-width: 768px) and (orientation: landscape) {
     .nav-menu.active {
-        max-height: 400px;
+        max-height: 90vh;
+        overflow-y: auto;
     }
 }
 
