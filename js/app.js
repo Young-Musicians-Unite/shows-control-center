@@ -10933,32 +10933,45 @@ function setupVenueMap() {
         });
     }
 
-    // Drag & drop — listen on the full overlay so the whole area accepts drops
+    // Document-level prevention: stops browser from navigating to dropped file
+    // Must preventDefault at document level for OS file drops to reach custom handlers
+    document.addEventListener('dragover', (e) => {
+        if (document.getElementById('vm-upload-prompt')?.style.display !== 'none') {
+            e.preventDefault();
+        }
+    });
+    document.addEventListener('drop', (e) => {
+        const prompt = document.getElementById('vm-upload-prompt');
+        if (prompt?.style.display !== 'none') {
+            e.preventDefault();
+            const file = e.dataTransfer.files[0];
+            if (file && file.type.startsWith('image/')) {
+                const dz = document.getElementById('vm-upload-drop-zone');
+                if (dz) dz.classList.remove('drag-over');
+                vmProcessMapFile(file);
+            }
+        }
+    });
+
+    // Visual highlight on the drop zone box during drag
     const vmPromptOverlay = document.getElementById('vm-upload-prompt');
     const dropZone = document.getElementById('vm-upload-drop-zone');
     if (vmPromptOverlay) {
-        let dragCounter = 0; // track enter/leave across child elements
-        vmPromptOverlay.addEventListener('dragenter', (e) => {
-            e.preventDefault();
-            dragCounter++;
-            if (dropZone) dropZone.classList.add('drag-over');
-        });
-        vmPromptOverlay.addEventListener('dragleave', () => {
-            dragCounter--;
-            if (dragCounter <= 0) {
-                dragCounter = 0;
-                if (dropZone) dropZone.classList.remove('drag-over');
+        let dragCounter = 0;
+        document.addEventListener('dragenter', (e) => {
+            if (vmPromptOverlay.style.display !== 'none') {
+                dragCounter++;
+                if (dropZone) dropZone.classList.add('drag-over');
             }
         });
-        vmPromptOverlay.addEventListener('dragover', (e) => {
-            e.preventDefault(); // required to allow drop
-        });
-        vmPromptOverlay.addEventListener('drop', (e) => {
-            e.preventDefault();
-            dragCounter = 0;
-            if (dropZone) dropZone.classList.remove('drag-over');
-            const file = e.dataTransfer.files[0];
-            if (file && file.type.startsWith('image/')) vmProcessMapFile(file);
+        document.addEventListener('dragleave', (e) => {
+            if (vmPromptOverlay.style.display !== 'none') {
+                dragCounter--;
+                if (dragCounter <= 0) {
+                    dragCounter = 0;
+                    if (dropZone) dropZone.classList.remove('drag-over');
+                }
+            }
         });
     }
 }
