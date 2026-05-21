@@ -728,32 +728,49 @@ function loadAllData() {
 // EVENTS HUB
 // ============================================================
 
-async function migrateToMultiEvent() {
-    const existing = await eventsCollection.limit(1).get();
-    if (!existing.empty) return;
+const LEGACY_COLLECTIONS = [
+    'vendors', 'budget', 'timeline', 'mainStageInputs', 'cocktailStageInputs',
+    'staff', 'stagePlots', 'venueMapLayers', 'setLists', 'packingList',
+    'packingCategoryColors', 'menuItems', 'printedMaterials', 'digitalAssets',
+    'guests', 'seatingTables',
+];
 
-    showToast('Setting up multi-event system…', 'info');
+async function migrateToMultiEvent() {
     const eventId = 'ymu-gala-2026';
     const eventRef = eventsCollection.doc(eventId);
 
-    await eventRef.set({
-        name: 'YMU Gala 2026',
-        date: '2026-04-25',
-        lead: '',
-        phase: 'phase-7',
-        enabledPages: ALL_PAGES.map(p => p.id),
-        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-    });
+    // Check sub-collection data vs top-level data — not just whether event doc exists
+    const [subBudget, topBudget] = await Promise.all([
+        eventRef.collection('budget').limit(1).get(),
+        db.collection('budget').limit(1).get(),
+    ]);
 
-    const legacyColls = [
-        'vendors', 'budget', 'timeline', 'mainStageInputs', 'cocktailStageInputs',
-        'staff', 'stagePlots', 'venueMapLayers', 'setLists', 'packingList',
-        'packingCategoryColors', 'menuItems', 'printedMaterials', 'digitalAssets',
-        'guests', 'seatingTables',
-    ];
+    const alreadyCopied = !subBudget.empty;
+    const legacyDataExists = !topBudget.empty;
 
-    for (const collName of legacyColls) {
+    // Ensure the event document itself exists (idempotent)
+    const eventDoc = await eventRef.get();
+    if (!eventDoc.exists) {
+        await eventRef.set({
+            name: 'YMU Gala 2026',
+            date: '2026-04-25',
+            lead: '',
+            phase: 'phase-7',
+            enabledPages: ALL_PAGES.map(p => p.id),
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        });
+    }
+
+    // If data is already in sub-collections, nothing left to do
+    if (alreadyCopied) return;
+
+    // If there's no legacy top-level data to copy, done
+    if (!legacyDataExists) return;
+
+    showToast('Syncing your existing Gala data…', 'info');
+
+    for (const collName of LEGACY_COLLECTIONS) {
         const snap = await db.collection(collName).get();
         if (snap.empty) continue;
         const dest = eventRef.collection(collName);
@@ -764,7 +781,7 @@ async function migrateToMultiEvent() {
         }
     }
 
-    showToast('Migration complete — welcome to the Events Hub!', 'success');
+    showToast('Data synced — all your Gala info is ready!', 'success');
 }
 
 async function loadEvents() {
