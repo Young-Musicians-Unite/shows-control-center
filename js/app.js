@@ -32,6 +32,7 @@ const state = {
     budgetSearch: '',
     currentPage: 'events-hub',
     currentDay: 'Thursday',  // For timeline filtering
+    timelineDays: null,       // [{id, label}] — null until initialized
     vendorFilter: 'all',  // For vendor page filtering (all/confirmed/pending/issues)
     vendorSearch: '',
     vendorView: 'grid',                     // 'grid' | 'schedule'
@@ -74,7 +75,7 @@ const state = {
     vmUndoStack: [],  // Undo history for venue map canvas
     vmRedoStack: [],  // Redo history for venue map canvas
     vmIsUndoRedoing: false,  // Flag to prevent history recording during undo/redo
-    timelineUndoStack: [],  // Undo history for timeline actions
+    globalUndoStack: [],   // Undo history for delete actions across all pages
     timelineFilter: 'all',  // Current timeline filter: 'all', 'production', 'run-of-show'
     timelineAnimateRows: true,  // Only animate rows on day/filter switch, not data updates
     timelineEditingRowId: null,  // Row ID currently being inline-edited (blocks re-render)
@@ -273,6 +274,7 @@ const PHASES = [
 ];
 
 const ALL_PAGES = [
+    { id: 'intake',              label: 'Intake' },
     { id: 'dashboard',           label: 'Dashboard' },
     { id: 'timeline',            label: 'Timeline' },
     { id: 'technical-cue-sheet', label: 'Technical Cue Sheet' },
@@ -289,6 +291,104 @@ const ALL_PAGES = [
     { id: 'menu',                label: 'Menu' },
     { id: 'venue-map',           label: 'Venue Map' },
 ];
+
+const INTAKE_SCHEMA = [
+    { type: 'section', label: 'Venue — Day of Contact' },
+    { field: 'venue_contact_name', label: 'Name',         inputType: 'text'  },
+    { field: 'venue_phone',        label: 'Phone Number', inputType: 'tel'   },
+    { field: 'venue_email',        label: 'Email',        inputType: 'email' },
+    { field: 'venue_org',          label: 'Organization', inputType: 'text'  },
+
+    { type: 'section', label: 'Preliminary Info' },
+    { field: 'nature_of_performance', label: 'Nature of the Performance',                   inputType: 'textarea' },
+    { field: 'num_guests',            label: 'Number of Guests',                            inputType: 'number'   },
+    { field: 'other_activations',     label: 'Other Activations / Speeches / Experiences',  inputType: 'textarea' },
+
+    { type: 'section', label: 'Event Info' },
+    { field: 'event_name',       label: 'Event Name',             inputType: 'text' },
+    { field: 'venue_name',       label: 'Venue Name',             inputType: 'text' },
+    { field: 'venue_address',    label: 'Venue Address',          inputType: 'text' },
+    { field: 'staff_entrance',   label: 'Staff / Vendor Entrance',inputType: 'text' },
+    { field: 'performing_bands', label: 'Performing Bands',       inputType: 'text' },
+    { field: 'event_date',       label: 'Event Date',             inputType: 'date' },
+
+    { type: 'dynamic-section', id: 'pre_show_rows',    label: 'Pre-Show'    },
+    { type: 'dynamic-section', id: 'run_of_show_rows', label: 'Run of Show' },
+
+    { type: 'section', label: 'Logistics' },
+    { field: 'dress_code',      label: 'Dress Code',                          inputType: 'text'     },
+    { field: 'parking_info',    label: 'Parking (free? validated? by whom?)', inputType: 'textarea' },
+    { field: 'truck_parking',   label: 'Truck Parking (20ft box truck)',      inputType: 'text'     },
+    { field: 'food_provider',   label: 'Who Provides Food for Musicians?',    inputType: 'text'     },
+    { field: 'walkthrough',     label: 'Walk Through Date / Time',            inputType: 'text'     },
+    { field: 'alcohol_served',  label: 'Will Alcohol Be Served?',             inputType: 'yesno'    },
+    { field: 'stage_plot_link', label: 'Stage Plot Link',                     inputType: 'url'      },
+
+    { type: 'section', label: 'Production Responsibilities' },
+    { field: 'stage_provider',       label: 'Who Provides the Stage?',       inputType: 'text'     },
+    { field: 'sound_provider',       label: 'Who Provides the Sound?',       inputType: 'text'     },
+    { field: 'lights_provider',      label: 'Who Provides the Lights?',      inputType: 'text'     },
+    { field: 'sound_setup',          label: 'Sound Setup Needed',            inputType: 'textarea' },
+    { field: 'photographer',         label: 'Who Provides the Photographer?',inputType: 'text'     },
+    { field: 'photographer_contact', label: 'Photographer Contact Info',     inputType: 'text'     },
+    { field: 'additional_services',  label: 'Additional Services',           inputType: 'textarea' },
+
+    { type: 'section', label: 'Marketing' },
+    { field: 'ymu_table',          label: 'May YMU Set Up a Table / Tent?',         inputType: 'yesno'    },
+    { field: 'ymu_donations',      label: 'May YMU Solicit Donations?',             inputType: 'yesno'    },
+    { field: 'ymu_banners',        label: 'May We Set Up Banners?',                 inputType: 'yesno'    },
+    { field: 'ymu_promotion',      label: 'Is YMU Responsible for Promotion?',      inputType: 'yesno'    },
+    { field: 'flyer_provided',     label: 'Will a Flyer Be Provided?',              inputType: 'yesno'    },
+    { field: 'ymu_make_flyer',     label: 'Will YMU Be Required to Make a Flyer?',  inputType: 'yesno'    },
+    { field: 'event_logos',        label: 'Event Logos',                            inputType: 'url'      },
+    { field: 'band_logos',         label: 'Band Logos',                             inputType: 'url'      },
+    { field: 'sponsors',           label: 'Sponsors',                               inputType: 'text'     },
+    { field: 'promo_link',         label: 'Promo Link',                             inputType: 'url'      },
+    { field: 'show_blurb',         label: 'Two Sentence Blurb on Show',             inputType: 'textarea' },
+    { field: 'bands_in_town',      label: 'Bands in Town',                          inputType: 'text'     },
+    { field: 'facebook',           label: 'Facebook',                               inputType: 'url'      },
+    { field: 'eventbrite',         label: 'Eventbrite',                             inputType: 'url'      },
+    { field: 'submit_new_tropic',  label: 'Submit to the New Tropic?',              inputType: 'yesno'    },
+    { field: 'submit_miami_found', label: 'Submit to the Miami Foundation?',        inputType: 'yesno'    },
+    { field: 'ymu_ad_spend',       label: 'YMU Ad Spend',                           inputType: 'text'     },
+    { field: 'social_media',       label: 'Social Media Notes',                     inputType: 'text'     },
+
+    { type: 'section', label: 'Insurance' },
+    { field: 'insured_party1',  label: 'Party #1 — Named Insured', inputType: 'text' },
+    { field: 'insured_address', label: 'Address',                  inputType: 'text' },
+    { type: 'subsection', label: 'Booking Contact' },
+    { field: 'booking_name',  label: 'Name',                    inputType: 'text'  },
+    { field: 'booking_email', label: 'Email',                   inputType: 'email' },
+    { field: 'booking_phone', label: 'Phone Number',            inputType: 'tel'   },
+    { field: 'booking_org',   label: 'Organization / Company',  inputType: 'text'  },
+    { type: 'subsection', label: 'Secondary Contact' },
+    { field: 'contact2_name',  label: 'Name',                   inputType: 'text'  },
+    { field: 'contact2_email', label: 'Email',                  inputType: 'email' },
+    { field: 'contact2_phone', label: 'Phone Number',           inputType: 'tel'   },
+    { field: 'contact2_org',   label: 'Organization / Company', inputType: 'text'  },
+
+    { type: 'section', label: 'Financial Information' },
+    { field: 'invoice_org',     label: 'Organization Being Invoiced', inputType: 'text'  },
+    { field: 'billing_address', label: 'Billing Address',             inputType: 'text'  },
+    { field: 'staff_name',      label: 'Staff Name',                  inputType: 'text'  },
+    { field: 'staff_email',     label: 'Staff Email',                 inputType: 'email' },
+    { field: 'amount',          label: 'Amount',                      inputType: 'text'  },
+];
+
+const DYNAMIC_DEFAULTS = {
+    pre_show_rows: [
+        { label: 'Crew Arrival',           time: '' },
+        { label: 'Band Arrival',           time: '' },
+        { label: 'Sound Check',            time: '' },
+        { label: 'Crew Break / Stage Dark',time: '' },
+    ],
+    run_of_show_rows: [
+        { label: 'Event Starts', time: '' },
+        { label: '',             time: '' },
+        { label: '',             time: '' },
+        { label: 'Show Over',    time: '' },
+    ],
+};
 
 // Tracks active Firestore onSnapshot unsubscribers so we can tear down on event switch
 let _activeListeners = [];
@@ -318,6 +418,7 @@ function setActiveEvent(eventId) {
         digitalAssets:         ref.collection('digitalAssets'),
         guests:                ref.collection('guests'),
         seatingTables:         ref.collection('seatingTables'),
+        intake:                ref.collection('intake'),
     };
     state.currentEventId = eventId;
 }
@@ -722,6 +823,7 @@ function loadAllData() {
     setupCollectionListener('digitalAssets', 'digitalAssets', [renderDigitalAssets]);
     setupCollectionListener('guests', 'guests', [renderSeatingTable, renderSeatingMap, renderSeatingPanel, updateSeatingStats]);
     setupCollectionListener('seatingTables', 'seatingTables', [renderSeatingTable, renderSeatingMap, renderSeatingPanel, updateSeatingStats]);
+    setupIntakeListener();
 }
 
 // ============================================================
@@ -808,12 +910,18 @@ function renderHub() {
         const dateStr = ev.date
             ? new Date(ev.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
             : '—';
+        const phaseOptions = PHASES.map(ph =>
+            `<option value="${ph.id}" ${ph.id === ev.phase ? 'selected' : ''}>${ph.label}</option>`
+        ).join('');
         return `<tr>
-            <td class="hub-cell-date">${dateStr}</td>
-            <td class="hub-cell-name">${escapeHtml(ev.name || '—')}</td>
-            <td class="hub-cell-lead">${escapeHtml(ev.lead || '—')}</td>
+            <td class="hub-cell-date hub-cell-editable" onclick="editHubCell(this,'${ev.id}','date','${escapeHtml(ev.date || '')}')" title="Click to edit">${dateStr}</td>
+            <td class="hub-cell-name hub-cell-editable" onclick="editHubCell(this,'${ev.id}','name','${escapeHtml(ev.name || '')}')" title="Click to edit">${escapeHtml(ev.name || '—')}</td>
+            <td class="hub-cell-lead hub-cell-editable" onclick="editHubCell(this,'${ev.id}','lead','${escapeHtml(ev.lead || '')}')" title="Click to edit">${escapeHtml(ev.lead || '—')}</td>
             <td class="hub-cell-phase">
-                <span class="phase-badge" style="background:${phase.color};color:${phase.text}">${escapeHtml(phase.label)}</span>
+                <select class="phase-select" style="background:${phase.color};color:${phase.text}"
+                    onchange="updateEventPhase('${ev.id}', this.value, this)">
+                    ${phaseOptions}
+                </select>
             </td>
             <td class="hub-cell-actions">
                 <button class="hub-enter-btn" onclick="enterEvent('${ev.id}')">Enter &rarr;</button>
@@ -829,11 +937,95 @@ function renderHub() {
     </table>`;
 }
 
+window.editHubCell = function(cell, eventId, field, currentValue) {
+    if (cell.querySelector('input')) return; // already editing
+    const isDate = field === 'date';
+    const input = document.createElement('input');
+    input.type = isDate ? 'date' : 'text';
+    input.value = currentValue;
+    input.className = 'hub-cell-input';
+    if (!isDate) input.placeholder = field === 'name' ? 'Event name' : 'Lead name';
+    cell.textContent = '';
+    cell.appendChild(input);
+    input.focus();
+    if (!isDate) input.select();
+
+    const save = async () => {
+        const newVal = input.value.trim();
+        const ev = state.events.find(e => e.id === eventId);
+        if (ev && newVal !== currentValue) {
+            ev[field] = newVal;
+            try {
+                await eventsCollection.doc(eventId).update({
+                    [field]: newVal,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                });
+            } catch (e) {
+                console.error('Failed to update event:', e);
+                showToast('Error saving', 'error');
+            }
+        }
+        renderHub();
+    };
+
+    input.addEventListener('blur', save);
+    input.addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+        if (e.key === 'Escape') { input.value = currentValue; input.blur(); }
+    });
+    input.addEventListener('click', e => e.stopPropagation());
+};
+
+window.updateEventPhase = async function(eventId, phaseId, selectEl) {
+    const phase = PHASES.find(p => p.id === phaseId);
+    if (phase && selectEl) {
+        selectEl.style.background = phase.color;
+        selectEl.style.color = phase.text;
+    }
+    try {
+        await eventsCollection.doc(eventId).update({
+            phase: phaseId,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        });
+        const ev = state.events.find(e => e.id === eventId);
+        if (ev) ev.phase = phaseId;
+    } catch (e) {
+        console.error('Failed to update phase:', e);
+    }
+};
+
+window.deleteEvent = async function(eventId, eventName) {
+    if (!confirm(`Delete "${eventName}"?\n\nThis will permanently remove the event. This cannot be undone.`)) return;
+    try {
+        await eventsCollection.doc(eventId).delete();
+        showToast(`"${eventName}" deleted`);
+    } catch (e) {
+        showToast('Error deleting event. Please try again.', 'error');
+    }
+};
+
+window.deleteCurrentEvent = async function() {
+    const event = state.activeEvent;
+    if (!event) return;
+    if (!confirm(`Delete "${event.name}"?\n\nThis will permanently remove the event. This cannot be undone.`)) return;
+    closeEventSettings();
+    try {
+        await eventsCollection.doc(event.id).delete();
+        showToast(`"${event.name}" deleted`);
+        backToHub();
+    } catch (e) {
+        showToast('Error deleting event. Please try again.', 'error');
+    }
+};
+
 async function enterEvent(eventId) {
     const snap = await eventsCollection.doc(eventId).get();
     if (!snap.exists) return;
     const event = { id: snap.id, ...snap.data() };
     state.activeEvent = event;
+    // Reset timeline days — will be initialized lazily on first renderTimeline()
+    state.timelineDays = null;
+    state.currentDay = 'Thursday';
 
     setActiveEvent(eventId);
 
@@ -881,8 +1073,19 @@ function updateNavForEvent(event) {
     const enabled = new Set(event.enabledPages || []);
     document.querySelectorAll('.nav-link[data-page]').forEach(link => {
         const page = link.dataset.page;
-        link.classList.toggle('nav-link--disabled', !enabled.has(page));
+        const isEnabled = enabled.has(page);
+        link.classList.toggle('nav-link--disabled', !isEnabled);
+        link.style.display = isEnabled ? '' : 'none';
     });
+    // Hide nav groups where every sub-link is disabled
+    document.querySelectorAll('.nav-group').forEach(group => {
+        const links = group.querySelectorAll('.nav-link[data-page]');
+        const anyVisible = [...links].some(l => enabled.has(l.dataset.page));
+        group.classList.toggle('nav-group--all-disabled', !anyVisible);
+    });
+    // Flat mode: ≤4 enabled pages → show as direct links, no groups
+    const navMenu = document.getElementById('nav-menu');
+    if (navMenu) navMenu.classList.toggle('nav-flat', enabled.size <= 4);
     // Apply/remove locked overlay on each page
     ALL_PAGES.forEach(p => {
         const el = document.getElementById(p.id);
@@ -914,14 +1117,18 @@ window.closeNewEventModal = function() {
     document.getElementById('new-event-modal').classList.remove('is-open');
 };
 
-window.createEvent = async function() {
+window.createNewEvent = async function() {
     const name  = document.getElementById('new-event-name').value.trim();
     const date  = document.getElementById('new-event-date').value;
     const lead  = document.getElementById('new-event-lead').value.trim();
     const phase = document.getElementById('new-event-phase').value;
     const enabledPages = [...document.querySelectorAll('#new-event-pages .page-toggle-cb:checked')].map(cb => cb.value);
 
-    if (!name) { showToast('Event name is required', 'error'); return; }
+    if (!name) {
+        showToast('Please enter an event name', 'error');
+        document.getElementById('new-event-name').focus();
+        return;
+    }
 
     const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
     const id = `${slug}-${Date.now()}`;
@@ -933,8 +1140,8 @@ window.createEvent = async function() {
     });
 
     closeNewEventModal();
-    showToast(`"${name}" created`, 'success');
     await loadEvents();
+    enterEvent(id);
 };
 
 function openEventSettings() {
@@ -978,6 +1185,200 @@ window.enterEvent = enterEvent;
 window.backToHub = backToHub;
 window.openNewEventModal = openNewEventModal;
 window.openEventSettings = openEventSettings;
+
+// ============================================================
+// INTAKE PAGE
+// ============================================================
+
+function setupIntakeListener() {
+    if (!state.currentEventId) return;
+    const ref = db.collection('events').doc(state.currentEventId).collection('intake').doc('main');
+    const unsub = ref.onSnapshot(snap => {
+        state.intake = snap.exists ? snap.data() : {};
+        renderIntake();
+    }, err => console.error('Intake listener error:', err));
+    _activeListeners.push(unsub);
+}
+
+function buildDynamicSectionRows(sectionId, rows) {
+    const closeIcon = `<svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="1" y1="1" x2="11" y2="11"/><line x1="11" y1="1" x2="1" y2="11"/></svg>`;
+    return rows.map((row, i) => `
+        <div class="intake-dyn-row" data-idx="${i}">
+            <input type="text" class="intake-input intake-dyn-label" value="${escapeHtml(row.label || '')}" placeholder="Label…" onblur="saveIntakeDynamicRows('${sectionId}')">
+            <input type="text" class="intake-input intake-dyn-time" value="${escapeHtml(row.time || '')}" placeholder="e.g. 6:30 – 7:00pm" onblur="saveIntakeDynamicRows('${sectionId}')">
+            <button class="intake-remove-row-btn" onclick="removeIntakeRow('${sectionId}', ${i})" type="button" title="Remove row">${closeIcon}</button>
+        </div>`).join('');
+}
+
+function buildDynamicSectionHTML(id, label) {
+    const defaults = DYNAMIC_DEFAULTS[id] || [];
+    return `
+        <div class="intake-section-header">${escapeHtml(label)}</div>
+        <div class="intake-dyn-col-headers">
+            <span>Item</span><span>Time</span>
+        </div>
+        <div id="intake-dyn-${id}" class="intake-dyn-body">
+            ${buildDynamicSectionRows(id, defaults)}
+        </div>
+        <div class="intake-dyn-footer">
+            <button class="intake-add-row-btn" onclick="addIntakeRow('${id}')" type="button">+ Add Row</button>
+        </div>`;
+}
+
+function buildIntakeHTML() {
+    return INTAKE_SCHEMA.map(item => {
+        if (item.type === 'section') {
+            return `<div class="intake-section-header">${escapeHtml(item.label)}</div>`;
+        }
+        if (item.type === 'subsection') {
+            return `<div class="intake-subsection-header">${escapeHtml(item.label)}</div>`;
+        }
+        if (item.type === 'dynamic-section') {
+            return buildDynamicSectionHTML(item.id, item.label);
+        }
+        let inputHTML;
+        if (item.inputType === 'textarea') {
+            inputHTML = `<textarea id="intake-${item.field}" class="intake-input intake-textarea" placeholder=" " onblur="saveIntakeField('${item.field}', this.value)" rows="2"></textarea>`;
+        } else if (item.inputType === 'yesno') {
+            inputHTML = `<select id="intake-${item.field}" class="intake-input intake-select" onchange="saveIntakeField('${item.field}', this.value)">
+                <option value="">—</option>
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+            </select>`;
+        } else {
+            inputHTML = `<input type="${item.inputType}" id="intake-${item.field}" class="intake-input" placeholder=" " onblur="saveIntakeField('${item.field}', this.value)">`;
+        }
+        return `
+            <div class="intake-row">
+                <label class="intake-label" for="intake-${item.field}">${escapeHtml(item.label)}</label>
+                <div class="intake-field-col">${inputHTML}</div>
+                <button class="intake-note-btn" onclick="toggleIntakeNote('${item.field}')" title="Add note" type="button">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                </button>
+            </div>
+            <div class="intake-note-row" id="note-row-${item.field}">
+                <div class="intake-note-inner">
+                    <textarea id="intake-note_${item.field}" class="intake-note-textarea" placeholder="Notes…" onblur="saveIntakeField('note_${item.field}', this.value)" rows="2"></textarea>
+                </div>
+            </div>`;
+    }).join('');
+}
+
+function renderIntake() {
+    const container = document.getElementById('intake-form-body');
+    if (!container) return;
+    const data = state.intake || {};
+
+    if (!container.children.length) {
+        container.innerHTML = buildIntakeHTML();
+    }
+
+    // Populate static fields
+    const focused = document.activeElement;
+    INTAKE_SCHEMA.forEach(item => {
+        if (item.type) return;
+        const el = document.getElementById(`intake-${item.field}`);
+        if (el && el !== focused) el.value = data[item.field] != null ? data[item.field] : '';
+
+        const noteEl = document.getElementById(`intake-note_${item.field}`);
+        if (noteEl && noteEl !== focused) noteEl.value = data[`note_${item.field}`] || '';
+
+        const noteRow = document.getElementById(`note-row-${item.field}`);
+        if (noteRow && data[`note_${item.field}`] && !noteRow.classList.contains('intake-note-visible')) {
+            noteRow.classList.add('intake-note-visible');
+        }
+    });
+
+    // Populate dynamic sections
+    ['pre_show_rows', 'run_of_show_rows'].forEach(sectionId => {
+        const dynContainer = document.getElementById(`intake-dyn-${sectionId}`);
+        if (!dynContainer || dynContainer.contains(focused)) return;
+        const rows = data[sectionId] || DYNAMIC_DEFAULTS[sectionId];
+        dynContainer.innerHTML = buildDynamicSectionRows(sectionId, rows);
+    });
+}
+
+window.saveIntakeField = function(field, value) {
+    if (!state.currentEventId) return;
+    const ref = db.collection('events').doc(state.currentEventId).collection('intake').doc('main');
+    ref.set({ [field]: value }, { merge: true }).then(() => {
+        const status = document.getElementById('intake-save-status');
+        if (!status) return;
+        status.textContent = 'Saved';
+        status.classList.add('intake-saved--visible');
+        clearTimeout(status._hideTimer);
+        status._hideTimer = setTimeout(() => {
+            status.classList.remove('intake-saved--visible');
+        }, 1500);
+    }).catch(e => console.error('Intake save error:', e));
+};
+
+window.toggleIntakeNote = function(field) {
+    const row = document.getElementById(`note-row-${field}`);
+    if (!row) return;
+    const wasVisible = row.classList.contains('intake-note-visible');
+    row.classList.toggle('intake-note-visible');
+    if (!wasVisible) {
+        const ta = row.querySelector('textarea');
+        if (ta) ta.focus();
+    }
+};
+
+function _intakeSaveStatus() {
+    const status = document.getElementById('intake-save-status');
+    if (!status) return;
+    status.textContent = 'Saved';
+    status.classList.add('intake-saved--visible');
+    clearTimeout(status._hideTimer);
+    status._hideTimer = setTimeout(() => status.classList.remove('intake-saved--visible'), 1500);
+}
+
+window.saveIntakeDynamicRows = function(sectionId) {
+    if (!state.currentEventId) return;
+    const dynContainer = document.getElementById(`intake-dyn-${sectionId}`);
+    if (!dynContainer) return;
+    const rows = Array.from(dynContainer.querySelectorAll('.intake-dyn-row')).map(row => ({
+        label: row.querySelector('.intake-dyn-label')?.value || '',
+        time:  row.querySelector('.intake-dyn-time')?.value  || '',
+    }));
+    db.collection('events').doc(state.currentEventId).collection('intake').doc('main')
+        .set({ [sectionId]: rows }, { merge: true })
+        .then(_intakeSaveStatus)
+        .catch(e => console.error('Dynamic rows save error:', e));
+};
+
+window.addIntakeRow = function(sectionId) {
+    const dynContainer = document.getElementById(`intake-dyn-${sectionId}`);
+    if (!dynContainer) return;
+    const newIdx = dynContainer.querySelectorAll('.intake-dyn-row').length;
+    const closeIcon = `<svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="1" y1="1" x2="11" y2="11"/><line x1="11" y1="1" x2="1" y2="11"/></svg>`;
+    const div = document.createElement('div');
+    div.className = 'intake-dyn-row';
+    div.dataset.idx = newIdx;
+    div.innerHTML = `
+        <input type="text" class="intake-input intake-dyn-label" value="" placeholder="Label…" onblur="saveIntakeDynamicRows('${sectionId}')">
+        <input type="text" class="intake-input intake-dyn-time" placeholder="e.g. 6:30 – 7:00pm" onblur="saveIntakeDynamicRows('${sectionId}')">
+        <button class="intake-remove-row-btn" onclick="removeIntakeRow('${sectionId}', ${newIdx})" type="button" title="Remove row">${closeIcon}</button>`;
+    dynContainer.appendChild(div);
+    div.querySelector('.intake-dyn-label').focus();
+    saveIntakeDynamicRows(sectionId);
+};
+
+window.removeIntakeRow = function(sectionId, rowIdx) {
+    const dynContainer = document.getElementById(`intake-dyn-${sectionId}`);
+    if (!dynContainer) return;
+    const allRows = dynContainer.querySelectorAll('.intake-dyn-row');
+    if (allRows.length <= 1) return;
+    const target = dynContainer.querySelector(`.intake-dyn-row[data-idx="${rowIdx}"]`);
+    if (target) target.remove();
+    // Re-index
+    dynContainer.querySelectorAll('.intake-dyn-row').forEach((row, i) => {
+        row.dataset.idx = i;
+        const btn = row.querySelector('.intake-remove-row-btn');
+        if (btn) btn.setAttribute('onclick', `removeIntakeRow('${sectionId}', ${i})`);
+    });
+    saveIntakeDynamicRows(sectionId);
+};
 
 // Dashboard
 function updateDashboard() {
@@ -2157,6 +2558,13 @@ function renderTimeline() {
         return;
     }
 
+    // Initialize days on first render, then draw tabs
+    if (state.timelineDays === null) {
+        initTimelineDays().then(() => renderDayTabs());
+    } else {
+        renderDayTabs();
+    }
+
     const tbody = document.getElementById('timeline-tbody');
 
     // Filter by current day
@@ -2165,19 +2573,11 @@ function renderTimeline() {
     // Apply tag/time filter
     if (state.timelineFilter === 'production') {
         filteredTimeline = filteredTimeline.filter(item => item.production === true || item.tag === 'production');
-    } else if (state.timelineFilter === 'andi') {
-        filteredTimeline = filteredTimeline.filter(item => item.andi === true);
-    } else if (state.timelineFilter === 'pedro') {
-        filteredTimeline = filteredTimeline.filter(item => item.pedro === true);
     } else if (state.timelineFilter === 'run-of-show') {
         filteredTimeline = filteredTimeline.filter(item => {
             if (!item.time) return false;
             return item.time >= '18:20' && item.time <= '23:00';
         });
-    } else if (state.timelineFilter === 'screencue') {
-        filteredTimeline = filteredTimeline.filter(item =>
-            item.screenCue && String(item.screenCue).trim() !== ''
-        );
     }
 
     // Update day title and subtitle
@@ -2190,9 +2590,11 @@ function renderTimeline() {
         'Sunday': 'April 26, 2026'
     };
 
-    const filterLabels = { 'all': '', 'production': ' — Production', 'run-of-show': ' — Run of Show', 'screencue': ' — Screen Cue', 'andi': ' — Andi', 'pedro': ' — Pedro' };
+    const filterLabels = { 'all': '', 'production': ' — Production', 'run-of-show': ' — Run of Show' };
     if (dayTitle) {
-        dayTitle.textContent = `${state.currentDay} Timeline${filterLabels[state.timelineFilter] || ''}`;
+        const currentDayObj = (state.timelineDays || []).find(d => d.id === state.currentDay);
+        const dayLabel = currentDayObj?.label || state.currentDay;
+        dayTitle.textContent = `${dayLabel} Timeline${filterLabels[state.timelineFilter] || ''}`;
     }
     if (dateSubtitle) {
         dateSubtitle.textContent = dateMap[state.currentDay] || '';
@@ -2206,11 +2608,8 @@ function renderTimeline() {
                 <td class="duration-col" data-field="duration" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ duration</span></td>
                 <td class="event-col" data-field="event" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ event</span></td>
                 <td class="prod-col"></td>
-                <td class="andi-col"></td>
-                <td class="pedro-col"></td>
                 <td class="responsible-col" data-field="responsible" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ responsible</span></td>
                 <td class="staff-col" data-field="staff" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ staff</span></td>
-                <td class="screencue-col" data-field="screenCue" onclick="editTimelineCell(this)"><span class="phantom-placeholder">#</span></td>
                 <td class="setlist-col"></td>
                 <td class="stageplot-col"></td>
                 <td class="actions-col no-print"></td>
@@ -2250,11 +2649,8 @@ function renderTimeline() {
                 <td class="duration-col" data-field="duration" data-original="${escapeHtml(item.duration || '')}" onclick="editTimelineCell(this)">${item.duration ? escapeHtml(item.duration) : '<span class="phantom-placeholder">+ duration</span>'}</td>
                 <td class="event-col" data-field="event" data-original="${escapeHtml(item.event || '')}" onclick="editTimelineCell(this)">${escapeHtml(item.event || '')}</td>
                 <td class="prod-col"><input type="checkbox" class="tl-checkbox" ${item.production === true || item.tag === 'production' ? 'checked' : ''} onchange="toggleTimelineField('${item.id}', 'production', this.checked)"></td>
-                <td class="andi-col"><input type="checkbox" class="tl-checkbox" ${item.andi === true ? 'checked' : ''} onchange="toggleTimelineField('${item.id}', 'andi', this.checked)"></td>
-                <td class="pedro-col"><input type="checkbox" class="tl-checkbox" ${item.pedro === true ? 'checked' : ''} onchange="toggleTimelineField('${item.id}', 'pedro', this.checked)"></td>
                 <td class="responsible-col" data-field="responsible" data-original="${escapeHtml(item.responsible || '')}" onclick="editTimelineCell(this)">${escapeHtml(item.responsible || '')}</td>
                 <td class="staff-col" data-field="staff" data-original="${escapeHtml(item.staff || '')}" onclick="editTimelineCell(this)">${escapeHtml(item.staff || '')}</td>
-                <td class="screencue-col" data-field="screenCue" data-original="${escapeHtml(item.screenCue || '')}" onclick="editTimelineCell(this)">${escapeHtml(item.screenCue || '')}</td>
                 <td class="setlist-col">
                     ${item.performer && state.setLists.some(sl => sl.performer && sl.performer.toLowerCase() === item.performer.toLowerCase()) ? `
                     <button class="action-icon action-icon-link" onclick="goToLinkedSetList('${escapeHtml(item.performer).replace(/'/g, "\\'")}')" title="Go to set list: ${escapeHtml(item.performer)}">
@@ -2313,11 +2709,8 @@ function renderTimeline() {
             <td class="duration-col" data-field="duration" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ duration</span></td>
             <td class="event-col" data-field="event" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ event</span></td>
             <td class="prod-col"></td>
-            <td class="andi-col"></td>
-            <td class="pedro-col"></td>
             <td class="responsible-col" data-field="responsible" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ responsible</span></td>
             <td class="staff-col" data-field="staff" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ staff</span></td>
-            <td class="screencue-col" data-field="screenCue" onclick="editTimelineCell(this)"><span class="phantom-placeholder">#</span></td>
             <td class="setlist-col"></td>
             <td class="stageplot-col"></td>
             <td class="actions-col no-print"></td>
@@ -2341,8 +2734,6 @@ function renderTimeline() {
                 const borderStyle = hasHighlight ? `border-left-color: ${rowColor}` : '';
                 const badges = [];
                 if (item.production === true || item.tag === 'production') badges.push('<span class="mobile-card-badge prod">Prod</span>');
-                if (item.andi === true) badges.push('<span class="mobile-card-badge andi">Andi</span>');
-                if (item.pedro === true) badges.push('<span class="mobile-card-badge pedro">Pedro</span>');
 
                 return `
                     <div class="mobile-card ${isComplete ? 'completed' : ''}" style="${borderStyle}">
@@ -2711,10 +3102,7 @@ function openTimelineModal(itemId = null) {
             'timeline-event': 'event',
             'timeline-responsible': 'responsible',
             'timeline-staff': 'staff',
-            'timeline-screen-cue': 'screenCue',
             'timeline-production': 'production',
-            'timeline-andi': 'andi',
-            'timeline-pedro': 'pedro',
             'timeline-notes': 'notes',
             'timeline-performer': 'performer',
             'timeline-stage-plot': 'stagePlotId'
@@ -2915,12 +3303,6 @@ async function handleTimelineSubmit(e) {
         durationInput.value = formatDuration(durationInput.value);
     }
 
-    // Normalize screen cue: digits only, max 3 chars
-    const screenCueInput = document.getElementById('timeline-screen-cue');
-    if (screenCueInput) {
-        screenCueInput.value = normalizeScreenCue(screenCueInput.value);
-    }
-
     const result = await handleFormSubmit(e, {
         collection: 'timeline',
         idFieldId: 'timeline-id',
@@ -2932,10 +3314,7 @@ async function handleTimelineSubmit(e) {
             'timeline-event': 'event',
             'timeline-responsible': 'responsible',
             'timeline-staff': 'staff',
-            'timeline-screen-cue': 'screenCue',
             'timeline-production': 'production',
-            'timeline-andi': 'andi',
-            'timeline-pedro': 'pedro',
             'timeline-notes': 'notes',
             'timeline-performer': 'performer',
             'timeline-stage-plot': 'stagePlotId'
@@ -2943,14 +3322,8 @@ async function handleTimelineSubmit(e) {
         numericFields: []
     });
 
-    if (result) {
-        if (result.isNew) {
-            pushTimelineUndo({ type: 'add', id: result.docId });
-        } else if (previousData) {
-            pushTimelineUndo({ type: 'update', id: result.docId, previousData });
-        }
-    }
 }
+
 
 // CRUD Operations
 window.editBudgetItem = (id) => openBudgetModal(id);
@@ -3037,15 +3410,33 @@ window.duplicateBudgetItem = async (id) => {
 function createDeleteHandler(collectionKey, itemName) {
     return async (id) => {
         if (confirm(`Are you sure you want to delete this ${itemName}?`)) {
+            const item = state[collectionKey]?.find(i => i.id === id);
+            if (item) {
+                const { id: _id, ...data } = item;
+                state.globalUndoStack.push({ collection: collectionKey, id, data });
+                if (state.globalUndoStack.length > 20) state.globalUndoStack.shift();
+            }
             try {
                 await collections[collectionKey].doc(id).delete();
-                showToast(`${itemName.charAt(0).toUpperCase() + itemName.slice(1)} deleted`);
+                showToast(`${itemName.charAt(0).toUpperCase() + itemName.slice(1)} deleted — Cmd+Z to undo`);
             } catch (error) {
                 console.error(`Error deleting ${itemName}:`, error);
                 showToast(`Error deleting ${itemName}. Please try again.`, 'error');
             }
         }
     };
+}
+
+async function undoGlobalAction() {
+    const action = state.globalUndoStack.pop();
+    if (!action) { showToast('Nothing to undo', 'info'); return; }
+    try {
+        await collections[action.collection].doc(action.id).set(action.data);
+        showToast('Undone');
+    } catch (error) {
+        console.error('Error undoing:', error);
+        showToast('Error undoing action', 'error');
+    }
 }
 
 const _baseDeleteBudgetItem = createDeleteHandler('budget', 'budget item');
@@ -3058,14 +3449,16 @@ window.deleteBudgetItem = async function(id) {
 };
 window.toggleBudgetConfirmed = toggleBudgetConfirmed;
 window.deleteTimelineItem = async (id) => {
+    if (!confirm('Are you sure you want to delete this task?')) return;
     const item = state.timeline.find(i => i.id === id);
     if (item) {
         const { id: _id, ...data } = item;
-        pushTimelineUndo({ type: 'delete', id, previousData: data });
+        state.globalUndoStack.push({ collection: 'timeline', id, data });
+        if (state.globalUndoStack.length > 20) state.globalUndoStack.shift();
     }
     try {
         await collections.timeline.doc(id).delete();
-        showToast('Task deleted');
+        showToast('Task deleted — Cmd+Z to undo');
     } catch (error) {
         console.error('Error deleting task:', error);
         showToast('Error deleting task', 'error');
@@ -3073,9 +3466,6 @@ window.deleteTimelineItem = async (id) => {
 };
 
 window.toggleTaskComplete = async (id, completed) => {
-    const item = state.timeline.find(i => i.id === id);
-    if (item) pushTimelineUndo({ type: 'update', id, previousData: { completed: item.completed || false, status: item.status || 'not-started' } });
-
     try {
         await collections.timeline.doc(id).update({
             completed: completed,
@@ -3089,37 +3479,6 @@ window.toggleTaskComplete = async (id, completed) => {
     }
 };
 
-// Timeline undo system
-function pushTimelineUndo(action) {
-    state.timelineUndoStack.push(action);
-    if (state.timelineUndoStack.length > 30) state.timelineUndoStack.shift();
-    updateTimelineUndoButton();
-}
-
-function updateTimelineUndoButton() {
-    const btn = document.getElementById('timeline-undo-btn');
-    if (btn) btn.disabled = state.timelineUndoStack.length === 0;
-}
-
-window.undoTimelineAction = async () => {
-    const action = state.timelineUndoStack.pop();
-    updateTimelineUndoButton();
-    if (!action) return;
-
-    try {
-        if (action.type === 'update') {
-            await collections.timeline.doc(action.id).update(action.previousData);
-        } else if (action.type === 'add') {
-            await collections.timeline.doc(action.id).delete();
-        } else if (action.type === 'delete') {
-            await collections.timeline.doc(action.id).set(action.previousData);
-        }
-        showToast('Undone');
-    } catch (error) {
-        console.error('Error undoing:', error);
-        showToast('Error undoing action', 'error');
-    }
-};
 
 window.toggleTimelineCol = (col, visible) => {
     const table = document.getElementById('timeline-table');
@@ -3142,9 +3501,6 @@ document.addEventListener('click', (e) => {
 });
 
 window.toggleTimelineField = async (id, field, checked) => {
-    const item = state.timeline.find(i => i.id === id);
-    if (item) pushTimelineUndo({ type: 'update', id, previousData: { [field]: item[field] || false } });
-
     try {
         await collections.timeline.doc(id).update({
             [field]: checked,
@@ -3184,9 +3540,6 @@ document.addEventListener('click', (e) => {
 window.setTimelineColor = async (id, color) => {
     // Close the picker
     document.querySelectorAll('.color-swatch-dropdown.open').forEach(el => el.classList.remove('open'));
-    const item = state.timeline.find(i => i.id === id);
-    if (item) pushTimelineUndo({ type: 'update', id, previousData: { highlightColor: item.highlightColor || '' } });
-
     try {
         const highlightColor = (color === '#ffffff') ? '' : color;
         await collections.timeline.doc(id).update({
@@ -3209,8 +3562,7 @@ window.duplicateTimelineItem = async (id) => {
     data.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
 
     try {
-        const docRef = await collections.timeline.add(data);
-        pushTimelineUndo({ type: 'add', id: docRef.id });
+        await collections.timeline.add(data);
         showToast('Task duplicated');
     } catch (error) {
         console.error('Error duplicating task:', error);
@@ -3330,25 +3682,133 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-// Day Tabs for Timeline
-function setupDayTabs() {
-    const dayTabs = document.querySelectorAll('.day-tab');
+// ── Dynamic Day Tabs ─────────────────────────────────────────────
 
-    dayTabs.forEach(tab => {
-        tab.addEventListener('click', () => {
-            const day = tab.dataset.day;
+async function initTimelineDays() {
+    if (state.timelineDays !== null) return;
+    const event = state.activeEvent;
+    if (!event) return;
 
-            // Update active state
-            dayTabs.forEach(t => t.classList.remove('active'));
-            tab.classList.add('active');
+    if (event.timelineDays && event.timelineDays.length > 0) {
+        // Already stored on the event doc
+        state.timelineDays = event.timelineDays;
+        state.currentDay = event.timelineDays[0].id;
+        return;
+    }
 
-            // Update state and re-render
-            state.currentDay = day;
-            state.timelineAnimateRows = true;
-            renderTimeline();
+    // No timelineDays set yet — check for any existing timeline data
+    const hasLegacyData = (state.timeline || []).some(t => t.day);
+    let days;
+    if (hasLegacyData) {
+        // Preserve all 4 legacy days so nothing is lost
+        days = ['Thursday','Friday','Saturday','Sunday'].map(d => ({id: d, label: d}));
+    } else {
+        days = [{ id: 'day-1', label: '' }];
+    }
+
+    state.timelineDays = days;
+    state.currentDay = days[0].id;
+
+    // Persist so next load is instant
+    await eventsCollection.doc(event.id).update({ timelineDays: days });
+    state.activeEvent.timelineDays = days;
+}
+
+function renderDayTabs() {
+    const container = document.getElementById('timeline-day-tabs');
+    if (!container || !state.timelineDays) return;
+    const days = state.timelineDays;
+    const canRemove = days.length > 1;
+
+    container.innerHTML = days.map(d => `
+        <button class="day-tab ${d.id === state.currentDay ? 'active' : ''}" data-day="${d.id}">
+            <span class="day-tab-name" ondblclick="startRenameDay(event,'${d.id}')">${escapeHtml(d.label || 'Untitled')}</span>
+            ${canRemove ? `<span class="day-tab-remove" onclick="removeTimelineDay(event,'${d.id}')">×</span>` : ''}
+        </button>
+    `).join('') + `<button class="day-tab-add" onclick="addTimelineDay()" title="Add day">+</button>`;
+
+    // Use addEventListener so e.detail lets us skip the 2nd click of a dblclick,
+    // keeping the DOM stable so ondblclick on the span can fire correctly.
+    container.querySelectorAll('.day-tab[data-day]').forEach(btn => {
+        btn.addEventListener('click', e => {
+            if (e.target.closest('.day-tab-remove')) return;
+            if (e.detail >= 2) return;
+            switchTimelineDay(btn.dataset.day);
         });
     });
 }
+
+window.switchTimelineDay = function(dayId) {
+    if (state.currentDay === dayId) return;
+    state.currentDay = dayId;
+    state.timelineAnimateRows = true;
+    renderDayTabs();
+    renderTimeline();
+};
+
+window.addTimelineDay = async function() {
+    const id = 'day-' + Date.now();
+    const days = [...(state.timelineDays || []), { id, label: '' }];
+    state.timelineDays = days;
+    state.activeEvent.timelineDays = days;
+    state.currentDay = id;
+    await eventsCollection.doc(state.activeEvent.id).update({ timelineDays: days });
+    renderDayTabs();
+    renderTimeline();
+    // Auto-open rename on the new tab
+    setTimeout(() => {
+        const newTab = document.querySelector(`.day-tab[data-day="${id}"] .day-tab-name`);
+        if (newTab) newTab.dispatchEvent(new MouseEvent('dblclick'));
+    }, 50);
+};
+
+window.removeTimelineDay = async function(e, dayId) {
+    e.stopPropagation();
+    const day = state.timelineDays.find(d => d.id === dayId);
+    const label = day?.label || 'Untitled';
+    if (!confirm(`Remove "${label}" from the timeline? Tasks assigned to this day won't be deleted — they just won't appear until reassigned.`)) return;
+    const days = state.timelineDays.filter(d => d.id !== dayId);
+    if (days.length === 0) return;
+    state.timelineDays = days;
+    state.activeEvent.timelineDays = days;
+    if (state.currentDay === dayId) state.currentDay = days[0].id;
+    await eventsCollection.doc(state.activeEvent.id).update({ timelineDays: days });
+    renderDayTabs();
+    renderTimeline();
+};
+
+window.startRenameDay = function(e, dayId) {
+    e.stopPropagation();
+    const span = e.target;
+    if (span.tagName === 'INPUT') return;
+    const current = state.timelineDays.find(d => d.id === dayId)?.label || '';
+    const input = document.createElement('input');
+    input.className = 'day-tab-rename-input';
+    input.value = current;
+    input.placeholder = 'Name this day…';
+    span.replaceWith(input);
+    input.focus();
+    input.select();
+    const save = async () => {
+        const newLabel = input.value.trim();
+        const days = state.timelineDays.map(d => d.id === dayId ? { ...d, label: newLabel } : d);
+        state.timelineDays = days;
+        state.activeEvent.timelineDays = days;
+        await eventsCollection.doc(state.activeEvent.id).update({ timelineDays: days });
+        renderDayTabs();
+        if (dayId === state.currentDay) {
+            const titleEl = document.getElementById('timeline-day-title');
+            if (titleEl) titleEl.textContent = `${newLabel || 'Untitled'} Timeline`;
+        }
+    };
+    input.addEventListener('blur', save);
+    input.addEventListener('keydown', ev => {
+        if (ev.key === 'Enter') { ev.preventDefault(); input.blur(); }
+        if (ev.key === 'Escape') { input.value = current; input.blur(); }
+    });
+};
+
+function setupDayTabs() { /* tabs are now dynamic — renderDayTabs() handles setup */ }
 
 function setupStageTabs() {
     const stageTabs = document.querySelectorAll('.day-tab[data-stage]');
@@ -3437,7 +3897,8 @@ function setupExportAndPrint() {
 
     const timelineUndoBtn = document.getElementById('timeline-undo-btn');
     if (timelineUndoBtn) {
-        timelineUndoBtn.addEventListener('click', () => window.undoTimelineAction());
+        timelineUndoBtn.disabled = false;
+        timelineUndoBtn.addEventListener('click', () => undoGlobalAction());
     }
     if (printStaffBtn) {
         printStaffBtn.addEventListener('click', openPrintStaffTeamsModal);
@@ -3606,7 +4067,7 @@ function exportBudgetToExcel() {
 
 // Inline Editing for Timeline
 // Editable cell field order for Tab navigation (skip tag — it has its own <select>)
-const TIMELINE_FIELD_ORDER = ['time', 'duration', 'event', 'responsible', 'staff', 'screenCue'];
+const TIMELINE_FIELD_ORDER = ['time', 'duration', 'event', 'responsible', 'staff'];
 const BUDGET_FIELD_ORDER = ['vendor', 'description', 'owner', 'budgeted', 'actual', 'paymentStatus', 'notes'];
 const STAGE_FIELD_ORDER = ['channel', 'subsnake', 'instrument', 'mics', 'stands', 'notes', 'symbol'];
 
@@ -3762,9 +4223,7 @@ function saveSingleCell(cell, row, keepEditing = false) {
     if (field === 'duration' && newValue) {
         newValue = formatDuration(newValue);
     }
-    if (field === 'screenCue') {
-        newValue = normalizeScreenCue(newValue);
-    }
+
 
     // Restore cell to display mode immediately (remove input so blur handler won't double-fire)
     cell.dataset.original = newValue;
@@ -3791,19 +4250,6 @@ function saveSingleCell(cell, row, keepEditing = false) {
     // Optimistic local update so deferred renders show correct value
     item[field] = newValue;
 
-    // Undo batching: merge if same row within 2 seconds
-    const now = Date.now();
-    const lastUndo = state.timelineUndoStack[state.timelineUndoStack.length - 1];
-    if (lastUndo && lastUndo.type === 'update' && lastUndo.id === id && (now - (lastUndo._ts || 0)) < 2000) {
-        if (!(field in lastUndo.previousData)) {
-            lastUndo.previousData[field] = oldValue;
-        }
-        lastUndo._ts = now;
-    } else {
-        const undoEntry = { type: 'update', id, previousData: { [field]: oldValue }, _ts: now };
-        pushTimelineUndo(undoEntry);
-    }
-
     // Save to Firestore
     const updates = { [field]: newValue, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
     collections.timeline.doc(id).update(updates)
@@ -3820,7 +4266,6 @@ function restoreCellDisplay(cell, isPhantom) {
     const field = cell.dataset.field;
     if (isPhantom) {
         let val = state.pendingNewRow[field] || '';
-        if (field === 'screenCue' && val) val = normalizeScreenCue(val);
         if (val) {
             if (field === 'time') {
                 cell.innerHTML = `<span class="tl-time">${formatTime12Hour(val)}</span>`;
@@ -3828,8 +4273,7 @@ function restoreCellDisplay(cell, isPhantom) {
                 cell.textContent = val;
             }
         } else {
-            const placeholder = field === 'screenCue' ? '#' : `+ ${field}`;
-            cell.innerHTML = `<span class="phantom-placeholder">${placeholder}</span>`;
+            cell.innerHTML = `<span class="phantom-placeholder">+ ${field}</span>`;
         }
     } else {
         const original = cell.dataset.original || '';
@@ -4090,8 +4534,6 @@ async function commitNewRow() {
     // Convert time to 24hr
     if (data.time) data.time = convertTo24Hour(data.time);
     if (data.duration) data.duration = formatDuration(data.duration);
-    if (data.screenCue) data.screenCue = normalizeScreenCue(data.screenCue);
-
     data.day = state.currentDay;
     data.completed = false;
     data.status = 'not-started';
@@ -4106,8 +4548,7 @@ async function commitNewRow() {
     state.pendingNewRow = {};
 
     try {
-        const docRef = await collections.timeline.add(data);
-        pushTimelineUndo({ type: 'add', id: docRef.id });
+        await collections.timeline.add(data);
         showToast('Task added');
     } catch (error) {
         console.error('Error adding task:', error);
@@ -8803,7 +9244,7 @@ function setupKeyboardShortcuts() {
             if (searchInput) searchInput.focus();
         }
 
-        // Timeline: N to focus phantom row, Ctrl/Cmd+Z for undo
+        // Timeline: N to focus phantom row
         if (state.currentPage === 'timeline' && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA' && e.target.tagName !== 'SELECT') {
             if (e.key === 'n' || e.key === 'N') {
                 e.preventDefault();
@@ -8814,18 +9255,17 @@ function setupKeyboardShortcuts() {
                 }
                 return;
             }
-            if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
-                e.preventDefault();
-                undoTimelineAction();
-                return;
-            }
         }
 
-        // Undo: Ctrl+Z or Cmd+Z (stage plots)
+        // Undo: Ctrl+Z or Cmd+Z (global)
         if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
             if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
                 e.preventDefault();
-                undo();
+                if (state.currentPage === 'stage-plots') {
+                    undo();
+                } else {
+                    undoGlobalAction();
+                }
             }
         }
 
