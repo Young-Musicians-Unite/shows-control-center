@@ -8337,9 +8337,6 @@ body.menu-open::after {
     grid-template-columns: 1fr 1fr;
     gap: 8px;
     margin-top: 4px;
-    max-height: 220px;
-    overflow-y: auto;
-    padding-right: 2px;
 }
 .page-toggle-label {
     display: flex;
