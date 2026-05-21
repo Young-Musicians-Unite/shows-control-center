@@ -8074,6 +8074,30 @@ body.menu-open::after {
     display: none;
 }
 
+/* Hub mode: always use hamburger dropdown regardless of screen width */
+.nav-container:has(.nav-menu.hub-mode) .hamburger {
+    display: flex;
+}
+.nav-menu.hub-mode {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: linear-gradient(180deg, #0f2621 0%, #1a3a35 100%);
+    flex-direction: column;
+    width: 100%;
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.35s ease, box-shadow 0.3s ease;
+    box-shadow: none;
+    z-index: 200;
+}
+.nav-menu.hub-mode.active {
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 12px 24px rgba(0,0,0,0.4);
+}
+
 /* Seasons nav — only inside open hamburger dropdown while in hub-mode */
 .hub-seasons-nav { display: none; }
 .nav-menu.active.hub-mode .hub-seasons-nav { display: block; }
