@@ -8436,7 +8436,7 @@ body.menu-open::after {
     .hub-cell-lead { display: none; }
     .phase-badge { font-size: 0.72rem; padding: 3px 8px; }
     .phase-select { font-size: 0.72rem; padding: 3px 22px 3px 8px; }
-    .page-toggles-grid { grid-template-columns: 1fr; }
+    .page-toggles-grid { grid-template-columns: 1fr 1fr; }
     .nav-event-title { max-width: 120px; }
 }
 

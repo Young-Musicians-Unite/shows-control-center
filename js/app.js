@@ -1164,6 +1164,10 @@ function openNewEventModal() {
     document.getElementById('new-event-date').value = '';
     document.getElementById('new-event-lead').value = '';
     document.getElementById('new-event-modal').classList.add('is-open');
+    requestAnimationFrame(() => {
+        const body = document.querySelector('#new-event-modal .hub-modal-body');
+        if (body) body.scrollTop = 0;
+    });
 }
 
 window.closeNewEventModal = function() {
