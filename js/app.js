@@ -17,6 +17,8 @@ const state = {
     events: [],
     activeEvent: null,
     currentEventId: null,
+    seasons: ['2025-2026', '2026-2027'],
+    currentSeason: '2025-2026',
     // Per-event data
     budget: [],
     timeline: [],
@@ -496,7 +498,7 @@ function initializeApp() {
     // Always start at the events hub; enter a specific event first before navigating to event pages
     document.querySelector('.nav-menu').classList.add('hub-mode');
     switchPage('events-hub');
-    migrateToMultiEvent().then(() => loadEvents());
+    migrateToMultiEvent().then(() => { loadSeasons(); loadEvents(); });
 
     // Browser back/forward navigation
     window.addEventListener('hashchange', () => {
@@ -886,6 +888,48 @@ async function migrateToMultiEvent() {
     showToast('Data synced — all your Gala info is ready!', 'success');
 }
 
+async function loadSeasons() {
+    try {
+        const doc = await db.collection('config').doc('seasons').get();
+        if (doc.exists && doc.data().list?.length) {
+            state.seasons = doc.data().list;
+        } else {
+            await db.collection('config').doc('seasons').set({ list: state.seasons });
+        }
+    } catch (e) { /* use defaults */ }
+    renderSeasonNav();
+}
+
+function renderSeasonNav() {
+    const list = document.getElementById('hub-seasons-list');
+    if (!list) return;
+    list.innerHTML = state.seasons.map(s =>
+        `<button class="hub-season-link ${s === state.currentSeason ? 'active' : ''}" onclick="switchSeason('${escapeHtml(s)}')">${escapeHtml(s)}</button>`
+    ).join('');
+}
+
+window.switchSeason = function(season) {
+    state.currentSeason = season;
+    renderSeasonNav();
+    renderHub();
+    closeHamburgerMenu();
+};
+
+window.promptAddSeason = async function() {
+    const label = prompt('Enter season label (e.g. 2026-2027):');
+    if (!label || !label.trim()) return;
+    const trimmed = label.trim();
+    if (state.seasons.includes(trimmed)) { showToast('Season already exists', 'error'); return; }
+    state.seasons.push(trimmed);
+    try {
+        await db.collection('config').doc('seasons').set({ list: state.seasons });
+    } catch (e) { showToast('Error saving season', 'error'); return; }
+    state.currentSeason = trimmed;
+    renderSeasonNav();
+    renderHub();
+    closeHamburgerMenu();
+};
+
 async function loadEvents() {
     try {
         const snap = await eventsCollection.orderBy('date', 'asc').get();
@@ -893,6 +937,7 @@ async function loadEvents() {
     } catch (e) {
         state.events = [];
     }
+    renderSeasonNav();
     renderHub();
 }
 
@@ -900,12 +945,20 @@ function renderHub() {
     const el = document.getElementById('events-hub-content');
     if (!el) return;
 
-    if (!state.events || state.events.length === 0) {
-        el.innerHTML = `<div class="hub-empty"><p>No events yet.</p><button class="hub-new-btn" onclick="openNewEventModal()">+ New Event</button></div>`;
+    // Update page heading to reflect current season
+    const heading = document.querySelector('#events-hub .page-header h1');
+    if (heading) heading.textContent = state.currentSeason + ' Events';
+
+    const seasonEvents = (state.events || []).filter(ev =>
+        (ev.season || '2025-2026') === state.currentSeason
+    );
+
+    if (seasonEvents.length === 0) {
+        el.innerHTML = `<div class="hub-empty"><p>No events in ${escapeHtml(state.currentSeason)} yet.</p></div>`;
         return;
     }
 
-    const rows = state.events.map(ev => {
+    const rows = seasonEvents.map(ev => {
         const phase = PHASES.find(p => p.id === ev.phase) || PHASES[0];
         const dateStr = ev.date
             ? new Date(ev.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
@@ -1135,6 +1188,7 @@ window.createNewEvent = async function() {
 
     await eventsCollection.doc(id).set({
         name, date, lead, phase, enabledPages,
+        season: state.currentSeason,
         createdAt: firebase.firestore.FieldValue.serverTimestamp(),
         updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
     });
