@@ -14,6 +14,10 @@
     <nav class="navbar">
         <div class="nav-container">
             <div class="nav-brand">YMU Events</div>
+            <button id="nav-event-settings-btn" class="nav-settings-btn" onclick="openEventSettings()" title="Event Settings" style="display:none">
+                <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><circle cx="9" cy="9" r="3"/><path d="M9 1v2M9 15v2M1 9h2M15 9h2M3.05 3.05l1.41 1.41M13.54 13.54l1.41 1.41M3.05 14.95l1.41-1.41M13.54 4.46l1.41-1.41"/></svg>
+                <span class="nav-label">Pages</span>
+            </button>
             <button class="hamburger" id="hamburger" aria-label="Toggle menu">
                 <span></span>
                 <span></span>
@@ -122,6 +126,26 @@
         </div>
     </nav>
 
+    <!-- Event Settings Modal -->
+    <div id="event-settings-modal" class="hub-modal-overlay">
+        <div class="hub-modal">
+            <div class="hub-modal-header">
+                <h2 id="event-settings-title">Event Settings</h2>
+                <button class="hub-modal-close" onclick="closeEventSettings()">&times;</button>
+            </div>
+            <div class="hub-modal-body">
+                <div class="hub-field">
+                    <label>Enabled Pages</label>
+                    <p class="hub-field-hint">Toggle modules on or off. Disabled pages appear blacked out in the navigation.</p>
+                    <div id="event-settings-pages" class="page-toggles-grid"></div>
+                </div>
+            </div>
+            <div class="hub-modal-footer">
+                <button class="btn-primary" onclick="closeEventSettings()">Done</button>
+            </div>
+        </div>
+    </div>
+
     <!-- New Event Modal -->
     <div id="new-event-modal" class="hub-modal-overlay">
         <div class="hub-modal">
@@ -148,7 +172,7 @@
                 </div>
                 <div class="hub-field">
                     <label>Enable Pages</label>
-                    <p class="hub-field-hint">Select the modules you need for this event. Others will be blacked out and can be enabled later in Event Settings.</p>
+                    <p class="hub-field-hint">Select the modules you need for this event. You can enable or disable pages later from the Pages button in the nav.</p>
                     <div id="new-event-pages" class="page-toggles-grid"></div>
                 </div>
             </div>

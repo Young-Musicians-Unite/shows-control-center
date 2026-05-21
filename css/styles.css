@@ -8046,6 +8046,26 @@ body.menu-open::after {
     max-width: 200px;
 }
 
+.nav-settings-btn {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    background: none;
+    border: 1px solid rgba(201,169,97,0.3);
+    color: #c9a961;
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-size: 0.8rem;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+    white-space: nowrap;
+}
+.nav-settings-btn:hover {
+    background: rgba(201,169,97,0.1);
+    border-color: rgba(201,169,97,0.6);
+}
+
 /* Hide all nav page links while on the hub */
 .nav-menu.hub-mode .nav-group,
 .nav-menu.hub-mode a.nav-link[data-page] {
