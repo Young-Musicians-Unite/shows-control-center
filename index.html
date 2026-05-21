@@ -825,6 +825,10 @@
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                             Export
                         </button>
+                        <button class="gi-btn gi-btn-fb" onclick="openFacebookExport()">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg>
+                            Facebook
+                        </button>
                         <div class="gi-col-wrap">
                             <button class="gi-btn" onclick="toggleGuestColumnsMenu()">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18"/></svg>
@@ -2314,8 +2318,8 @@
     </script>
 
     <!-- Delete Guest Modal -->
-    <div class="modal-overlay" id="delete-guest-modal" onclick="if(event.target===this)closeDeleteGuestModal()">
-        <div class="modal">
+    <div class="modal" id="delete-guest-modal" onclick="if(event.target===this)closeDeleteGuestModal()">
+        <div class="modal-dark-box">
             <div class="modal-title">Remove Guest</div>
             <p style="color:rgba(255,255,255,0.55);font-size:14px;margin-bottom:20px;">
                 Remove <strong id="delete-guest-name"></strong> from the guest list?
@@ -2323,6 +2327,45 @@
             <div class="modal-actions">
                 <button class="btn btn-secondary" onclick="closeDeleteGuestModal()">Cancel</button>
                 <button class="btn btn-danger" id="confirm-delete-guest-btn">Remove</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Facebook Export Modal -->
+    <div class="modal" id="fb-export-modal" onclick="if(event.target===this)closeFacebookExport()">
+        <div class="modal-dark-box fb-modal">
+            <div class="modal-title">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="#5b9cf6" style="vertical-align:-2px;margin-right:6px"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg>
+                Facebook Post
+            </div>
+            <div class="fb-filter-row" id="fb-filter-row">
+                <label class="fb-status-pill fb-status-pill-confirmed" id="fb-pill-confirmed">
+                    <input type="checkbox" id="fb-inc-confirmed" checked onchange="refreshFbModal()"> Confirmed
+                </label>
+                <label class="fb-status-pill fb-status-pill-invited" id="fb-pill-invited">
+                    <input type="checkbox" id="fb-inc-invited" onchange="refreshFbModal()"> Invited
+                </label>
+                <label class="fb-status-pill fb-status-pill-pending" id="fb-pill-pending">
+                    <input type="checkbox" id="fb-inc-pending" onchange="refreshFbModal()"> Pending
+                </label>
+            </div>
+            <div class="fb-modal-body">
+                <div>
+                    <div class="fb-col-label">Guests — click eye to exclude</div>
+                    <div class="fb-guest-list" id="fb-guest-list"></div>
+                </div>
+                <div>
+                    <div class="fb-col-label">Post Preview — edit freely</div>
+                    <div class="fb-count-note" id="fb-count-note"></div>
+                    <textarea class="fb-preview-box" id="fb-preview-text"></textarea>
+                    <button class="fb-copy-btn" onclick="copyFbPost()">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                        Copy to Clipboard
+                    </button>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeFacebookExport()">Done</button>
             </div>
         </div>
     </div>

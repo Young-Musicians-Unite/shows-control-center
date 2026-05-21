@@ -15698,6 +15698,154 @@ async function confirmDeleteGuest(invId) {
     catch(e) { console.error('confirmDeleteGuest:', e); }
 }
 
+// ── Facebook Export ──────────────────────────────────────────
+const _fbEyeOn  = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
+const _fbEyeOff = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`;
+
+function _fbGetStatuses() {
+    const s = [];
+    if (document.getElementById('fb-inc-confirmed')?.checked) s.push('confirmed');
+    if (document.getElementById('fb-inc-invited')?.checked)   s.push('invited');
+    if (document.getElementById('fb-inc-pending')?.checked)   s.push('pending');
+    return s;
+}
+
+function openFacebookExport() {
+    const invitees = state.invitees || [];
+    if (!invitees.length) { showToast('No guests to export', 'error'); return; }
+    const modal = document.getElementById('fb-export-modal');
+    if (!modal) return;
+    modal.classList.add('active');
+    // sync pill styles on open
+    ['confirmed','invited','pending'].forEach(s => {
+        const pill = document.getElementById(`fb-pill-${s}`);
+        const cb   = document.getElementById(`fb-inc-${s}`);
+        if (pill && cb) pill.classList.toggle('fb-pill-off', !cb.checked);
+    });
+    renderFbGuestList();
+    renderFbPreview();
+}
+window.openFacebookExport = openFacebookExport;
+
+function closeFacebookExport() {
+    document.getElementById('fb-export-modal')?.classList.remove('active');
+}
+window.closeFacebookExport = closeFacebookExport;
+
+function refreshFbModal() {
+    // Keep pill styling in sync with checkbox state
+    ['confirmed','invited','pending'].forEach(s => {
+        const pill = document.getElementById(`fb-pill-${s}`);
+        const cb   = document.getElementById(`fb-inc-${s}`);
+        if (pill && cb) pill.classList.toggle('fb-pill-off', !cb.checked);
+    });
+    renderFbGuestList();
+    renderFbPreview();
+}
+window.refreshFbModal = refreshFbModal;
+
+function renderFbGuestList() {
+    const list = document.getElementById('fb-guest-list');
+    if (!list) return;
+    const statuses = _fbGetStatuses();
+    const guests = (state.invitees || [])
+        .filter(inv => statuses.includes(inv.status || 'pending'))
+        .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+    if (!guests.length) {
+        list.innerHTML = `<div class="fb-empty-msg">No guests match the selected statuses</div>`;
+        return;
+    }
+    list.innerHTML = guests.map(inv => {
+        const excl = !!inv.excludeFromFacebook;
+        const sub  = [inv.title, inv.organization].filter(Boolean).map(escapeHtml).join(', ');
+        return `<div class="fb-guest-item${excl ? ' fb-excluded' : ''}" id="fb-item-${inv.id}">
+            <button class="fb-toggle-btn" onclick="toggleFbExclude('${inv.id}')" title="${excl ? 'Include in post' : 'Exclude from post'}">
+                ${excl ? _fbEyeOff : _fbEyeOn}
+            </button>
+            <div class="fb-guest-info">
+                <span class="fb-guest-name">${escapeHtml(inv.name || '')}</span>
+                ${sub ? `<span class="fb-guest-sub">${sub}</span>` : ''}
+            </div>
+        </div>`;
+    }).join('');
+}
+
+async function toggleFbExclude(invId) {
+    const inv = (state.invitees || []).find(i => i.id === invId);
+    if (!inv) return;
+    inv.excludeFromFacebook = !inv.excludeFromFacebook;
+    // optimistic re-render
+    renderFbGuestList();
+    renderFbPreview();
+    // persist
+    if (collections.invitees) {
+        try { await collections.invitees.doc(invId).update({ excludeFromFacebook: inv.excludeFromFacebook }); }
+        catch(e) { console.error('toggleFbExclude:', e); }
+    }
+}
+window.toggleFbExclude = toggleFbExclude;
+
+function renderFbPreview() {
+    const el = document.getElementById('fb-preview-text');
+    const note = document.getElementById('fb-count-note');
+    if (!el) return;
+
+    const statuses = _fbGetStatuses();
+    const event    = state.activeEvent || {};
+    const eventName = escapeHtml(event.name || 'our upcoming event');
+
+    let dateStr = '';
+    if (event.date) {
+        try {
+            dateStr = new Date(event.date + 'T12:00:00').toLocaleDateString('en-US',
+                { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+        } catch(e) {}
+    }
+
+    const included = (state.invitees || []).filter(inv =>
+        statuses.includes(inv.status || 'pending') && !inv.excludeFromFacebook
+    ).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+    if (note) note.textContent = included.length
+        ? `${included.length} guest${included.length !== 1 ? 's' : ''} included`
+        : '';
+
+    if (!included.length) {
+        el.value = 'No guests selected — check the status filters or include more guests.';
+        return;
+    }
+
+    const lines = included.map(inv => {
+        const sub = [inv.title, inv.organization].filter(Boolean).join(', ');
+        return sub ? `${inv.name} | ${sub}` : inv.name;
+    });
+
+    el.value = [
+        `🌟 We are honored to welcome our distinguished guests to the ${eventName}!`,
+        '',
+        ...lines,
+        '',
+        dateStr ? `📅 Join us ${dateStr}` : '',
+        '',
+        '#YMUGala #Fundraiser #Community'
+    ].filter(l => l !== undefined).join('\n').trim();
+}
+window.renderFbPreview = renderFbPreview;
+
+function copyFbPost() {
+    const el = document.getElementById('fb-preview-text');
+    if (!el || !el.value) return;
+    navigator.clipboard.writeText(el.value)
+        .then(() => showToast('Copied to clipboard!', 'success'))
+        .catch(() => {
+            el.select();
+            document.execCommand('copy');
+            showToast('Copied!', 'success');
+        });
+}
+window.copyFbPost = copyFbPost;
+
 // ── CSV Export ───────────────────────────────────────────────
 function exportGuestCSV() {
     const invitees = state.invitees || [];
