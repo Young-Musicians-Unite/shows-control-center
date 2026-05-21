@@ -394,7 +394,6 @@ function initializeApp() {
 
     // Always start at the events hub; enter a specific event first before navigating to event pages
     document.querySelector('.nav-menu').classList.add('hub-mode');
-    document.getElementById('nav-event-settings-btn').style.display = 'none';
     switchPage('events-hub');
     migrateToMultiEvent().then(() => loadEvents());
 
@@ -828,8 +827,6 @@ async function enterEvent(eventId) {
         <span class="nav-event-title">${escapeHtml(event.name || 'Event')}</span>
     `;
 
-    // Show nav, settings button
-    document.getElementById('nav-event-settings-btn').style.display = '';
     document.querySelector('.nav-menu').classList.remove('hub-mode');
 
     updateNavForEvent(event);
@@ -854,7 +851,6 @@ function backToHub() {
 
     const brand = document.querySelector('.nav-brand');
     brand.textContent = 'YMU Events';
-    document.getElementById('nav-event-settings-btn').style.display = 'none';
     document.querySelector('.nav-menu').classList.add('hub-mode');
     document.querySelectorAll('.nav-link[data-page]').forEach(l => l.classList.remove('nav-link--disabled'));
 
@@ -922,48 +918,9 @@ window.createEvent = async function() {
     await loadEvents();
 };
 
-function openEventSettings() {
-    const event = state.activeEvent;
-    if (!event) return;
-    const enabled = new Set(event.enabledPages || []);
-
-    document.getElementById('event-settings-title').textContent = event.name || 'Event Settings';
-
-    const pagesContainer = document.getElementById('event-settings-pages');
-    pagesContainer.innerHTML = ALL_PAGES.map(p =>
-        `<label class="page-toggle-label">
-            <input type="checkbox" value="${p.id}" class="settings-page-cb" ${enabled.has(p.id) ? 'checked' : ''}
-                onchange="toggleEventPage('${p.id}', this.checked)">
-            ${escapeHtml(p.label)}
-        </label>`
-    ).join('');
-
-    document.getElementById('event-settings-modal').classList.add('is-open');
-}
-
-window.closeEventSettings = function() {
-    document.getElementById('event-settings-modal').classList.remove('is-open');
-};
-
-window.toggleEventPage = async function(pageId, isEnabled) {
-    const event = state.activeEvent;
-    if (!event) return;
-    const pages = new Set(event.enabledPages || []);
-    if (isEnabled) pages.add(pageId); else pages.delete(pageId);
-    const enabledPages = [...pages];
-
-    await eventsCollection.doc(event.id).update({
-        enabledPages,
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-    });
-    state.activeEvent.enabledPages = enabledPages;
-    updateNavForEvent(state.activeEvent);
-};
-
 window.enterEvent = enterEvent;
 window.backToHub = backToHub;
 window.openNewEventModal = openNewEventModal;
-window.openEventSettings = openEventSettings;
 
 // Dashboard
 function updateDashboard() {
