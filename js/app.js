@@ -395,6 +395,8 @@ const DYNAMIC_DEFAULTS = {
 
 // Tracks active Firestore onSnapshot unsubscribers so we can tear down on event switch
 let _activeListeners = [];
+// Unsubscriber for the hub-level events listener (separate from per-event listeners)
+let _eventsListener = null;
 
 function teardownListeners() {
     _activeListeners.forEach(fn => { try { fn(); } catch (e) {} });
@@ -502,10 +504,9 @@ function initializeApp() {
     switchPage('events-hub');
     // Load hub immediately — don't block on migration
     loadSeasons();
-    loadEvents();
-    // Run migration in the background; if it fails or hangs, hub is already loaded
+    loadEvents();  // uses onSnapshot — live updates, no need to re-call after migration
+    // Run migration in the background; the live events listener will pick up any new docs
     migrateToMultiEvent()
-        .then(() => loadEvents())  // refresh after migration in case data was copied
         .catch(e => console.warn('migrateToMultiEvent skipped:', e));
 
     // Browser back/forward navigation
@@ -901,8 +902,10 @@ async function migrateToMultiEvent() {
 }
 
 async function loadSeasons() {
+    // Render defaults immediately so the nav is populated right away
+    renderSeasonNav();
     try {
-        const doc = await db.collection('config').doc('seasons').get();
+        const doc = await db.collection('config').doc('seasons').get({ source: 'server' });
         if (doc.exists && doc.data().list?.length) {
             state.seasons = doc.data().list;
         } else {
@@ -942,15 +945,35 @@ window.promptAddSeason = async function() {
     closeHamburgerMenu();
 };
 
-async function loadEvents() {
-    try {
-        const snap = await eventsCollection.orderBy('date', 'asc').get();
-        state.events = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    } catch (e) {
-        state.events = [];
-    }
-    renderSeasonNav();
-    renderHub();
+function loadEvents() {
+    // Tear down any existing hub listener before creating a new one
+    if (_eventsListener) { try { _eventsListener(); } catch (e) {} }
+    let _listenerFired = false;
+    _eventsListener = eventsCollection.orderBy('date', 'asc').onSnapshot(
+        (snap) => {
+            _listenerFired = true;
+            state.events = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            renderSeasonNav();
+            renderHub();
+        },
+        (err) => {
+            _listenerFired = true;
+            console.error('loadEvents listener error:', err);
+            state.events = [];
+            renderHub();
+        }
+    );
+    // Fallback: if the onSnapshot callback hasn't fired in 4s (e.g. persistence lock blocked
+    // it), force a direct server fetch so the hub never stays frozen.
+    setTimeout(async () => {
+        if (_listenerFired) return;
+        try {
+            const snap = await eventsCollection.orderBy('date', 'asc').get({ source: 'server' });
+            state.events = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            renderSeasonNav();
+            renderHub();
+        } catch (e) { console.warn('loadEvents fallback failed:', e); }
+    }, 4000);
 }
 
 function renderHub() {
