@@ -2374,8 +2374,40 @@
             </div>
             <div class="modal-body">
                 <div class="staff-index-toolbar">
-                    <input type="text" id="staff-index-search" class="search-input" placeholder="Search by name or role…" oninput="renderStaffIndex()">
-                    <p class="staff-index-hint">Contacts are added automatically when you save staff members. Use this directory to look up past contacts or remove outdated ones.</p>
+                    <div class="staff-index-toolbar-row">
+                        <input type="text" id="staff-index-search" class="search-input" placeholder="Search by name or role…" oninput="renderStaffIndex()" style="flex:1">
+                        <button class="btn btn-secondary btn-sm" onclick="syncStaffToDirectory()">Sync from Current Event</button>
+                        <button class="btn btn-primary-gold btn-sm" onclick="toggleAddDirectoryContact()">+ Add Contact</button>
+                    </div>
+                </div>
+                <!-- Inline add-contact form (hidden by default) -->
+                <div id="staff-dir-add-form" style="display:none">
+                    <div class="staff-dir-add-inner">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Name *</label>
+                                <input type="text" id="dir-add-name" placeholder="Full name">
+                            </div>
+                            <div class="form-group">
+                                <label>Role *</label>
+                                <input type="text" id="dir-add-role" placeholder="e.g. Audio Engineer">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Phone</label>
+                                <input type="tel" id="dir-add-phone" placeholder="Phone number">
+                            </div>
+                            <div class="form-group">
+                                <label>Email</label>
+                                <input type="email" id="dir-add-email" placeholder="Email address">
+                            </div>
+                        </div>
+                        <div class="staff-dir-add-actions">
+                            <button class="btn btn-primary-gold btn-sm" onclick="saveDirectoryContact()">Save Contact</button>
+                            <button class="btn btn-secondary btn-sm" onclick="toggleAddDirectoryContact()">Cancel</button>
+                        </div>
+                    </div>
                 </div>
                 <div id="staff-index-content"></div>
             </div>

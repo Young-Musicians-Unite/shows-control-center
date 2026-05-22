@@ -4972,18 +4972,33 @@ body.menu-open::after {
 
 /* Staff Directory — index modal */
 .staff-index-toolbar {
-    margin-bottom: 16px;
+    margin-bottom: 12px;
 }
 
-.staff-index-toolbar .search-input {
-    width: 100%;
-    margin-bottom: 8px;
+.staff-index-toolbar-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.staff-dir-add-inner {
+    background: #fdfaf4;
+    border: 1px solid #e0dcd3;
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin-bottom: 14px;
+}
+
+.staff-dir-add-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
 }
 
 .staff-index-hint {
     font-size: 0.82rem;
     color: #888;
-    margin: 0;
+    margin: 6px 0 0;
 }
 
 .staff-index-empty {

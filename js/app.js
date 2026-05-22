@@ -6619,6 +6619,11 @@ async function upsertStaffContact(name, phone, email, role) {
 function openStaffIndex() {
     const modal = document.getElementById('staff-index-modal');
     if (!modal) return;
+    // Hide add form on open
+    const addForm = document.getElementById('staff-dir-add-form');
+    if (addForm) addForm.style.display = 'none';
+    // Auto-sync current event staff into directory on first open
+    syncStaffToDirectory(true);
     renderStaffIndex();
     modal.classList.add('active');
 }
@@ -6629,6 +6634,49 @@ function closeStaffIndex() {
     if (modal) modal.classList.remove('active');
 }
 window.closeStaffIndex = closeStaffIndex;
+
+async function syncStaffToDirectory(silent = false) {
+    const staffToSync = (state.staff || []).filter(m => !m.isPlaceholder && m.name && m.role);
+    if (!staffToSync.length) {
+        if (!silent) showToast('No staff to sync', 'error');
+        return;
+    }
+    let count = 0;
+    for (const m of staffToSync) {
+        await upsertStaffContact(m.name, m.phone, m.email, m.role);
+        count++;
+    }
+    if (!silent) showToast(count + ' staff member' + (count !== 1 ? 's' : '') + ' synced to directory');
+}
+window.syncStaffToDirectory = syncStaffToDirectory;
+
+function toggleAddDirectoryContact() {
+    const form = document.getElementById('staff-dir-add-form');
+    if (!form) return;
+    const showing = form.style.display !== 'none';
+    form.style.display = showing ? 'none' : '';
+    if (!showing) {
+        // Clear fields on open
+        ['dir-add-name','dir-add-role','dir-add-phone','dir-add-email'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+        });
+        document.getElementById('dir-add-name')?.focus();
+    }
+}
+window.toggleAddDirectoryContact = toggleAddDirectoryContact;
+
+async function saveDirectoryContact() {
+    const name = (document.getElementById('dir-add-name')?.value || '').trim();
+    const role = (document.getElementById('dir-add-role')?.value || '').trim();
+    const phone = (document.getElementById('dir-add-phone')?.value || '').trim();
+    const email = (document.getElementById('dir-add-email')?.value || '').trim();
+    if (!name || !role) { showToast('Name and Role are required', 'error'); return; }
+    await upsertStaffContact(name, phone, email, role);
+    showToast('Contact saved');
+    toggleAddDirectoryContact();
+}
+window.saveDirectoryContact = saveDirectoryContact;
 
 function renderStaffIndex() {
     const container = document.getElementById('staff-index-content');
