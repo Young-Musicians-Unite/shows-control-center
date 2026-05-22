@@ -6721,6 +6721,9 @@ window.renderStaffIndex = renderStaffIndex;
 
 async function deleteDirectoryContact(id) {
     if (!confirm('Remove this contact from the directory?')) return;
+    // Remove locally and re-render immediately
+    state.staffDirectory = state.staffDirectory.filter(c => c.id !== id);
+    renderStaffIndex();
     try {
         await staffDirectoryCollection.doc(id).delete();
         showToast('Contact removed');
