@@ -507,6 +507,15 @@ function initializeApp() {
     loadSeasons();
     loadEvents();  // uses onSnapshot — live updates, no need to re-call after migration
     loadStaffDirectory();  // global across all events
+
+    // Restore last session (hard refresh returns to the same event + page)
+    const savedEventId = localStorage.getItem('lastEventId');
+    if (savedEventId) {
+        enterEvent(savedEventId).catch(() => {
+            localStorage.removeItem('lastEventId');
+            localStorage.removeItem('lastPage');
+        });
+    }
     // Run migration in the background; the live events listener will pick up any new docs
     migrateToMultiEvent()
         .catch(e => console.warn('migrateToMultiEvent skipped:', e));
@@ -633,6 +642,9 @@ function switchPage(pageName) {
         targetPage.classList.add('active');
         state.currentPage = pageName;
         window.location.hash = pageName;
+        // Persist so hard-refresh returns to the same spot
+        if (pageName !== 'events-hub') localStorage.setItem('lastPage', pageName);
+        else { localStorage.removeItem('lastPage'); localStorage.removeItem('lastEventId'); }
 
         // Clear editing state when switching pages
         state.budgetEditingRowId = null;
@@ -1143,6 +1155,7 @@ async function enterEvent(eventId) {
     state.currentDay = 'Thursday';
 
     setActiveEvent(eventId);
+    localStorage.setItem('lastEventId', eventId);
     vmResetCanvas();
 
     // Update nav branding
@@ -1166,7 +1179,10 @@ async function enterEvent(eventId) {
     const firstPage = (event.enabledPages || []).includes('dashboard')
         ? 'dashboard'
         : ((event.enabledPages || [])[0] || 'dashboard');
-    switchPage(firstPage);
+    const savedPage = localStorage.getItem('lastPage');
+    const enabledPages = event.enabledPages || [];
+    const pageToRestore = (savedPage && enabledPages.includes(savedPage)) ? savedPage : firstPage;
+    switchPage(pageToRestore);
 }
 
 function backToHub() {
@@ -1174,6 +1190,8 @@ function backToHub() {
     state.currentEventId = null;
     state.activeEvent = null;
     collections = {};
+    localStorage.removeItem('lastEventId');
+    localStorage.removeItem('lastPage');
 
     const brand = document.querySelector('.nav-brand');
     brand.textContent = 'YMU Events';
