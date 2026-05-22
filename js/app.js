@@ -25,6 +25,7 @@ const state = {
     mainStageInputs: [],
     cocktailStageInputs: [],
     staff: [],
+    staffDirectory: [],
     stagePlots: [],
     setLists: [],
     setListSearch: '',
@@ -505,6 +506,7 @@ function initializeApp() {
     // Load hub immediately — don't block on migration
     loadSeasons();
     loadEvents();  // uses onSnapshot — live updates, no need to re-call after migration
+    loadStaffDirectory();  // global across all events
     // Run migration in the background; the live events listener will pick up any new docs
     migrateToMultiEvent()
         .catch(e => console.warn('migrateToMultiEvent skipped:', e));
@@ -6256,6 +6258,10 @@ function openStaffModal(memberId = null) {
     form.reset();
     staffModalTeams = [];
 
+    // Always reset directory suggestions on open
+    const dirSug = document.getElementById('staff-dir-suggestions');
+    if (dirSug) dirSug.style.display = 'none';
+
     if (memberId) {
         const member = state.staff.find(s => s.id === memberId);
         if (member) {
@@ -6487,6 +6493,11 @@ async function handleStaffSubmit(e) {
             await collections.budget.doc(newLinkedBudgetId).update(budgetUpdate);
         }
 
+        // Save to staff directory (global, cross-event)
+        if (!staffData.isPlaceholder) {
+            upsertStaffContact(staffData.name, staffData.phone, staffData.email, staffData.role);
+        }
+
         closeAllModals();
     } catch (error) {
         console.error('Error saving staff member:', error);
@@ -6512,6 +6523,165 @@ function deleteStaffFromModal() {
     }
 }
 window.deleteStaffFromModal = deleteStaffFromModal;
+
+// ==========================================
+// STAFF DIRECTORY
+// ==========================================
+
+const staffDirectoryCollection = db.collection('staffDirectory');
+
+function loadStaffDirectory() {
+    staffDirectoryCollection.onSnapshot(snap => {
+        state.staffDirectory = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    }, err => console.warn('staffDirectory listener error:', err));
+}
+
+function normalizeRole(role) {
+    return (role || '').trim().toLowerCase();
+}
+
+function onStaffRoleInput(value) {
+    const role = normalizeRole(value);
+    const suggestionsDiv = document.getElementById('staff-dir-suggestions');
+    const listDiv = document.getElementById('staff-dir-list');
+    if (!suggestionsDiv || !listDiv) return;
+
+    if (!role) {
+        suggestionsDiv.style.display = 'none';
+        return;
+    }
+
+    const matches = state.staffDirectory.filter(contact =>
+        (contact.roles || []).some(r => normalizeRole(r) === role)
+    );
+
+    if (!matches.length) {
+        suggestionsDiv.style.display = 'none';
+        return;
+    }
+
+    listDiv.innerHTML = matches.map(c =>
+        '<div class="dir-suggestion-item" onclick="selectFromDirectory(\'' + c.id + '\')">' +
+        '<span class="dir-suggestion-name">' + escapeHtml(c.name || '') + '</span>' +
+        (c.phone ? '<span class="dir-suggestion-meta">' + escapeHtml(c.phone) + '</span>' : '') +
+        (c.email ? '<span class="dir-suggestion-meta">' + escapeHtml(c.email) + '</span>' : '') +
+        '</div>'
+    ).join('');
+
+    suggestionsDiv.style.display = '';
+}
+window.onStaffRoleInput = onStaffRoleInput;
+
+function selectFromDirectory(contactId) {
+    const contact = state.staffDirectory.find(c => c.id === contactId);
+    if (!contact) return;
+    const nameEl = document.getElementById('staff-name');
+    const phoneEl = document.getElementById('staff-phone');
+    const emailEl = document.getElementById('staff-email');
+    if (nameEl && !nameEl.value) nameEl.value = contact.name || '';
+    if (phoneEl) phoneEl.value = contact.phone || '';
+    if (emailEl) emailEl.value = contact.email || '';
+    document.getElementById('staff-dir-suggestions').style.display = 'none';
+}
+window.selectFromDirectory = selectFromDirectory;
+
+async function upsertStaffContact(name, phone, email, role) {
+    if (!name || !role) return;
+    const normalRole = normalizeRole(role);
+    const existing = state.staffDirectory.find(c =>
+        (c.name || '').trim().toLowerCase() === name.trim().toLowerCase()
+    );
+    try {
+        if (existing) {
+            const roles = existing.roles || [];
+            if (!roles.map(normalizeRole).includes(normalRole)) {
+                roles.push(role.trim());
+            }
+            await staffDirectoryCollection.doc(existing.id).update({
+                phone: phone || existing.phone || null,
+                email: email || existing.email || null,
+                roles
+            });
+        } else {
+            await staffDirectoryCollection.add({
+                name: name.trim(),
+                phone: phone || null,
+                email: email || null,
+                roles: [role.trim()],
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+        }
+    } catch (e) {
+        console.warn('upsertStaffContact error:', e);
+    }
+}
+
+function openStaffIndex() {
+    const modal = document.getElementById('staff-index-modal');
+    if (!modal) return;
+    renderStaffIndex();
+    modal.classList.add('active');
+}
+window.openStaffIndex = openStaffIndex;
+
+function closeStaffIndex() {
+    const modal = document.getElementById('staff-index-modal');
+    if (modal) modal.classList.remove('active');
+}
+window.closeStaffIndex = closeStaffIndex;
+
+function renderStaffIndex() {
+    const container = document.getElementById('staff-index-content');
+    if (!container) return;
+
+    const dir = [...state.staffDirectory].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    const searchVal = (document.getElementById('staff-index-search')?.value || '').trim().toLowerCase();
+
+    const filtered = searchVal
+        ? dir.filter(c =>
+            (c.name || '').toLowerCase().includes(searchVal) ||
+            (c.roles || []).some(r => r.toLowerCase().includes(searchVal))
+        )
+        : dir;
+
+    if (!filtered.length) {
+        container.innerHTML = '<p class="staff-index-empty">' +
+            (searchVal ? 'No contacts match your search.' : 'No contacts yet. Staff members are added automatically when you save them.') +
+            '</p>';
+        return;
+    }
+
+    container.innerHTML = '<table class="staff-index-table"><thead><tr>' +
+        '<th>Name</th><th>Roles</th><th>Phone</th><th>Email</th><th></th>' +
+        '</tr></thead><tbody>' +
+        filtered.map(c =>
+            '<tr>' +
+            '<td><strong>' + escapeHtml(c.name || '') + '</strong></td>' +
+            '<td><span class="dir-role-pills">' +
+                (c.roles || []).map(r => '<span class="dir-role-pill">' + escapeHtml(r) + '</span>').join('') +
+            '</span></td>' +
+            '<td>' + escapeHtml(c.phone || '—') + '</td>' +
+            '<td>' + escapeHtml(c.email || '—') + '</td>' +
+            '<td><button class="btn btn-icon btn-sm" title="Delete" onclick="deleteDirectoryContact(\'' + c.id + '\')">' +
+                '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M9 6V4h6v2"></path></svg>' +
+            '</button></td>' +
+            '</tr>'
+        ).join('') +
+        '</tbody></table>';
+}
+window.renderStaffIndex = renderStaffIndex;
+
+async function deleteDirectoryContact(id) {
+    if (!confirm('Remove this contact from the directory?')) return;
+    try {
+        await staffDirectoryCollection.doc(id).delete();
+        showToast('Contact removed');
+    } catch (e) {
+        console.error('deleteDirectoryContact error:', e);
+        showToast('Error removing contact', 'error');
+    }
+}
+window.deleteDirectoryContact = deleteDirectoryContact;
 
 // ==========================================
 // PACKING LIST

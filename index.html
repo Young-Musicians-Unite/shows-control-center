@@ -555,6 +555,7 @@
                     <button class="btn btn-icon" id="export-staff-btn" title="Export to Excel">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                     </button>
+                    <button class="btn btn-secondary" onclick="openStaffIndex()">Staff Index</button>
                     <button class="btn btn-primary-gold" id="add-staff-btn">+ Add Staff</button>
                 </div>
             </div>
@@ -1826,8 +1827,13 @@
                         </div>
                         <div class="form-group">
                             <label for="staff-role">Role *</label>
-                            <input type="text" id="staff-role" required>
+                            <input type="text" id="staff-role" required oninput="onStaffRoleInput(this.value)" placeholder="e.g. Audio Engineer">
                         </div>
+                    </div>
+                    <!-- Directory suggestions: shown when role has matches -->
+                    <div id="staff-dir-suggestions" style="display:none">
+                        <div class="dir-suggestions-label">People used in this role before:</div>
+                        <div id="staff-dir-list" class="dir-suggestions-list"></div>
                     </div>
                     <div class="form-row">
                         <div class="form-group">
@@ -2355,6 +2361,23 @@
             <div class="fb-dir-note">Guests marked <strong style="color:rgba(255,255,255,0.5)">excluded</strong> won't appear in the directory. Click <em>Generate PDF</em> then use your browser's Print → Save as PDF.</div>
             <div class="modal-actions">
                 <button class="btn btn-secondary" onclick="closeFacebookExport()">Done</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Staff Index Modal -->
+    <div id="staff-index-modal" class="modal" onclick="if(event.target===this)closeStaffIndex()">
+        <div class="modal-content modal-lg">
+            <div class="modal-header">
+                <h2>Staff Directory</h2>
+                <button class="modal-close" onclick="closeStaffIndex()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="staff-index-toolbar">
+                    <input type="text" id="staff-index-search" class="search-input" placeholder="Search by name or role…" oninput="renderStaffIndex()">
+                    <p class="staff-index-hint">Contacts are added automatically when you save staff members. Use this directory to look up past contacts or remove outdated ones.</p>
+                </div>
+                <div id="staff-index-content"></div>
             </div>
         </div>
     </div>

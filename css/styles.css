@@ -4917,6 +4917,123 @@ body.menu-open::after {
     border-top: 1px solid #eee;
 }
 
+/* Staff Directory — role suggestions in Add Staff modal */
+#staff-dir-suggestions {
+    background: #fdfaf4;
+    border: 1px solid #e0dcd3;
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-bottom: 12px;
+}
+
+.dir-suggestions-label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #8a7a4a;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 6px;
+}
+
+.dir-suggestions-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.dir-suggestion-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 10px;
+    background: #fff;
+    border: 1px solid #e8e2d8;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+}
+
+.dir-suggestion-item:hover {
+    background: #f5f1e8;
+    border-color: #c9a961;
+}
+
+.dir-suggestion-name {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: #2c2c2c;
+    flex: 1;
+}
+
+.dir-suggestion-meta {
+    font-size: 0.8rem;
+    color: #777;
+}
+
+/* Staff Directory — index modal */
+.staff-index-toolbar {
+    margin-bottom: 16px;
+}
+
+.staff-index-toolbar .search-input {
+    width: 100%;
+    margin-bottom: 8px;
+}
+
+.staff-index-hint {
+    font-size: 0.82rem;
+    color: #888;
+    margin: 0;
+}
+
+.staff-index-empty {
+    color: #888;
+    font-style: italic;
+    text-align: center;
+    padding: 2rem 0;
+}
+
+.staff-index-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.88rem;
+}
+
+.staff-index-table th {
+    text-align: left;
+    padding: 7px 10px;
+    border-bottom: 2px solid #e0dcd3;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #8a7a4a;
+}
+
+.staff-index-table td {
+    padding: 8px 10px;
+    border-bottom: 1px solid #f0ece4;
+    vertical-align: middle;
+}
+
+.staff-index-table tr:last-child td {
+    border-bottom: none;
+}
+
+.dir-role-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.dir-role-pill {
+    background: #f5f1e8;
+    color: #6b5a2a;
+    border: 1px solid #e0d8c4;
+    border-radius: 4px;
+    padding: 2px 7px;
+    font-size: 0.78rem;
+}
+
 /* Modal schedule grid */
 .staff-schedule-grid {
     display: flex;
