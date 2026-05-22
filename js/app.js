@@ -435,25 +435,25 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function initializeApp() {
-    setupNavigation();
-    setupHamburgerMenu();
-    setupModals();
-    setupCountdown();
-    // loadAllData() is called inside enterEvent() once an event is selected
-    setupFormHandlers();
-    setupDayTabs();
-    setupVendorFilters();
-    setupStageTabs();
-    setupExportAndPrint();
-    setupStagePlotTabs();
-    setupStagePlotControls();
-    setupZoomControls();
-    setupUndoRedo();
-    setupKeyboardShortcuts();
-    setupPlotNameInput();
-    setupPropertiesPanel();
-    setupVenueMap();
-    setupSetListPage();
+    const _setup = (name, fn) => { try { fn(); } catch(e) { console.error('SETUP CRASH in ' + name + ':', e); } };
+    _setup('setupNavigation', setupNavigation);
+    _setup('setupHamburgerMenu', setupHamburgerMenu);
+    _setup('setupModals', setupModals);
+    _setup('setupCountdown', setupCountdown);
+    _setup('setupFormHandlers', setupFormHandlers);
+    _setup('setupDayTabs', setupDayTabs);
+    _setup('setupVendorFilters', setupVendorFilters);
+    _setup('setupStageTabs', setupStageTabs);
+    _setup('setupExportAndPrint', setupExportAndPrint);
+    _setup('setupStagePlotTabs', setupStagePlotTabs);
+    _setup('setupStagePlotControls', setupStagePlotControls);
+    _setup('setupZoomControls', setupZoomControls);
+    _setup('setupUndoRedo', setupUndoRedo);
+    _setup('setupKeyboardShortcuts', setupKeyboardShortcuts);
+    _setup('setupPlotNameInput', setupPlotNameInput);
+    _setup('setupPropertiesPanel', setupPropertiesPanel);
+    _setup('setupVenueMap', setupVenueMap);
+    _setup('setupSetListPage', setupSetListPage);
 
     // Flush pending saves on page unload
     window.addEventListener('beforeunload', () => {
@@ -945,35 +945,55 @@ window.promptAddSeason = async function() {
     closeHamburgerMenu();
 };
 
+function parseFirestoreValue(v) {
+    if (!v) return null;
+    if ('stringValue' in v) return v.stringValue;
+    if ('integerValue' in v) return parseInt(v.integerValue);
+    if ('doubleValue' in v) return v.doubleValue;
+    if ('booleanValue' in v) return v.booleanValue;
+    if ('nullValue' in v) return null;
+    if ('arrayValue' in v) return (v.arrayValue.values || []).map(parseFirestoreValue);
+    if ('mapValue' in v) {
+        const obj = {};
+        Object.entries(v.mapValue.fields || {}).forEach(([k, fv]) => { obj[k] = parseFirestoreValue(fv); });
+        return obj;
+    }
+    return null;
+}
+
 function loadEvents() {
-    // Tear down any existing hub listener before creating a new one
-    if (_eventsListener) { try { _eventsListener(); } catch (e) {} }
-    let _listenerFired = false;
-    _eventsListener = eventsCollection.orderBy('date', 'asc').onSnapshot(
-        (snap) => {
-            _listenerFired = true;
-            state.events = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    if (_eventsListener) { try { _eventsListener(); } catch (e) {} _eventsListener = null; }
+
+    // Visual confirmation that this function ran
+    const el = document.getElementById('events-hub-content');
+    if (el) el.innerHTML = '<p style="padding:2rem;color:#888">Connecting to database…</p>';
+
+    fetch('/api/firestore/events')
+        .then(r => r.json())
+        .then(data => {
+            state.events = (data.documents || []).map(doc => {
+                const id = doc.name.split('/').pop();
+                const parsed = { id };
+                Object.entries(doc.fields || {}).forEach(([k, v]) => { parsed[k] = parseFirestoreValue(v); });
+                return parsed;
+            }).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
             renderSeasonNav();
             renderHub();
-        },
-        (err) => {
-            _listenerFired = true;
-            console.error('loadEvents listener error:', err);
-            state.events = [];
-            renderHub();
-        }
-    );
-    // Fallback: if the onSnapshot callback hasn't fired in 4s (e.g. persistence lock blocked
-    // it), force a direct server fetch so the hub never stays frozen.
-    setTimeout(async () => {
-        if (_listenerFired) return;
-        try {
-            const snap = await eventsCollection.orderBy('date', 'asc').get({ source: 'server' });
-            state.events = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        })
+        .catch(e => {
+            const el = document.getElementById('events-hub-content');
+            if (el) el.innerHTML = '<p style="padding:2rem;color:#c0392b">Could not reach database: ' + e.message + '</p>';
+        });
+
+    // Also wire up real-time SDK updates if available
+    try {
+        _eventsListener = eventsCollection.onSnapshot(snap => {
+            state.events = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+                .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
             renderSeasonNav();
             renderHub();
-        } catch (e) { console.warn('loadEvents fallback failed:', e); }
-    }, 4000);
+        }, () => {});
+    } catch (e) {}
 }
 
 function renderHub() {
