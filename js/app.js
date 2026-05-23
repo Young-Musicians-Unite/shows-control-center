@@ -6738,8 +6738,9 @@ function renderStaffIndex() {
                 (c.roles || []).map(r => '<span class="dir-role-pill">' + escapeHtml(r) + '</span>').join('') +
             '</span></td>' +
             '<td class="dir-row-actions">' +
-                '<button class="btn btn-icon btn-sm dir-contact-btn' + (hasContact ? '' : ' dir-contact-btn--empty') + '" title="' + (hasContact ? 'View contact info' : 'No contact info') + '"' +
-                    (hasContact ? ' onclick="toggleDirContactPopover(event,\'' + c.id + '\')"' : ' disabled') + '>' + contactIconSvg + '</button>' +
+                '<button class="btn btn-icon btn-sm dir-contact-btn' + (hasContact ? '' : ' dir-contact-btn--missing') + '" title="' + (hasContact ? 'View contact info' : 'No contact info saved') + '" onclick="' + (hasContact ? 'toggleDirContactPopover(event,\'' + c.id + '\')' : 'showDirMissingContact(event)') + '">' +
+                    contactIconSvg + (hasContact ? '' : '<span class="dir-contact-missing-dot">!</span>') +
+                '</button>' +
                 (inEvent ? '<button class="btn btn-sm btn-secondary" title="Add to Budget" onclick="addDirectoryContactToBudget(\'' + c.id + '\')">' +
                     '+ Budget</button>' : '') +
                 '<button class="btn btn-icon btn-sm" title="Delete" onclick="deleteDirectoryContact(\'' + c.id + '\')">' + trashIconSvg + '</button>' +
@@ -6821,6 +6822,27 @@ function toggleDirContactPopover(e, contactId) {
     popover.style.left = left + 'px';
 }
 window.toggleDirContactPopover = toggleDirContactPopover;
+
+function showDirMissingContact(e) {
+    e.stopPropagation();
+    let popover = document.getElementById('dir-contact-popover');
+    if (!popover) {
+        popover = document.createElement('div');
+        popover.id = 'dir-contact-popover';
+        document.body.appendChild(popover);
+    }
+    popover.dataset.contactId = '';
+    popover.innerHTML = '<div class="dir-popover-missing">No contact info saved for this person.</div>';
+    const btn = e.currentTarget;
+    const rect = btn.getBoundingClientRect();
+    popover.style.display = 'block';
+    popover.style.top = (rect.bottom + window.scrollY + 6) + 'px';
+    const popW = 220;
+    let left = rect.right + window.scrollX - popW;
+    if (left < 8) left = 8;
+    popover.style.left = left + 'px';
+}
+window.showDirMissingContact = showDirMissingContact;
 
 // Dismiss popover on any outside click
 document.addEventListener('click', () => {
