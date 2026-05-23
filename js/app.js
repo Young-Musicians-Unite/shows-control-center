@@ -1055,6 +1055,7 @@ function renderHub() {
             <td class="hub-cell-date hub-cell-editable" onclick="editHubCell(this,'${ev.id}','date','${escapeHtml(ev.date || '')}')" title="Click to edit">${dateStr}</td>
             <td class="hub-cell-name hub-cell-editable" onclick="editHubCell(this,'${ev.id}','name','${escapeHtml(ev.name || '')}')" title="Click to edit">${escapeHtml(ev.name || '—')}</td>
             <td class="hub-cell-lead hub-cell-editable" onclick="editHubCell(this,'${ev.id}','lead','${escapeHtml(ev.lead || '')}')" title="Click to edit">${escapeHtml(ev.lead || '—')}</td>
+            <td class="hub-cell-groups hub-cell-editable" onclick="editHubCell(this,'${ev.id}','performingGroups','${escapeHtml(ev.performingGroups || '')}')" title="Click to edit">${escapeHtml(ev.performingGroups || '—')}</td>
             <td class="hub-cell-phase">
                 <select class="phase-select" style="background:${phase.color};color:${phase.text}"
                     onchange="updateEventPhase('${ev.id}', this.value, this)">
@@ -1069,7 +1070,7 @@ function renderHub() {
 
     el.innerHTML = `<table class="hub-table">
         <thead><tr>
-            <th>Date</th><th>Event Name</th><th>Event Lead</th><th>Phase</th><th></th>
+            <th>Date</th><th>Event Name</th><th>Event Lead</th><th>Performing Groups</th><th>Phase</th><th></th>
         </tr></thead>
         <tbody>${rows}</tbody>
     </table>`;
@@ -1082,7 +1083,7 @@ window.editHubCell = function(cell, eventId, field, currentValue) {
     input.type = isDate ? 'date' : 'text';
     input.value = currentValue;
     input.className = 'hub-cell-input';
-    if (!isDate) input.placeholder = field === 'name' ? 'Event name' : 'Lead name';
+    if (!isDate) input.placeholder = field === 'name' ? 'Event name' : field === 'lead' ? 'Lead name' : field === 'performingGroups' ? 'e.g. The Jazz Quartet, House Band' : '';
     cell.textContent = '';
     cell.appendChild(input);
     input.focus();
