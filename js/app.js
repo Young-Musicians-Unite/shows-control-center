@@ -6811,16 +6811,24 @@ function renderTemplateAssignment() {
     const container = document.getElementById('ta-content');
     if (!container) return;
 
-    const staff = [...state.staff]
-        .filter(s => !s.isPlaceholder)
-        .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-
-    if (!staff.length) {
-        container.innerHTML = '<p class="staff-index-empty">No staff members found in this event.</p>';
+    if (!state.currentEventId) {
+        container.innerHTML = '<p class="staff-index-empty">Enter an event first to assign templates.</p>';
         return;
     }
 
-    const templates = state.jobTemplates.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    const staff = [...state.staff]
+        .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+    if (!staff.length) {
+        // Try again after a short delay — Firestore listener may still be firing
+        container.innerHTML = '<p class="staff-index-empty">Loading staff… if this persists, close and re-open this modal.</p>';
+        setTimeout(() => {
+            if (state.staff.length) renderTemplateAssignment();
+        }, 1500);
+        return;
+    }
+
+    const templates = [...state.jobTemplates].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     if (!templates.length) {
         container.innerHTML = '<p class="staff-index-empty">No job templates defined yet. Add them first via Staff Index → Role → Budget.</p>';
         return;
