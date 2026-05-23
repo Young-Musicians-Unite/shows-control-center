@@ -1560,9 +1560,10 @@ function renderDashboard() {
     const tlTotal   = state.timeline.length;
     const tlDone    = state.timeline.filter(t => t.completed === true || t.status === 'complete').length;
     const tlPct     = tlTotal > 0 ? Math.round(tlDone / tlTotal * 100) : 0;
-    const tlOverdue = state.timeline.filter(t => {
-        if (!t.dueDate || t.completed === true || t.status === 'complete') return false;
-        return new Date(t.dueDate) < new Date();
+    const tlIncomplete = state.timeline.filter(t => {
+        if (t.completed === true || t.status === 'complete') return false;
+        // Flag items missing time or event description
+        return !t.time || !(t.event || '').trim();
     });
 
     // ── Staff ────────────────────────────────────────────────────
@@ -1576,10 +1577,16 @@ function renderDashboard() {
         type: 'staff', page: 'staff',
         title: (s.name || 'Unnamed role') + ' — unfilled'
     }));
-    tlOverdue.forEach(t => issues.push({
-        type: 'timeline', page: 'timeline',
-        title: (t.item || t.title || 'Item') + ' — overdue'
-    }));
+    tlIncomplete.forEach(t => {
+        const label = (t.event || '').trim() || (t.item || '').trim() || 'Unnamed item';
+        const missing = [];
+        if (!t.time) missing.push('time');
+        if (!(t.event || '').trim()) missing.push('description');
+        issues.push({
+            type: 'timeline', page: 'timeline',
+            title: label + ' — missing ' + missing.join(' & ')
+        });
+    });
     // Staff members missing contact info
     state.staff.filter(s => !s.isPlaceholder && !s.phone && !s.email).forEach(s => issues.push({
         type: 'contact', page: 'staff',
@@ -1727,7 +1734,7 @@ function renderDashboard() {
                     <div class="db-card-hdr">${timelineIcon}<span class="db-card-label">Timeline</span>${arrow}</div>
                     <div class="db-card-main">${tlDone} <span style="font-size:1.3rem;opacity:0.35;font-weight:400">/ ${tlTotal}</span></div>
                     <span class="db-card-sub">tasks complete</span>
-                    <div class="db-card-detail${tlOverdue.length > 0 ? ' db-card-warn' : ''}">${tlOverdue.length > 0 ? '⚠ ' + tlOverdue.length + ' overdue' : (tlTotal === 0 ? 'No items yet' : 'All on track ✓')}</div>
+                    <div class="db-card-detail${tlIncomplete.length > 0 ? ' db-card-warn' : ''}">${tlIncomplete.length > 0 ? '⚠ ' + tlIncomplete.length + ' incomplete' : (tlTotal === 0 ? 'No items yet' : 'All filled in ✓')}</div>
                     <div class="db-prog">
                         <div class="db-prog-track"><div class="db-prog-fill" style="width:${tlPct}%;background:linear-gradient(90deg,#63b3ed,#90cdf4)"></div></div>
                         <span class="db-prog-pct">${tlPct}%</span>
