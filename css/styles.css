@@ -5052,6 +5052,17 @@ body.menu-open::after {
     border-bottom: none;
 }
 
+.dir-group-header td {
+    background: #f5f1e8;
+    color: #8a7a4a;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    padding: 6px 10px 4px;
+    border-bottom: none !important;
+}
+
 .staff-index-row {
     cursor: pointer;
     transition: background 0.12s;

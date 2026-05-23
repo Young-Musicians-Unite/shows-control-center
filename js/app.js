@@ -6894,7 +6894,12 @@ function renderStaffIndex() {
     const container = document.getElementById('staff-index-content');
     if (!container) return;
 
-    const dir = [...state.staffDirectory].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    const dir = [...state.staffDirectory].sort((a, b) => {
+        const roleA = ((a.roles || [])[0] || '').toLowerCase();
+        const roleB = ((b.roles || [])[0] || '').toLowerCase();
+        if (roleA !== roleB) return roleA.localeCompare(roleB);
+        return (a.name || '').localeCompare(b.name || '');
+    });
     const searchVal = (document.getElementById('staff-index-search')?.value || '').trim().toLowerCase();
 
     const filtered = searchVal
@@ -6915,27 +6920,34 @@ function renderStaffIndex() {
     const contactIconSvg = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
     const trashIconSvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>';
 
-    container.innerHTML = '<table class="staff-index-table"><thead><tr>' +
-        '<th>Name</th><th>Roles</th><th></th>' +
-        '</tr></thead><tbody>' +
-        filtered.map(c => {
-            const hasContact = c.phone || c.email;
-            return '<tr class="staff-index-row">' +
+    let lastRole = null;
+    const rows = filtered.map(c => {
+        const hasContact = c.phone || c.email;
+        const primaryRole = (c.roles || [])[0] || 'No Role';
+        let groupHeader = '';
+        if (primaryRole !== lastRole) {
+            lastRole = primaryRole;
+            groupHeader = '<tr class="dir-group-header"><td colspan="3">' + escapeHtml(primaryRole) + '</td></tr>';
+        }
+        return groupHeader +
+            '<tr class="staff-index-row">' +
             '<td><strong>' + escapeHtml(c.name || '') + '</strong></td>' +
             '<td><span class="dir-role-pills">' +
-                (c.roles || []).map(r => '<span class="dir-role-pill">' + escapeHtml(r) + '</span>').join('') +
+                (c.roles || []).slice(1).map(r => '<span class="dir-role-pill">' + escapeHtml(r) + '</span>').join('') +
             '</span></td>' +
             '<td class="dir-row-actions">' +
                 '<button class="btn btn-icon btn-sm dir-contact-btn' + (hasContact ? '' : ' dir-contact-btn--missing') + '" title="' + (hasContact ? 'View contact info' : 'No contact info saved') + '" onclick="' + (hasContact ? 'toggleDirContactPopover(event,\'' + c.id + '\')' : 'showDirMissingContact(event)') + '">' +
                     contactIconSvg + (hasContact ? '' : '<span class="dir-contact-missing-dot">!</span>') +
                 '</button>' +
-                (inEvent ? '<button class="btn btn-sm btn-secondary" title="Add to Budget" onclick="addDirectoryContactToBudget(\'' + c.id + '\')">' +
-                    '+ Budget</button>' : '') +
+                (inEvent ? '<button class="btn btn-sm btn-secondary" onclick="addDirectoryContactToBudget(\'' + c.id + '\')">+ Budget</button>' : '') +
                 '<button class="btn btn-icon btn-sm" title="Delete" onclick="deleteDirectoryContact(\'' + c.id + '\')">' + trashIconSvg + '</button>' +
             '</td>' +
             '</tr>';
-        }).join('') +
-        '</tbody></table>';
+    }).join('');
+
+    container.innerHTML = '<table class="staff-index-table"><thead><tr>' +
+        '<th>Name</th><th>Other Roles</th><th></th>' +
+        '</tr></thead><tbody>' + rows + '</tbody></table>';
 }
 window.renderStaffIndex = renderStaffIndex;
 
