@@ -5051,6 +5051,11 @@ body.menu-open::after {
     justify-content: flex-end;
 }
 
+.dir-contact-btn--empty {
+    opacity: 0.2;
+    cursor: default;
+}
+
 #dir-contact-popover {
     position: absolute;
     z-index: 9000;

@@ -6738,9 +6738,8 @@ function renderStaffIndex() {
                 (c.roles || []).map(r => '<span class="dir-role-pill">' + escapeHtml(r) + '</span>').join('') +
             '</span></td>' +
             '<td class="dir-row-actions">' +
-                (hasContact
-                    ? '<button class="btn btn-icon btn-sm dir-contact-btn" title="View contact info" onclick="toggleDirContactPopover(event,\'' + c.id + '\')">' + contactIconSvg + '</button>'
-                    : '') +
+                '<button class="btn btn-icon btn-sm dir-contact-btn' + (hasContact ? '' : ' dir-contact-btn--empty') + '" title="' + (hasContact ? 'View contact info' : 'No contact info') + '"' +
+                    (hasContact ? ' onclick="toggleDirContactPopover(event,\'' + c.id + '\')"' : ' disabled') + '>' + contactIconSvg + '</button>' +
                 (inEvent ? '<button class="btn btn-sm btn-secondary" title="Add to Budget" onclick="addDirectoryContactToBudget(\'' + c.id + '\')">' +
                     '+ Budget</button>' : '') +
                 '<button class="btn btn-icon btn-sm" title="Delete" onclick="deleteDirectoryContact(\'' + c.id + '\')">' + trashIconSvg + '</button>' +
