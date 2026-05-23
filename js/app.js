@@ -1577,6 +1577,16 @@ function renderDashboard() {
         type: 'timeline', page: 'timeline',
         title: (t.item || t.title || 'Item') + ' — overdue'
     }));
+    // Staff members missing contact info
+    state.staff.filter(s => !s.isPlaceholder && !s.phone && !s.email).forEach(s => issues.push({
+        type: 'contact', page: 'staff',
+        title: (s.name || 'Staff member') + ' — missing contact info'
+    }));
+    // Budget entries missing contact info
+    state.budget.filter(b => !b.noContactNeeded && !b.phone && !b.email).forEach(b => issues.push({
+        type: 'contact', page: 'budget',
+        title: (b.vendor || 'Budget entry') + ' — missing contact info'
+    }));
 
     // ── Countdown ────────────────────────────────────────────────
     let countdownHtml = '';
@@ -1681,7 +1691,7 @@ function renderDashboard() {
                             <span class="db-issue-dot ${iss.type}"></span>
                             <div class="db-issue-body">
                                 <div class="db-issue-title">${escapeHtml(iss.title)}</div>
-                                <div class="db-issue-tag">${iss.type === 'staff' ? 'Staff' : 'Timeline'}</div>
+                                <div class="db-issue-tag">${iss.type === 'staff' ? 'Staff' : iss.type === 'contact' ? 'Contact' : iss.type === 'budget' ? 'Budget' : 'Timeline'}</div>
                             </div>
                             <span class="db-issue-arrow">›</span>
                         </div>`).join('')}

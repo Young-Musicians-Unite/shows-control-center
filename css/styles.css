@@ -976,6 +976,7 @@ body {
 .db-issue-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
 .db-issue-dot.staff    { background: #f6ad55; }
 .db-issue-dot.timeline { background: #fc8181; }
+.db-issue-dot.contact  { background: #e67e22; }
 .db-issue-body { flex: 1; min-width: 0; }
 .db-issue-title {
     font-size: 0.82rem;
