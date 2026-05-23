@@ -5173,6 +5173,86 @@ body.menu-open::after {
     padding: 12px 0;
 }
 
+/* Template Assignment Modal */
+.ta-hint {
+    font-size: 0.84rem;
+    color: #888;
+    margin: 0 0 14px;
+}
+
+.ta-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.87rem;
+}
+
+.ta-table th {
+    text-align: left;
+    padding: 7px 10px;
+    border-bottom: 2px solid #e0dcd3;
+    font-size: 0.74rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #8a7a4a;
+}
+
+.ta-table td {
+    padding: 10px 10px;
+    border-bottom: 1px solid #f0ece4;
+    vertical-align: top;
+}
+
+.ta-table tr:last-child td { border-bottom: none; }
+
+.ta-name { width: 22%; }
+.ta-role  { width: 22%; color: #666; font-size: 0.83rem; }
+.ta-chips { width: 56%; }
+
+.ta-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: flex-start;
+}
+
+.ta-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    border: 1px solid #e0dcd3;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    background: #f9f7f2;
+    color: #555;
+    transition: background 0.12s, border-color 0.12s, color 0.12s;
+    user-select: none;
+}
+
+.ta-chip input { display: none; }
+
+.ta-chip:hover {
+    border-color: #c9a961;
+    color: #6b5a2a;
+}
+
+.ta-chip--active {
+    background: #c9a961;
+    border-color: #c9a961;
+    color: #fff;
+    font-weight: 600;
+}
+
+.ta-footer {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    padding-top: 16px;
+    border-top: 1px solid #e0dcd3;
+    margin-top: 16px;
+}
+
 #dir-contact-popover {
     position: absolute;
     z-index: 9000;

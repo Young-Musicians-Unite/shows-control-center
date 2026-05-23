@@ -6791,6 +6791,97 @@ async function saveDirectoryContact() {
 }
 window.saveDirectoryContact = saveDirectoryContact;
 
+// ── Template Assignment Wizard ────────────────────────────────────────────────
+
+function openTemplateAssignment() {
+    const modal = document.getElementById('template-assignment-modal');
+    if (!modal) return;
+    renderTemplateAssignment();
+    modal.classList.add('active');
+}
+window.openTemplateAssignment = openTemplateAssignment;
+
+function closeTemplateAssignment() {
+    const modal = document.getElementById('template-assignment-modal');
+    if (modal) modal.classList.remove('active');
+}
+window.closeTemplateAssignment = closeTemplateAssignment;
+
+function renderTemplateAssignment() {
+    const container = document.getElementById('ta-content');
+    if (!container) return;
+
+    const staff = [...state.staff]
+        .filter(s => !s.isPlaceholder)
+        .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+    if (!staff.length) {
+        container.innerHTML = '<p class="staff-index-empty">No staff members found in this event.</p>';
+        return;
+    }
+
+    const templates = state.jobTemplates.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    if (!templates.length) {
+        container.innerHTML = '<p class="staff-index-empty">No job templates defined yet. Add them first via Staff Index → Role → Budget.</p>';
+        return;
+    }
+
+    container.innerHTML = '<table class="ta-table"><thead><tr>' +
+        '<th>Name</th><th>Current Role</th><th>Job Templates</th>' +
+        '</tr></thead><tbody>' +
+        staff.map(s => {
+            const assigned = s.jobTemplates || [];
+            const chips = templates.map(t =>
+                '<label class="ta-chip' + (assigned.includes(t.name) ? ' ta-chip--active' : '') + '">' +
+                '<input type="checkbox" name="ta-' + s.id + '" value="' + escapeHtml(t.name) + '"' +
+                    (assigned.includes(t.name) ? ' checked' : '') + '>' +
+                escapeHtml(t.name) +
+                '</label>'
+            ).join('');
+            return '<tr>' +
+                '<td class="ta-name"><strong>' + escapeHtml(s.name || '') + '</strong></td>' +
+                '<td class="ta-role">' + escapeHtml(s.role || '—') + '</td>' +
+                '<td class="ta-chips" data-staff-id="' + s.id + '">' + chips + '</td>' +
+                '</tr>';
+        }).join('') +
+        '</tbody></table>';
+
+    // Toggle chip active class on checkbox change
+    container.querySelectorAll('.ta-chip input').forEach(cb => {
+        cb.addEventListener('change', () => {
+            cb.closest('.ta-chip').classList.toggle('ta-chip--active', cb.checked);
+        });
+    });
+}
+window.renderTemplateAssignment = renderTemplateAssignment;
+
+async function saveAllTemplateAssignments() {
+    const container = document.getElementById('ta-content');
+    if (!container) return;
+
+    const rows = container.querySelectorAll('td.ta-chips[data-staff-id]');
+    const writes = [];
+    rows.forEach(cell => {
+        const staffId = cell.dataset.staffId;
+        const checked = [...cell.querySelectorAll('input[type=checkbox]:checked')].map(cb => cb.value);
+        writes.push({ staffId, jobTemplates: checked });
+    });
+
+    let saved = 0;
+    for (const { staffId, jobTemplates } of writes) {
+        try {
+            await collections.staff.doc(staffId).update({ jobTemplates });
+            saved++;
+        } catch (e) {
+            console.error('saveAllTemplateAssignments error for', staffId, e);
+        }
+    }
+
+    showToast(saved + ' staff member' + (saved !== 1 ? 's' : '') + ' updated');
+    closeTemplateAssignment();
+}
+window.saveAllTemplateAssignments = saveAllTemplateAssignments;
+
 function renderStaffIndex() {
     const container = document.getElementById('staff-index-content');
     if (!container) return;
