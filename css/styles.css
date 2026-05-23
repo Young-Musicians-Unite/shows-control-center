@@ -4971,6 +4971,23 @@ body.menu-open::after {
     color: #777;
 }
 
+.dir-template-badge {
+    background: #f5f1e8;
+    color: #8a7a4a;
+    border: 1px solid #e0d8c4;
+    border-radius: 3px;
+    padding: 1px 5px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.dir-suggestion-template {
+    border-color: #e0d8c4;
+    background: #fdfaf4;
+}
+
 /* Staff Directory — index modal */
 .staff-index-toolbar {
     margin-bottom: 12px;
@@ -5128,6 +5145,32 @@ body.menu-open::after {
     background: #fff;
     color: #2c2c2c;
     cursor: pointer;
+}
+
+.role-map-input {
+    width: 100%;
+    padding: 5px 8px;
+    border: 1px solid #e0dcd3;
+    border-radius: 6px;
+    font-size: 0.83rem;
+}
+
+.role-map-add-row td {
+    padding-bottom: 10px;
+    border-bottom: 2px solid #e0dcd3 !important;
+}
+
+.role-map-cat-label {
+    font-size: 0.82rem;
+    color: #6b5a2a;
+}
+
+.role-map-empty {
+    font-size: 0.82rem;
+    color: #aaa;
+    font-style: italic;
+    text-align: center;
+    padding: 12px 0;
 }
 
 #dir-contact-popover {

@@ -26,7 +26,8 @@ const state = {
     cocktailStageInputs: [],
     staff: [],
     staffDirectory: [],
-    roleCategoryMap: {},   // role (lowercase) → budget category string
+    roleCategoryMap: {},      // role (lowercase) → budget category string (derived from jobTemplates)
+    jobTemplates: [],         // [{id, name, category}] global reusable role → budget mappings
     stagePlots: [],
     setLists: [],
     setListSearch: '',
@@ -6565,38 +6566,57 @@ window.deleteStaffFromModal = deleteStaffFromModal;
 // ==========================================
 
 const staffDirectoryCollection = db.collection('staffDirectory');
-const roleCategoryMapCollection = db.collection('roleCategoryMap');
+const jobTemplatesCollection = db.collection('jobTemplates');
 
 function loadRoleCategoryMap() {
-    roleCategoryMapCollection.onSnapshot(snap => {
+    jobTemplatesCollection.onSnapshot(snap => {
         state.roleCategoryMap = {};
-        snap.docs.forEach(doc => {
-            state.roleCategoryMap[doc.id] = doc.data().category || '';
+        state.jobTemplates = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        state.jobTemplates.forEach(t => {
+            if (t.name) state.roleCategoryMap[t.name.trim().toLowerCase()] = t.category || '';
         });
-    }, err => console.warn('roleCategoryMap listener error:', err));
+    }, err => console.warn('jobTemplates listener error:', err));
 }
 
-async function saveRoleMapping(role, category) {
-    const key = role.trim().toLowerCase();
-    if (!key) return;
+async function addJobTemplate(name, category) {
+    name = (name || '').trim();
+    category = (category || '').trim();
+    if (!name || !category) { showToast('Name and category are required', 'error'); return; }
+    const exists = state.jobTemplates.some(t => t.name.trim().toLowerCase() === name.toLowerCase());
+    if (exists) { showToast('A template for "' + name + '" already exists', 'error'); return; }
     try {
-        if (category) {
-            await roleCategoryMapCollection.doc(key).set({ role: role.trim(), category });
-            state.roleCategoryMap[key] = category;
-        } else {
-            await roleCategoryMapCollection.doc(key).delete();
-            delete state.roleCategoryMap[key];
-        }
+        await jobTemplatesCollection.add({ name, category, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+        showToast('Job template saved');
     } catch (e) {
-        console.error('saveRoleMapping error:', e);
-        showToast('Error saving role mapping', 'error');
+        console.error('addJobTemplate error:', e);
+        showToast('Error saving template', 'error');
     }
 }
-window.saveRoleMapping = saveRoleMapping;
+window.addJobTemplate = addJobTemplate;
+
+async function deleteJobTemplate(id) {
+    // Optimistic update
+    state.jobTemplates = state.jobTemplates.filter(t => t.id !== id);
+    renderJobTemplates();
+    try {
+        await jobTemplatesCollection.doc(id).delete();
+    } catch (e) {
+        console.error('deleteJobTemplate error:', e);
+        showToast('Error deleting template', 'error');
+    }
+}
+window.deleteJobTemplate = deleteJobTemplate;
 
 function getCategoryForRole(role) {
     if (!role) return '';
-    return state.roleCategoryMap[role.trim().toLowerCase()] || '';
+    const key = role.trim().toLowerCase();
+    // Exact match first
+    if (state.roleCategoryMap[key]) return state.roleCategoryMap[key];
+    // Partial match: template name appears in role or vice versa
+    const match = state.jobTemplates.find(t =>
+        key.includes(t.name.trim().toLowerCase()) || t.name.trim().toLowerCase().includes(key)
+    );
+    return match ? match.category : '';
 }
 
 function loadStaffDirectory() {
@@ -6615,30 +6635,52 @@ function onStaffRoleInput(value) {
     const listDiv = document.getElementById('staff-dir-list');
     if (!suggestionsDiv || !listDiv) return;
 
-    if (!role) {
-        suggestionsDiv.style.display = 'none';
-        return;
-    }
+    if (!role) { suggestionsDiv.style.display = 'none'; return; }
 
-    const matches = state.staffDirectory.filter(contact =>
-        (contact.roles || []).some(r => normalizeRole(r) === role)
+    // Match job templates first (generic roles)
+    const templateMatches = state.jobTemplates.filter(t =>
+        normalizeRole(t.name).includes(role) || role.includes(normalizeRole(t.name))
     );
 
-    if (!matches.length) {
+    // Match directory contacts whose roles match
+    const contactMatches = state.staffDirectory.filter(contact =>
+        (contact.roles || []).some(r => normalizeRole(r).includes(role) || role.includes(normalizeRole(r)))
+    );
+
+    if (!templateMatches.length && !contactMatches.length) {
         suggestionsDiv.style.display = 'none';
         return;
     }
 
-    listDiv.innerHTML = matches.map(c =>
-        '<div class="dir-suggestion-item" onclick="selectFromDirectory(\'' + c.id + '\')">' +
-        '<span class="dir-suggestion-name">' + escapeHtml(c.name || '') + '</span>' +
-        (c.phone ? '<span class="dir-suggestion-meta">' + escapeHtml(c.phone) + '</span>' : '') +
-        (c.email ? '<span class="dir-suggestion-meta">' + escapeHtml(c.email) + '</span>' : '') +
-        '</div>'
-    ).join('');
+    const label = document.querySelector('.dir-suggestions-label');
+    if (label) label.textContent = contactMatches.length ? 'People used in this role before:' : 'Matching job templates:';
+
+    listDiv.innerHTML =
+        // Show matching templates as "use this role" chips
+        templateMatches.map(t =>
+            '<div class="dir-suggestion-item dir-suggestion-template" onclick="applyJobTemplate(\'' + escapeHtml(t.name).replace(/'/g,"\\'") + '\')">' +
+            '<span class="dir-suggestion-name">' + escapeHtml(t.name) + '</span>' +
+            '<span class="dir-suggestion-meta dir-template-badge">template</span>' +
+            '</div>'
+        ).join('') +
+        // Then show people from directory
+        contactMatches.map(c =>
+            '<div class="dir-suggestion-item" onclick="selectFromDirectory(\'' + c.id + '\')">' +
+            '<span class="dir-suggestion-name">' + escapeHtml(c.name || '') + '</span>' +
+            (c.phone ? '<span class="dir-suggestion-meta">' + escapeHtml(c.phone) + '</span>' : '') +
+            (c.email ? '<span class="dir-suggestion-meta">' + escapeHtml(c.email) + '</span>' : '') +
+            '</div>'
+        ).join('');
 
     suggestionsDiv.style.display = '';
 }
+
+function applyJobTemplate(templateName) {
+    const el = document.getElementById('staff-role');
+    if (el) el.value = templateName;
+    document.getElementById('staff-dir-suggestions').style.display = 'none';
+}
+window.applyJobTemplate = applyJobTemplate;
 window.onStaffRoleInput = onStaffRoleInput;
 
 function selectFromDirectory(contactId) {
@@ -6839,7 +6881,6 @@ function expandDirectoryRow(e, contactId) {}
 window.expandDirectoryRow = expandDirectoryRow;
 
 const BUDGET_CATEGORIES = [
-    { value: '', label: '— Not mapped —' },
     { value: '6811a - Talent/Performers & Hosts',         label: 'A — Talent / Performers & Hosts' },
     { value: '6811b - A/V Production',                    label: 'B — A/V Production' },
     { value: '6811c - Venue & Permits',                   label: 'C — Venue & Permits' },
@@ -6854,46 +6895,49 @@ function toggleRoleMappings() {
     if (!panel) return;
     const showing = panel.style.display !== 'none';
     panel.style.display = showing ? 'none' : '';
-    if (!showing) renderRoleMappings();
+    if (!showing) renderJobTemplates();
 }
 window.toggleRoleMappings = toggleRoleMappings;
 
-function renderRoleMappings() {
+function renderJobTemplates() {
     const container = document.getElementById('role-mappings-content');
     if (!container) return;
 
-    // Collect all unique roles from the directory
-    const allRoles = [...new Set(
-        state.staffDirectory.flatMap(c => c.roles || [])
-    )].sort((a, b) => a.localeCompare(b));
-
-    if (!allRoles.length) {
-        container.innerHTML = '<p class="staff-index-empty">No roles found in your directory yet.</p>';
-        return;
-    }
-
-    const optionsHtml = BUDGET_CATEGORIES.map(c =>
+    const catOpts = BUDGET_CATEGORIES.map(c =>
         '<option value="' + escapeHtml(c.value) + '">' + escapeHtml(c.label) + '</option>'
     ).join('');
 
-    container.innerHTML = '<table class="role-map-table"><tbody>' +
-        allRoles.map(role => {
-            const key = role.trim().toLowerCase();
-            const current = state.roleCategoryMap[key] || '';
-            const opts = BUDGET_CATEGORIES.map(c =>
-                '<option value="' + escapeHtml(c.value) + '"' + (c.value === current ? ' selected' : '') + '>' +
-                escapeHtml(c.label) + '</option>'
-            ).join('');
-            return '<tr>' +
-                '<td class="role-map-role">' + escapeHtml(role) + '</td>' +
-                '<td><select class="role-map-select" onchange="saveRoleMapping(\'' + escapeHtml(role).replace(/'/g, "\\'") + '\', this.value)">' +
-                    opts +
-                '</select></td>' +
-                '</tr>';
-        }).join('') +
-        '</tbody></table>';
+    const addRow = '<tr class="role-map-add-row">' +
+        '<td><input type="text" id="jt-add-name" class="role-map-input" placeholder="Job title (e.g. Audio Engineer)"></td>' +
+        '<td><select id="jt-add-cat" class="role-map-select"><option value="">— Pick category —</option>' + catOpts + '</select></td>' +
+        '<td><button class="btn btn-primary-gold btn-sm" onclick="addJobTemplateFromForm()">Add</button></td>' +
+        '</tr>';
+
+    const rows = state.jobTemplates.length
+        ? state.jobTemplates
+            .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+            .map(t => {
+                const catLabel = BUDGET_CATEGORIES.find(c => c.value === t.category);
+                return '<tr>' +
+                    '<td class="role-map-role">' + escapeHtml(t.name || '') + '</td>' +
+                    '<td class="role-map-cat-label">' + escapeHtml(catLabel ? catLabel.label : t.category || '') + '</td>' +
+                    '<td><button class="btn btn-icon btn-sm" onclick="deleteJobTemplate(\'' + t.id + '\')" title="Remove">' +
+                        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>' +
+                    '</button></td>' +
+                    '</tr>';
+            }).join('')
+        : '<tr><td colspan="3" class="role-map-empty">No job templates yet. Add one above.</td></tr>';
+
+    container.innerHTML = '<table class="role-map-table"><tbody>' + addRow + rows + '</tbody></table>';
 }
-window.renderRoleMappings = renderRoleMappings;
+window.renderJobTemplates = renderJobTemplates;
+
+function addJobTemplateFromForm() {
+    const name = (document.getElementById('jt-add-name')?.value || '').trim();
+    const category = document.getElementById('jt-add-cat')?.value || '';
+    addJobTemplate(name, category).then(() => renderJobTemplates());
+}
+window.addJobTemplateFromForm = addJobTemplateFromForm;
 
 function toggleDirContactPopover(e, contactId) {
     e.stopPropagation();
