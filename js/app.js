@@ -26,6 +26,7 @@ const state = {
     cocktailStageInputs: [],
     staff: [],
     staffDirectory: [],
+    performerDirectory: [],
     roleCategoryMap: {},      // role (lowercase) → budget category string (derived from jobTemplates)
     jobTemplates: [],         // [{id, name, category}] global reusable role → budget mappings
     stagePlots: [],
@@ -509,6 +510,7 @@ function initializeApp() {
     loadSeasons();
     loadEvents();
     loadStaffDirectory();
+    loadPerformerDirectory();
     loadRoleCategoryMap();
 
     if (savedEventId) {
@@ -7176,6 +7178,326 @@ document.addEventListener('click', () => {
     const p = document.getElementById('dir-contact-popover');
     if (p) p.style.display = 'none';
 });
+
+// ==========================================
+// PERFORMER DIRECTORY
+// ==========================================
+
+const performerDirectoryCollection = db.collection('performerDirectory');
+
+function loadPerformerDirectory() {
+    performerDirectoryCollection.onSnapshot(snap => {
+        state.performerDirectory = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const modal = document.getElementById('performer-index-modal');
+        if (modal && modal.classList.contains('active')) renderPerformerIndex();
+    }, err => console.warn('performerDirectory listener error:', err));
+}
+
+function openPerformerIndex() {
+    const modal = document.getElementById('performer-index-modal');
+    if (!modal) return;
+    const addForm = document.getElementById('performer-add-form');
+    if (addForm) addForm.style.display = 'none';
+    renderPerformerIndex();
+    modal.classList.add('active');
+    document.getElementById('nav-menu')?.classList.remove('open');
+}
+window.openPerformerIndex = openPerformerIndex;
+
+function closePerformerIndex() {
+    const modal = document.getElementById('performer-index-modal');
+    if (modal) modal.classList.remove('active');
+}
+window.closePerformerIndex = closePerformerIndex;
+
+function toggleAddPerformer() {
+    const form = document.getElementById('performer-add-form');
+    if (!form) return;
+    const showing = form.style.display !== 'none';
+    form.style.display = showing ? 'none' : '';
+    if (!showing) {
+        ['pa-name','pa-act','pa-phone','pa-email'].forEach(id => {
+            const el = document.getElementById(id); if (el) el.value = '';
+        });
+        document.getElementById('pa-parents-list').innerHTML = '';
+        document.getElementById('pa-name')?.focus();
+    }
+}
+window.toggleAddPerformer = toggleAddPerformer;
+
+// Render a parent row in an add or edit form
+function parentRowHtml(listId, idx, parent) {
+    parent = parent || {};
+    return '<div class="perf-parent-row" data-idx="' + idx + '">' +
+        '<input type="text"  class="perf-par-name"  placeholder="Parent name"  value="' + escapeHtml(parent.name  || '') + '">' +
+        '<input type="tel"   class="perf-par-phone" placeholder="Phone"        value="' + escapeHtml(parent.phone || '') + '">' +
+        '<input type="email" class="perf-par-email"  placeholder="Email"        value="' + escapeHtml(parent.email || '') + '">' +
+        '<button class="btn btn-icon btn-sm perf-par-remove" onclick="removeParentRow(this)" title="Remove parent">' +
+            '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>' +
+        '</button>' +
+    '</div>';
+}
+
+function addParentRow(listId) {
+    const list = document.getElementById(listId);
+    if (!list) return;
+    const idx = list.querySelectorAll('.perf-parent-row').length;
+    const div = document.createElement('div');
+    div.innerHTML = parentRowHtml(listId, idx, {});
+    list.appendChild(div.firstChild);
+}
+window.addParentRow = addParentRow;
+
+function addParentRowEdit(performerId) {
+    addParentRow('pe-parents-' + performerId);
+}
+window.addParentRowEdit = addParentRowEdit;
+
+function removeParentRow(btn) {
+    btn.closest('.perf-parent-row')?.remove();
+}
+window.removeParentRow = removeParentRow;
+
+function collectParents(listId) {
+    const list = document.getElementById(listId);
+    if (!list) return [];
+    return Array.from(list.querySelectorAll('.perf-parent-row')).map(row => ({
+        name:  (row.querySelector('.perf-par-name')?.value  || '').trim(),
+        phone: (row.querySelector('.perf-par-phone')?.value || '').trim(),
+        email: (row.querySelector('.perf-par-email')?.value || '').trim(),
+    })).filter(p => p.name || p.phone || p.email);
+}
+
+async function saveNewPerformer() {
+    const name  = (document.getElementById('pa-name')?.value  || '').trim();
+    const act   = (document.getElementById('pa-act')?.value   || '').trim();
+    const phone = (document.getElementById('pa-phone')?.value || '').trim();
+    const email = (document.getElementById('pa-email')?.value || '').trim();
+    if (!name || !act) { showToast('Name and Act are required', 'error'); return; }
+    const parents = collectParents('pa-parents-list');
+    try {
+        await performerDirectoryCollection.add({
+            name, act, phone: phone || null, email: email || null, parents,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        showToast('Performer added');
+        toggleAddPerformer();
+    } catch (e) {
+        console.error('saveNewPerformer error:', e);
+        showToast('Error saving performer', 'error');
+    }
+}
+window.saveNewPerformer = saveNewPerformer;
+
+function togglePerformerEditRow(performerId) {
+    const row = document.getElementById('pe-edit-' + performerId);
+    if (!row) return;
+    const showing = row.style.display !== 'none';
+    row.style.display = showing ? 'none' : '';
+    if (!showing) document.getElementById('pe-name-' + performerId)?.focus();
+}
+window.togglePerformerEditRow = togglePerformerEditRow;
+
+async function savePerformerEdit(performerId) {
+    const name  = (document.getElementById('pe-name-'  + performerId)?.value || '').trim();
+    const act   = (document.getElementById('pe-act-'   + performerId)?.value || '').trim();
+    const phone = (document.getElementById('pe-phone-' + performerId)?.value || '').trim();
+    const email = (document.getElementById('pe-email-' + performerId)?.value || '').trim();
+    if (!name || !act) { showToast('Name and Act are required', 'error'); return; }
+    const parents = collectParents('pe-parents-' + performerId);
+
+    const editRow = document.getElementById('pe-edit-' + performerId);
+    if (editRow) editRow.style.display = 'none';
+
+    const idx = state.performerDirectory.findIndex(p => p.id === performerId);
+    if (idx !== -1) state.performerDirectory[idx] = { ...state.performerDirectory[idx], name, act, phone: phone || null, email: email || null, parents };
+    renderPerformerIndex();
+
+    try {
+        await performerDirectoryCollection.doc(performerId).update({ name, act, phone: phone || null, email: email || null, parents });
+        showToast('Performer updated');
+    } catch (e) {
+        console.error('savePerformerEdit error:', e);
+        showToast('Error saving performer', 'error');
+    }
+}
+window.savePerformerEdit = savePerformerEdit;
+
+async function deletePerformer(id) {
+    const p = state.performerDirectory.find(p => p.id === id);
+    if (!p) return;
+    if (!confirm('Remove ' + (p.name || 'this performer') + ' from the directory?')) return;
+    state.performerDirectory = state.performerDirectory.filter(p => p.id !== id);
+    renderPerformerIndex();
+    try {
+        await performerDirectoryCollection.doc(id).delete();
+        showToast('Performer removed');
+    } catch (e) {
+        console.error('deletePerformer error:', e);
+        showToast('Error removing performer', 'error');
+    }
+}
+window.deletePerformer = deletePerformer;
+
+function renderPerformerIndex() {
+    const container = document.getElementById('performer-index-content');
+    if (!container) return;
+
+    // Preserve open edit rows
+    const activeEdits = {};
+    container.querySelectorAll('.pe-edit-row').forEach(row => {
+        if (row.style.display !== 'none') {
+            const id = row.id.replace('pe-edit-', '');
+            activeEdits[id] = {
+                name:    document.getElementById('pe-name-'  + id)?.value ?? null,
+                act:     document.getElementById('pe-act-'   + id)?.value ?? null,
+                phone:   document.getElementById('pe-phone-' + id)?.value ?? null,
+                email:   document.getElementById('pe-email-' + id)?.value ?? null,
+                parents: collectParents('pe-parents-' + id),
+            };
+        }
+    });
+
+    const dir = [...state.performerDirectory].sort((a, b) => {
+        const actCmp = (a.act || '').localeCompare(b.act || '');
+        if (actCmp !== 0) return actCmp;
+        return (a.name || '').localeCompare(b.name || '');
+    });
+
+    const searchVal = (document.getElementById('performer-index-search')?.value || '').trim().toLowerCase();
+    const filtered = searchVal
+        ? dir.filter(p =>
+            (p.name || '').toLowerCase().includes(searchVal) ||
+            (p.act  || '').toLowerCase().includes(searchVal) ||
+            (p.parents || []).some(par => (par.name || '').toLowerCase().includes(searchVal))
+          )
+        : dir;
+
+    if (!filtered.length) {
+        container.innerHTML = '<p class="staff-index-empty">' +
+            (searchVal ? 'No performers match your search.' : 'No performers yet. Click + Add Performer to get started.') +
+            '</p>';
+        return;
+    }
+
+    const editIconSvg  = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
+    const trashIconSvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>';
+    const personIconSvg = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
+
+    let lastAct = null;
+    const rows = filtered.map(p => {
+        const hasContact = p.phone || p.email;
+        const parents = p.parents || [];
+
+        let groupHeader = '';
+        if (p.act !== lastAct) {
+            lastAct = p.act;
+            groupHeader = '<tr class="dir-group-header"><td colspan="3">' + escapeHtml(p.act || 'No Act') + '</td></tr>';
+        }
+
+        // Edit row
+        const parentEditHtml = parents.map((par, i) => parentRowHtml('pe-parents-' + p.id, i, par)).join('');
+        const editRow = '<tr class="pe-edit-row dir-edit-row" id="pe-edit-' + p.id + '" style="display:none">' +
+            '<td colspan="3"><div class="dir-edit-form">' +
+                '<div class="dir-edit-fields">' +
+                    '<div class="form-group"><label>Name</label><input id="pe-name-' + p.id + '" type="text" value="' + escapeHtml(p.name || '') + '"></div>' +
+                    '<div class="form-group"><label>Act / Band</label><input id="pe-act-' + p.id + '" type="text" value="' + escapeHtml(p.act || '') + '"></div>' +
+                    '<div class="form-group"><label>Phone</label><input id="pe-phone-' + p.id + '" type="tel" value="' + escapeHtml(p.phone || '') + '"></div>' +
+                    '<div class="form-group"><label>Email</label><input id="pe-email-' + p.id + '" type="email" value="' + escapeHtml(p.email || '') + '"></div>' +
+                '</div>' +
+                '<div class="perf-parents-section">' +
+                    '<div class="perf-parents-label">Parents / Guardians</div>' +
+                    '<div id="pe-parents-' + p.id + '">' + parentEditHtml + '</div>' +
+                    '<button class="btn btn-secondary btn-sm" style="margin-top:6px" onclick="addParentRowEdit(\'' + p.id + '\')">+ Add Parent</button>' +
+                '</div>' +
+                '<div class="dir-edit-actions">' +
+                    '<button class="btn btn-primary-gold btn-sm" onclick="savePerformerEdit(\'' + p.id + '\')">Save</button>' +
+                    '<button class="btn btn-secondary btn-sm" onclick="togglePerformerEditRow(\'' + p.id + '\')">Cancel</button>' +
+                '</div>' +
+            '</div></td></tr>';
+
+        // Parent summary pill(s)
+        const parentPills = parents.length
+            ? '<span class="perf-parent-pills">' +
+                parents.map(par => '<span class="dir-role-pill perf-parent-pill" title="' + escapeHtml((par.phone || '') + (par.email ? '  ' + par.email : '')) + '">' + personIconSvg + ' ' + escapeHtml(par.name || 'Parent') + '</span>').join('') +
+              '</span>'
+            : '<span style="opacity:0.35;font-size:0.78rem">No parents listed</span>';
+
+        const contactBtn = '<button class="btn btn-icon btn-sm dir-contact-btn' + (hasContact ? '' : ' dir-contact-btn--missing') + '" title="' + (hasContact ? 'Contact info' : 'No contact info') + '" onclick="' + (hasContact ? 'togglePerfContactPopover(event,\'' + p.id + '\')' : 'showDirMissingContact(event)') + '">' +
+            '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>' +
+            (hasContact ? '' : '<span class="dir-contact-missing-dot">!</span>') +
+        '</button>';
+
+        const mainRow = '<tr class="staff-index-row">' +
+            '<td><strong>' + escapeHtml(p.name || '') + '</strong></td>' +
+            '<td>' + parentPills + '</td>' +
+            '<td class="dir-row-actions">' +
+                contactBtn +
+                '<button class="btn btn-icon btn-sm" title="Edit" onclick="togglePerformerEditRow(\'' + p.id + '\')">' + editIconSvg + '</button>' +
+                '<button class="btn btn-icon btn-sm" title="Delete" onclick="deletePerformer(\'' + p.id + '\')">' + trashIconSvg + '</button>' +
+            '</td>' +
+        '</tr>';
+
+        return groupHeader + mainRow + editRow;
+    }).join('');
+
+    container.innerHTML = '<table class="staff-index-table"><thead><tr>' +
+        '<th>Name</th><th>Parents</th><th></th>' +
+        '</tr></thead><tbody>' + rows + '</tbody></table>';
+
+    // Restore any open edit rows
+    Object.keys(activeEdits).forEach(id => {
+        const editRow = document.getElementById('pe-edit-' + id);
+        if (!editRow) return;
+        const d = activeEdits[id];
+        editRow.style.display = '';
+        const set = (field, val) => { if (val !== null) { const el = document.getElementById(field + id); if (el) el.value = val; } };
+        set('pe-name-', d.name); set('pe-act-', d.act); set('pe-phone-', d.phone); set('pe-email-', d.email);
+        // Restore parent rows
+        if (d.parents && d.parents.length) {
+            const pList = document.getElementById('pe-parents-' + id);
+            if (pList) {
+                pList.innerHTML = d.parents.map((par, i) => parentRowHtml('pe-parents-' + id, i, par)).join('');
+            }
+        }
+    });
+}
+window.renderPerformerIndex = renderPerformerIndex;
+
+function togglePerfContactPopover(e, performerId) {
+    e.stopPropagation();
+    const p = state.performerDirectory.find(p => p.id === performerId);
+    if (!p) return;
+    let popover = document.getElementById('dir-contact-popover');
+    if (!popover) {
+        popover = document.createElement('div');
+        popover.id = 'dir-contact-popover';
+        document.body.appendChild(popover);
+    }
+    if (popover.dataset.contactId === performerId && popover.style.display !== 'none') {
+        popover.style.display = 'none'; popover.dataset.contactId = ''; return;
+    }
+    popover.dataset.contactId = performerId;
+    let html = '';
+    if (p.phone) html += '<div class="dir-popover-row"><span class="dir-popover-label">Phone</span>' + escapeHtml(p.phone) + '</div>';
+    if (p.email) html += '<div class="dir-popover-row"><span class="dir-popover-label">Email</span>' + escapeHtml(p.email) + '</div>';
+    (p.parents || []).forEach(par => {
+        if (!par.name && !par.phone && !par.email) return;
+        html += '<div class="dir-popover-row" style="border-top:1px solid rgba(255,255,255,0.07);margin-top:4px;padding-top:4px"><span class="dir-popover-label" style="color:#c9a961">Parent</span>' + escapeHtml(par.name || '') + '</div>';
+        if (par.phone) html += '<div class="dir-popover-row"><span class="dir-popover-label">Phone</span>' + escapeHtml(par.phone) + '</div>';
+        if (par.email) html += '<div class="dir-popover-row"><span class="dir-popover-label">Email</span>' + escapeHtml(par.email) + '</div>';
+    });
+    popover.innerHTML = html || '<div class="dir-popover-missing">No contact info.</div>';
+    const btn = e.currentTarget;
+    const rect = btn.getBoundingClientRect();
+    popover.style.display = 'block';
+    popover.style.top = (rect.bottom + window.scrollY + 6) + 'px';
+    const popW = 240;
+    let left = rect.right + window.scrollX - popW;
+    if (left < 8) left = 8;
+    popover.style.left = left + 'px';
+}
+window.togglePerfContactPopover = togglePerfContactPopover;
 
 // ==========================================
 // PACKING LIST

@@ -5310,6 +5310,51 @@ body.menu-open::after {
     font-size: 0.78rem;
 }
 
+/* Performer Directory */
+.perf-parent-pills { display: flex; flex-wrap: wrap; gap: 4px; }
+.perf-parent-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(99,179,237,0.12);
+    color: #7ec8e3;
+    border: 1px solid rgba(99,179,237,0.25);
+    border-radius: 4px;
+    padding: 2px 7px;
+    font-size: 0.78rem;
+    cursor: default;
+}
+.perf-parents-section {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255,255,255,0.07);
+}
+.perf-parents-label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: rgba(255,255,255,0.5);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 8px;
+}
+.perf-parent-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr auto;
+    gap: 6px;
+    align-items: center;
+    margin-bottom: 6px;
+}
+.perf-parent-row input {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 5px;
+    color: #fff;
+    padding: 5px 8px;
+    font-size: 0.82rem;
+}
+.perf-par-remove { color: rgba(252,129,129,0.6); }
+.perf-par-remove:hover { color: #fc8181; }
+
 /* Modal schedule grid */
 .staff-schedule-grid {
     display: flex;
