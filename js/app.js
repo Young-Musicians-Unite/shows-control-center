@@ -7506,6 +7506,72 @@ window.togglePerfContactPopover = togglePerfContactPopover;
 let _gTokenClient = null;
 let _gAccessToken  = null;
 
+function buildCalendarDescription() {
+    const d  = state.intake || {};
+    const ev = state.activeEvent || {};
+
+    const eventName     = d.event_name     || ev.name        || '';
+    const venueName     = d.venue_name     || ev.venue       || '';
+    const venueAddress  = d.venue_address  || '';
+    const bands         = d.performing_bands || ev.performingGroups || '';
+    const dressCode     = d.dress_code     || '';
+    const parking       = d.parking_info   || '';
+    const preRows       = d.pre_show_rows  || [];
+    const rosRows       = d.run_of_show_rows || [];
+
+    // Format date
+    let dateStr = '';
+    const rawDate = d.event_date || ev.date || '';
+    if (rawDate) {
+        try { dateStr = new Date(rawDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }); }
+        catch(e) { dateStr = rawDate; }
+    }
+
+    const fmt = (rows) => rows
+        .filter(r => r.label || r.time)
+        .map(r => [r.time, r.label].filter(Boolean).join(' — '))
+        .join('\n');
+
+    let desc = '';
+
+    // Header
+    if (eventName) desc += (eventName.toUpperCase()) + '\n\n';
+
+    // Excitement line
+    if (eventName) desc += `We are so excited for ${eventName}!\n`;
+    desc += 'Please review the full event details below for venue information, arrival times, soundchecks, run of show, and logistics.\n';
+
+    // Venue block
+    desc += '\n';
+    if (venueName)    desc += `📍 Venue: ${venueName}\n`;
+    if (venueAddress) desc += `Address: ${venueAddress}\n`;
+    if (dateStr)      desc += `📅 Date: ${dateStr}\n`;
+    if (bands)        desc += `🎤 Performing Bands: ${bands}\n`;
+
+    // Pre-show
+    if (preRows.length) {
+        desc += '\nPRE-SHOW / SOUNDCHECKS 🎛️\n\n';
+        desc += fmt(preRows) + '\n';
+    }
+
+    // Run of show
+    if (rosRows.length) {
+        desc += '\nRUN OF SHOW 🎶\n\n';
+        desc += fmt(rosRows) + '\n';
+    }
+
+    // Logistics
+    if (dressCode || parking) {
+        desc += '\nLOGISTICS 🚗\n\n';
+        if (dressCode) desc += `Dress Code: ${dressCode}\n`;
+        if (parking)   desc += `Parking: ${parking}\n`;
+    }
+
+    desc += '\nPlease arrive on time and be ready for your scheduled soundcheck/performance window. Schedule is subject to small adjustments as we get closer to the event.';
+
+    return desc.trim();
+}
+
 function initGoogleTokenClient(callback) {
     if (!window.google || !window.google.accounts) {
         showToast('Google Sign-In library not loaded yet — try again in a moment', 'error');
@@ -7549,13 +7615,16 @@ window.closeIntakeCalendarPanel = closeIntakeCalendarPanel;
 
 function populateIntakeCalendarPanel() {
     const ev = state.activeEvent;
+    const d  = state.intake || {};
     if (ev) {
         const t = document.getElementById('ical-title');
-        if (t && !t.value) t.value = (ev.name || '') + ' — Performer Call';
+        if (t && !t.value) t.value = (d.event_name || ev.name || '') + ' — Performer Call';
         const l = document.getElementById('ical-location');
-        if (l && !l.value) l.value = ev.venue || ev.location || '';
-        const d = document.getElementById('ical-date');
-        if (d && !d.value && ev.date) d.value = ev.date;
+        if (l && !l.value) l.value = d.venue_name || ev.venue || ev.location || '';
+        const dt = document.getElementById('ical-date');
+        if (dt && !dt.value) dt.value = d.event_date || ev.date || '';
+        const notesEl = document.getElementById('ical-notes');
+        if (notesEl && !notesEl.value) notesEl.value = buildCalendarDescription();
     }
     const listEl = document.getElementById('ical-performer-list');
     if (!listEl) return;
@@ -7650,15 +7719,17 @@ function toggleSendInvitesPanel() {
 window.toggleSendInvitesPanel = toggleSendInvitesPanel;
 
 function populateSendInvitesPanel() {
-    // Pre-fill event details from active event
     const ev = state.activeEvent;
+    const d  = state.intake || {};
     if (ev) {
         const titleEl = document.getElementById('si-title');
-        if (titleEl && !titleEl.value) titleEl.value = (ev.name || '') + ' — Performer Call';
+        if (titleEl && !titleEl.value) titleEl.value = (d.event_name || ev.name || '') + ' — Performer Call';
         const locEl = document.getElementById('si-location');
-        if (locEl && !locEl.value) locEl.value = ev.venue || ev.location || '';
+        if (locEl && !locEl.value) locEl.value = d.venue_name || ev.venue || ev.location || '';
         const dateEl = document.getElementById('si-date');
-        if (dateEl && !dateEl.value && ev.date) dateEl.value = ev.date;
+        if (dateEl && !dateEl.value) dateEl.value = d.event_date || ev.date || '';
+        const notesEl = document.getElementById('si-notes');
+        if (notesEl && !notesEl.value) notesEl.value = buildCalendarDescription();
     }
 
     // Render performer checklist grouped by act
