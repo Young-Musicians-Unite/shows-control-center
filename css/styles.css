@@ -5034,6 +5034,22 @@ body.menu-open::after {
     border-bottom: none;
 }
 
+.staff-index-row {
+    cursor: pointer;
+    transition: background 0.12s;
+}
+
+.staff-index-row:hover {
+    background: #fdfaf4;
+}
+
+.dir-row-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+}
+
 .dir-role-pills {
     display: flex;
     flex-wrap: wrap;
