@@ -500,6 +500,9 @@ function initializeApp() {
         }
     });
 
+    // Read saved session before anything clears it
+    const savedEventId = localStorage.getItem('lastEventId');
+
     // Always start at the events hub; enter a specific event first before navigating to event pages
     document.querySelector('.nav-menu').classList.add('hub-mode');
     switchPage('events-hub');
@@ -509,7 +512,6 @@ function initializeApp() {
     loadStaffDirectory();  // global across all events
 
     // Restore last session (hard refresh returns to the same event + page)
-    const savedEventId = localStorage.getItem('lastEventId');
     if (savedEventId) {
         enterEvent(savedEventId).catch(() => {
             localStorage.removeItem('lastEventId');
@@ -644,7 +646,6 @@ function switchPage(pageName) {
         window.location.hash = pageName;
         // Persist so hard-refresh returns to the same spot
         if (pageName !== 'events-hub') localStorage.setItem('lastPage', pageName);
-        else { localStorage.removeItem('lastPage'); localStorage.removeItem('lastEventId'); }
 
         // Clear editing state when switching pages
         state.budgetEditingRowId = null;
