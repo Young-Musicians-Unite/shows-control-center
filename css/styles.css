@@ -9469,6 +9469,7 @@ body.menu-open::after {
     align-items: center;
     gap: 16px;
 }
+.intake-cal-btn { margin-left: auto; }
 .intake-save-status {
     font-size: 0.78rem;
     color: #7ab89a;

@@ -237,6 +237,10 @@
             <div class="page-header intake-page-header">
                 <h1>Show Intake</h1>
                 <span class="intake-save-status" id="intake-save-status"></span>
+                <button class="btn btn-secondary btn-sm intake-cal-btn" onclick="openIntakeCalendarPanel()">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                    Send Performer Invites
+                </button>
             </div>
             <div id="intake-form-body" class="intake-form"></div>
         </div>
@@ -2436,6 +2440,65 @@
                 </div>
 
                 <div id="staff-index-content"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Intake: Send Performer Invites Modal -->
+    <div id="intake-cal-modal" class="modal" onclick="if(event.target===this)closeIntakeCalendarPanel()">
+        <div class="modal-content modal-lg">
+            <div class="modal-header">
+                <h2>Send Performer Invitations</h2>
+                <button class="modal-close" onclick="closeIntakeCalendarPanel()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="send-invites-inner" style="border:none;padding:0;background:none">
+                    <div class="send-invites-fields">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Event Title</label>
+                                <input type="text" id="ical-title" placeholder="e.g. YMU Gala 2026 — Performer Call">
+                            </div>
+                            <div class="form-group">
+                                <label>Location / Venue</label>
+                                <input type="text" id="ical-location" placeholder="e.g. The Beverly Hilton">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Date</label>
+                                <input type="date" id="ical-date">
+                            </div>
+                            <div class="form-group">
+                                <label>Start Time</label>
+                                <input type="time" id="ical-start">
+                            </div>
+                            <div class="form-group">
+                                <label>End Time</label>
+                                <input type="time" id="ical-end">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Notes / Description</label>
+                            <textarea id="ical-notes" rows="2" placeholder="e.g. Load-in at 4pm. Dressing rooms on level 2."></textarea>
+                        </div>
+                    </div>
+                    <div class="send-invites-select-hdr">
+                        <span>Select Performers</span>
+                        <label class="si-check-label"><input type="checkbox" id="ical-include-parents" checked> Include parents</label>
+                        <button class="btn btn-sm btn-secondary" onclick="icalSelectAll()">Select All</button>
+                        <button class="btn btn-sm btn-secondary" onclick="icalSelectNone()">None</button>
+                    </div>
+                    <div id="ical-performer-list" class="si-performer-list"></div>
+                    <div id="ical-auth-status" class="si-auth-status" style="display:none"></div>
+                    <div class="send-invites-actions">
+                        <button class="btn btn-primary-gold" onclick="sendIntakeCalendarInvites()">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.39 2 2 0 0 1 3.58 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.54a16 16 0 0 0 6 6l.92-.92a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21.72 16h.2z"/></svg>
+                            Send Invitations
+                        </button>
+                        <button class="btn btn-secondary" onclick="closeIntakeCalendarPanel()">Cancel</button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>

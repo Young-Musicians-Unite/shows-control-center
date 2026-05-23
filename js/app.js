@@ -1054,7 +1054,6 @@ function renderHub() {
         return `<tr>
             <td class="hub-cell-date hub-cell-editable" onclick="editHubCell(this,'${ev.id}','date','${escapeHtml(ev.date || '')}')" title="Click to edit">${dateStr}</td>
             <td class="hub-cell-name hub-cell-editable" onclick="editHubCell(this,'${ev.id}','name','${escapeHtml(ev.name || '')}')" title="Click to edit">${escapeHtml(ev.name || '—')}</td>
-            <td class="hub-cell-lead hub-cell-editable" onclick="editHubCell(this,'${ev.id}','lead','${escapeHtml(ev.lead || '')}')" title="Click to edit">${escapeHtml(ev.lead || '—')}</td>
             <td class="hub-cell-groups hub-cell-editable" onclick="editHubCell(this,'${ev.id}','performingGroups','${escapeHtml(ev.performingGroups || '')}')" title="Click to edit">${escapeHtml(ev.performingGroups || '—')}</td>
             <td class="hub-cell-phase">
                 <select class="phase-select" style="background:${phase.color};color:${phase.text}"
@@ -1070,7 +1069,7 @@ function renderHub() {
 
     el.innerHTML = `<table class="hub-table">
         <thead><tr>
-            <th>Date</th><th>Event Name</th><th>Event Lead</th><th>Performing Groups</th><th>Phase</th><th></th>
+            <th>Date</th><th>Event Name</th><th>Performing Groups</th><th>Phase</th><th></th>
         </tr></thead>
         <tbody>${rows}</tbody>
     </table>`;
@@ -7533,6 +7532,111 @@ function initGoogleTokenClient(callback) {
     if (_gAccessToken) { callback(_gAccessToken); return; }
     _gTokenClient.requestAccessToken({ prompt: '' });
 }
+
+function openIntakeCalendarPanel() {
+    const modal = document.getElementById('intake-cal-modal');
+    if (!modal) return;
+    populateIntakeCalendarPanel();
+    modal.classList.add('active');
+}
+window.openIntakeCalendarPanel = openIntakeCalendarPanel;
+
+function closeIntakeCalendarPanel() {
+    const modal = document.getElementById('intake-cal-modal');
+    if (modal) modal.classList.remove('active');
+}
+window.closeIntakeCalendarPanel = closeIntakeCalendarPanel;
+
+function populateIntakeCalendarPanel() {
+    const ev = state.activeEvent;
+    if (ev) {
+        const t = document.getElementById('ical-title');
+        if (t && !t.value) t.value = (ev.name || '') + ' — Performer Call';
+        const l = document.getElementById('ical-location');
+        if (l && !l.value) l.value = ev.venue || ev.location || '';
+        const d = document.getElementById('ical-date');
+        if (d && !d.value && ev.date) d.value = ev.date;
+    }
+    const listEl = document.getElementById('ical-performer-list');
+    if (!listEl) return;
+    const dir = [...state.performerDirectory].sort((a, b) =>
+        (a.act || '').localeCompare(b.act || '') || (a.name || '').localeCompare(b.name || '')
+    );
+    if (!dir.length) { listEl.innerHTML = '<div class="si-empty">No performers in directory yet.</div>'; return; }
+    let lastAct = null;
+    listEl.innerHTML = dir.map(p => {
+        let header = '';
+        if (p.act !== lastAct) { lastAct = p.act; header = '<div class="si-act-header">' + escapeHtml(p.act || 'No Act') + '</div>'; }
+        const hasEmail = p.email || (p.parents || []).some(par => par.email);
+        return header + '<label class="si-performer-row' + (hasEmail ? '' : ' si-no-email') + '">' +
+            '<input type="checkbox" class="ical-check" data-id="' + p.id + '" ' + (hasEmail ? 'checked' : 'disabled') + '>' +
+            '<span class="si-performer-name">' + escapeHtml(p.name || '') + '</span>' +
+            (hasEmail ? '' : '<span class="si-no-email-tag">no email</span>') +
+        '</label>';
+    }).join('');
+}
+
+function icalSelectAll() { document.querySelectorAll('.ical-check:not(:disabled)').forEach(cb => cb.checked = true); }
+window.icalSelectAll = icalSelectAll;
+function icalSelectNone() { document.querySelectorAll('.ical-check').forEach(cb => cb.checked = false); }
+window.icalSelectNone = icalSelectNone;
+
+async function sendIntakeCalendarInvites() {
+    const title    = (document.getElementById('ical-title')?.value    || '').trim();
+    const location = (document.getElementById('ical-location')?.value || '').trim();
+    const date     = (document.getElementById('ical-date')?.value     || '').trim();
+    const start    = (document.getElementById('ical-start')?.value    || '').trim();
+    const end      = (document.getElementById('ical-end')?.value      || '').trim();
+    const notes    = (document.getElementById('ical-notes')?.value    || '').trim();
+    const inclParents = document.getElementById('ical-include-parents')?.checked;
+
+    if (!title || !date || !start || !end) { showToast('Title, date, start and end time are required', 'error'); return; }
+
+    const selectedIds = Array.from(document.querySelectorAll('.ical-check:checked')).map(cb => cb.dataset.id);
+    if (!selectedIds.length) { showToast('Select at least one performer', 'error'); return; }
+
+    const emails = new Set();
+    selectedIds.forEach(id => {
+        const p = state.performerDirectory.find(p => p.id === id);
+        if (!p) return;
+        if (p.email) emails.add(p.email);
+        if (inclParents) (p.parents || []).forEach(par => { if (par.email) emails.add(par.email); });
+    });
+    if (!emails.size) { showToast('No email addresses found for selected performers', 'error'); return; }
+
+    const statusEl = document.getElementById('ical-auth-status');
+    if (statusEl) { statusEl.style.display = ''; statusEl.textContent = 'Authorizing with Google…'; statusEl.className = 'si-auth-status si-auth-pending'; }
+
+    initGoogleTokenClient(async (accessToken) => {
+        try {
+            if (statusEl) statusEl.textContent = 'Creating calendar event…';
+            const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            const event = {
+                summary: title,
+                location: location || undefined,
+                description: notes || undefined,
+                start: { dateTime: date + 'T' + start + ':00', timeZone: tz },
+                end:   { dateTime: date + 'T' + end   + ':00', timeZone: tz },
+                attendees: Array.from(emails).map(email => ({ email })),
+                guestsCanSeeOtherGuests: false,
+                sendUpdates: 'all',
+            };
+            const resp = await fetch(
+                'https://www.googleapis.com/calendar/v3/calendars/primary/events?sendUpdates=all',
+                { method: 'POST', headers: { 'Authorization': 'Bearer ' + accessToken, 'Content-Type': 'application/json' }, body: JSON.stringify(event) }
+            );
+            if (!resp.ok) { const err = await resp.json(); throw new Error(err.error?.message || resp.statusText); }
+            if (statusEl) { statusEl.textContent = '✓ Invitations sent to ' + emails.size + ' address' + (emails.size !== 1 ? 'es' : '') + '!'; statusEl.className = 'si-auth-status si-auth-ok'; }
+            showToast('Calendar invites sent to ' + emails.size + ' recipient' + (emails.size !== 1 ? 's' : ''));
+        } catch (e) {
+            console.error('sendIntakeCalendarInvites error:', e);
+            if (statusEl) { statusEl.textContent = 'Error: ' + e.message; statusEl.className = 'si-auth-status si-auth-error'; }
+            showToast('Error: ' + e.message, 'error');
+            _gAccessToken = null;
+        }
+    });
+}
+window.sendIntakeCalendarInvites = sendIntakeCalendarInvites;
 
 function toggleSendInvitesPanel() {
     const panel = document.getElementById('send-invites-panel');
