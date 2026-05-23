@@ -6622,6 +6622,9 @@ function getCategoryForRole(role) {
 function loadStaffDirectory() {
     staffDirectoryCollection.onSnapshot(snap => {
         state.staffDirectory = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        // Refresh the table if the modal is open — renderStaffIndex preserves any active edit rows
+        const modal = document.getElementById('staff-index-modal');
+        if (modal && modal.classList.contains('active')) renderStaffIndex();
     }, err => console.warn('staffDirectory listener error:', err));
 }
 
@@ -6734,7 +6737,6 @@ function openStaffIndex() {
     if (addForm) addForm.style.display = 'none';
     const rolePanel = document.getElementById('role-mappings-panel');
     if (rolePanel) rolePanel.style.display = 'none';
-    syncStaffToDirectory(true);
     renderStaffIndex();
     modal.classList.add('active');
     // Close hamburger if open
@@ -6804,6 +6806,20 @@ window.saveDirectoryContact = saveDirectoryContact;
 function renderStaffIndex() {
     const container = document.getElementById('staff-index-content');
     if (!container) return;
+
+    // Preserve any edit rows that are currently open so a re-render doesn't lose the user's work
+    const activeEdits = {};
+    container.querySelectorAll('.dir-edit-row').forEach(row => {
+        if (row.style.display !== 'none') {
+            const id = row.id.replace('dir-edit-', '');
+            activeEdits[id] = {
+                name:  document.getElementById('de-name-'  + id)?.value ?? null,
+                roles: document.getElementById('de-roles-' + id)?.value ?? null,
+                phone: document.getElementById('de-phone-' + id)?.value ?? null,
+                email: document.getElementById('de-email-' + id)?.value ?? null,
+            };
+        }
+    });
 
     const dir = [...state.staffDirectory].sort((a, b) => {
         const roleA = ((a.roles || [])[0] || '').toLowerCase();
@@ -6878,6 +6894,19 @@ function renderStaffIndex() {
     container.innerHTML = '<table class="staff-index-table"><thead><tr>' +
         '<th>Name</th><th>Other Roles</th><th></th>' +
         '</tr></thead><tbody>' + rows + '</tbody></table>';
+
+    // Restore any edit rows that were open before the re-render
+    Object.keys(activeEdits).forEach(id => {
+        const editRow = document.getElementById('dir-edit-' + id);
+        if (!editRow) return;
+        const data = activeEdits[id];
+        editRow.style.display = '';
+        const restore = (field, val) => { if (val !== null) { const el = document.getElementById(field + id); if (el) el.value = val; } };
+        restore('de-name-',  data.name);
+        restore('de-roles-', data.roles);
+        restore('de-phone-', data.phone);
+        restore('de-email-', data.email);
+    });
 }
 window.renderStaffIndex = renderStaffIndex;
 
@@ -6898,6 +6927,10 @@ async function saveDirContactEdit(contactId) {
     const email = (document.getElementById('de-email-' + contactId)?.value || '').trim();
 
     if (!name) { showToast('Name is required', 'error'); return; }
+
+    // Hide the edit row first so renderStaffIndex doesn't treat it as still-active
+    const editRow = document.getElementById('dir-edit-' + contactId);
+    if (editRow) editRow.style.display = 'none';
 
     // Optimistic local update
     const idx = state.staffDirectory.findIndex(c => c.id === contactId);
