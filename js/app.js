@@ -500,23 +500,28 @@ function initializeApp() {
         }
     });
 
-    // Read saved session before anything clears it
+    // Read saved session before anything else runs
     const savedEventId = localStorage.getItem('lastEventId');
 
-    // Always start at the events hub; enter a specific event first before navigating to event pages
     document.querySelector('.nav-menu').classList.add('hub-mode');
-    switchPage('events-hub');
-    // Load hub immediately — don't block on migration
     loadSeasons();
-    loadEvents();  // uses onSnapshot — live updates, no need to re-call after migration
-    loadStaffDirectory();  // global across all events
+    loadEvents();
+    loadStaffDirectory();
 
-    // Restore last session (hard refresh returns to the same event + page)
     if (savedEventId) {
-        enterEvent(savedEventId).catch(() => {
-            localStorage.removeItem('lastEventId');
-            localStorage.removeItem('lastPage');
-        });
+        // Show overlay immediately so the hub never flashes
+        const loader = document.getElementById('session-loader');
+        if (loader) loader.style.display = 'flex';
+        enterEvent(savedEventId)
+            .then(() => { if (loader) loader.style.display = 'none'; })
+            .catch(() => {
+                localStorage.removeItem('lastEventId');
+                localStorage.removeItem('lastPage');
+                if (loader) loader.style.display = 'none';
+                switchPage('events-hub');
+            });
+    } else {
+        switchPage('events-hub');
     }
     // Run migration in the background; the live events listener will pick up any new docs
     migrateToMultiEvent()
