@@ -26,6 +26,7 @@ const state = {
     cocktailStageInputs: [],
     staff: [],
     staffDirectory: [],
+    roleCategoryMap: {},   // role (lowercase) → budget category string
     stagePlots: [],
     setLists: [],
     setListSearch: '',
@@ -507,6 +508,7 @@ function initializeApp() {
     loadSeasons();
     loadEvents();
     loadStaffDirectory();
+    loadRoleCategoryMap();
 
     if (savedEventId) {
         // Show overlay immediately so the hub never flashes
@@ -6563,6 +6565,39 @@ window.deleteStaffFromModal = deleteStaffFromModal;
 // ==========================================
 
 const staffDirectoryCollection = db.collection('staffDirectory');
+const roleCategoryMapCollection = db.collection('roleCategoryMap');
+
+function loadRoleCategoryMap() {
+    roleCategoryMapCollection.onSnapshot(snap => {
+        state.roleCategoryMap = {};
+        snap.docs.forEach(doc => {
+            state.roleCategoryMap[doc.id] = doc.data().category || '';
+        });
+    }, err => console.warn('roleCategoryMap listener error:', err));
+}
+
+async function saveRoleMapping(role, category) {
+    const key = role.trim().toLowerCase();
+    if (!key) return;
+    try {
+        if (category) {
+            await roleCategoryMapCollection.doc(key).set({ role: role.trim(), category });
+            state.roleCategoryMap[key] = category;
+        } else {
+            await roleCategoryMapCollection.doc(key).delete();
+            delete state.roleCategoryMap[key];
+        }
+    } catch (e) {
+        console.error('saveRoleMapping error:', e);
+        showToast('Error saving role mapping', 'error');
+    }
+}
+window.saveRoleMapping = saveRoleMapping;
+
+function getCategoryForRole(role) {
+    if (!role) return '';
+    return state.roleCategoryMap[role.trim().toLowerCase()] || '';
+}
 
 function loadStaffDirectory() {
     staffDirectoryCollection.onSnapshot(snap => {
@@ -6653,9 +6688,11 @@ async function upsertStaffContact(name, phone, email, role) {
 function openStaffIndex() {
     const modal = document.getElementById('staff-index-modal');
     if (!modal) return;
-    // Hide add form on open
+    // Hide add form and role mappings panel on open
     const addForm = document.getElementById('staff-dir-add-form');
     if (addForm) addForm.style.display = 'none';
+    const rolePanel = document.getElementById('role-mappings-panel');
+    if (rolePanel) rolePanel.style.display = 'none';
     // Auto-sync current event staff into directory on first open
     syncStaffToDirectory(true);
     renderStaffIndex();
@@ -6780,24 +6817,83 @@ function addDirectoryContactToBudget(contactId) {
     if (!state.currentEventId) { showToast('Enter an event first', 'error'); return; }
     const contact = state.staffDirectory.find(c => c.id === contactId);
     if (!contact) return;
+
+    // Find a category mapping for any of this contact's roles
+    const matchedRole = (contact.roles || []).find(r => getCategoryForRole(r));
+    const category = matchedRole ? getCategoryForRole(matchedRole) : '';
+
     closeStaffIndex();
-    // Open a blank budget modal then pre-fill with the contact's details
     openBudgetModal();
     setTimeout(() => {
-        const vendorEl = document.getElementById('budget-vendor');
-        const contactEl = document.getElementById('budget-contact');
-        const phoneEl = document.getElementById('budget-phone');
-        const emailEl = document.getElementById('budget-email');
-        if (vendorEl) vendorEl.value = contact.name || '';
-        if (contactEl) contactEl.value = contact.name || '';
-        if (phoneEl) phoneEl.value = contact.phone || '';
-        if (emailEl) emailEl.value = contact.email || '';
+        const set = (id, val) => { const el = document.getElementById(id); if (el && val) el.value = val; };
+        set('budget-vendor', contact.name);
+        set('budget-contact', contact.name);
+        set('budget-phone', contact.phone);
+        set('budget-email', contact.email);
+        set('budget-category', category);
     }, 50);
 }
 window.addDirectoryContactToBudget = addDirectoryContactToBudget;
 
 function expandDirectoryRow(e, contactId) {}
 window.expandDirectoryRow = expandDirectoryRow;
+
+const BUDGET_CATEGORIES = [
+    { value: '', label: '— Not mapped —' },
+    { value: '6811a - Talent/Performers & Hosts',         label: 'A — Talent / Performers & Hosts' },
+    { value: '6811b - A/V Production',                    label: 'B — A/V Production' },
+    { value: '6811c - Venue & Permits',                   label: 'C — Venue & Permits' },
+    { value: '6811d - Food & Beverage',                   label: 'D — Food & Beverage' },
+    { value: '6811e - Staff & Labor',                     label: 'E — Staff & Labor' },
+    { value: '6811f - Marketing, Promotion & Branding',   label: 'F — Marketing, Promotion & Branding' },
+    { value: '6811g - Decor & Miscellaneous Supplies',    label: 'G — Decor & Miscellaneous Supplies' },
+];
+
+function toggleRoleMappings() {
+    const panel = document.getElementById('role-mappings-panel');
+    if (!panel) return;
+    const showing = panel.style.display !== 'none';
+    panel.style.display = showing ? 'none' : '';
+    if (!showing) renderRoleMappings();
+}
+window.toggleRoleMappings = toggleRoleMappings;
+
+function renderRoleMappings() {
+    const container = document.getElementById('role-mappings-content');
+    if (!container) return;
+
+    // Collect all unique roles from the directory
+    const allRoles = [...new Set(
+        state.staffDirectory.flatMap(c => c.roles || [])
+    )].sort((a, b) => a.localeCompare(b));
+
+    if (!allRoles.length) {
+        container.innerHTML = '<p class="staff-index-empty">No roles found in your directory yet.</p>';
+        return;
+    }
+
+    const optionsHtml = BUDGET_CATEGORIES.map(c =>
+        '<option value="' + escapeHtml(c.value) + '">' + escapeHtml(c.label) + '</option>'
+    ).join('');
+
+    container.innerHTML = '<table class="role-map-table"><tbody>' +
+        allRoles.map(role => {
+            const key = role.trim().toLowerCase();
+            const current = state.roleCategoryMap[key] || '';
+            const opts = BUDGET_CATEGORIES.map(c =>
+                '<option value="' + escapeHtml(c.value) + '"' + (c.value === current ? ' selected' : '') + '>' +
+                escapeHtml(c.label) + '</option>'
+            ).join('');
+            return '<tr>' +
+                '<td class="role-map-role">' + escapeHtml(role) + '</td>' +
+                '<td><select class="role-map-select" onchange="saveRoleMapping(\'' + escapeHtml(role).replace(/'/g, "\\'") + '\', this.value)">' +
+                    opts +
+                '</select></td>' +
+                '</tr>';
+        }).join('') +
+        '</tbody></table>';
+}
+window.renderRoleMappings = renderRoleMappings;
 
 function toggleDirContactPopover(e, contactId) {
     e.stopPropagation();

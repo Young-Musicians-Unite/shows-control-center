@@ -2376,7 +2376,8 @@
                 <div class="staff-index-toolbar">
                     <div class="staff-index-toolbar-row">
                         <input type="text" id="staff-index-search" class="search-input" placeholder="Search by name or role…" oninput="renderStaffIndex()" style="flex:1">
-                        <button class="btn btn-secondary btn-sm" onclick="syncStaffToDirectory()">Sync from Current Event</button>
+                        <button class="btn btn-secondary btn-sm" onclick="toggleRoleMappings()">Role → Budget</button>
+                        <button class="btn btn-secondary btn-sm" onclick="syncStaffToDirectory()">Sync from Event</button>
                         <button class="btn btn-primary-gold btn-sm" onclick="toggleAddDirectoryContact()">+ Add Contact</button>
                     </div>
                 </div>
@@ -2409,6 +2410,14 @@
                         </div>
                     </div>
                 </div>
+                <!-- Role → Budget category mapping panel -->
+                <div id="role-mappings-panel" style="display:none">
+                    <div class="role-map-header">
+                        <span>Set which budget category each role belongs to — auto-filled when you click + Budget.</span>
+                    </div>
+                    <div id="role-mappings-content"></div>
+                </div>
+
                 <div id="staff-index-content"></div>
             </div>
         </div>
