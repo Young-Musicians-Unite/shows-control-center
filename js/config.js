@@ -31,3 +31,8 @@ const eventsCollection = db.collection('events');
 
 // Per-event collection references — rebuilt by setActiveEvent() in app.js
 let collections = {};
+
+// Google Calendar OAuth — replace with your OAuth 2.0 Client ID from
+// Google Cloud Console → APIs & Services → Credentials → Create OAuth client ID (Web application)
+// Authorized JavaScript origins must include: http://localhost:8745 and your GitHub Pages URL
+const GOOGLE_CALENDAR_CLIENT_ID = 'YOUR_GOOGLE_OAUTH_CLIENT_ID.apps.googleusercontent.com';

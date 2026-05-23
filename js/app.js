@@ -7500,6 +7500,184 @@ function togglePerfContactPopover(e, performerId) {
 window.togglePerfContactPopover = togglePerfContactPopover;
 
 // ==========================================
+// PERFORMER CALENDAR INVITES
+// ==========================================
+
+let _gTokenClient = null;
+let _gAccessToken  = null;
+
+function initGoogleTokenClient(callback) {
+    if (!window.google || !window.google.accounts) {
+        showToast('Google Sign-In library not loaded yet — try again in a moment', 'error');
+        return;
+    }
+    if (!GOOGLE_CALENDAR_CLIENT_ID || GOOGLE_CALENDAR_CLIENT_ID.startsWith('YOUR_')) {
+        showToast('Google OAuth Client ID not configured — see js/config.js', 'error');
+        return;
+    }
+    _gTokenClient = window.google.accounts.oauth2.initTokenClient({
+        client_id: GOOGLE_CALENDAR_CLIENT_ID,
+        scope: 'https://www.googleapis.com/auth/calendar.events',
+        callback: (resp) => {
+            if (resp.error) {
+                console.error('Google OAuth error:', resp);
+                showToast('Google authorization failed: ' + resp.error, 'error');
+                return;
+            }
+            _gAccessToken = resp.access_token;
+            callback(resp.access_token);
+        },
+    });
+    // If we already have a valid token, skip the prompt
+    if (_gAccessToken) { callback(_gAccessToken); return; }
+    _gTokenClient.requestAccessToken({ prompt: '' });
+}
+
+function toggleSendInvitesPanel() {
+    const panel = document.getElementById('send-invites-panel');
+    const addForm = document.getElementById('performer-add-form');
+    if (!panel) return;
+    const opening = panel.style.display === 'none';
+    panel.style.display = opening ? '' : 'none';
+    if (addForm) addForm.style.display = 'none';
+    if (opening) populateSendInvitesPanel();
+}
+window.toggleSendInvitesPanel = toggleSendInvitesPanel;
+
+function populateSendInvitesPanel() {
+    // Pre-fill event details from active event
+    const ev = state.activeEvent;
+    if (ev) {
+        const titleEl = document.getElementById('si-title');
+        if (titleEl && !titleEl.value) titleEl.value = (ev.name || '') + ' — Performer Call';
+        const locEl = document.getElementById('si-location');
+        if (locEl && !locEl.value) locEl.value = ev.venue || ev.location || '';
+        const dateEl = document.getElementById('si-date');
+        if (dateEl && !dateEl.value && ev.date) dateEl.value = ev.date;
+    }
+
+    // Render performer checklist grouped by act
+    const listEl = document.getElementById('si-performer-list');
+    if (!listEl) return;
+
+    const dir = [...state.performerDirectory].sort((a, b) =>
+        (a.act || '').localeCompare(b.act || '') || (a.name || '').localeCompare(b.name || '')
+    );
+
+    if (!dir.length) {
+        listEl.innerHTML = '<div class="si-empty">No performers in directory yet.</div>';
+        return;
+    }
+
+    let lastAct = null;
+    listEl.innerHTML = dir.map(p => {
+        let header = '';
+        if (p.act !== lastAct) {
+            lastAct = p.act;
+            header = '<div class="si-act-header">' + escapeHtml(p.act || 'No Act') + '</div>';
+        }
+        const hasEmail = p.email || (p.parents || []).some(par => par.email);
+        return header + '<label class="si-performer-row' + (hasEmail ? '' : ' si-no-email') + '">' +
+            '<input type="checkbox" class="si-check" data-id="' + p.id + '" ' + (hasEmail ? 'checked' : 'disabled') + '>' +
+            '<span class="si-performer-name">' + escapeHtml(p.name || '') + '</span>' +
+            (hasEmail ? '' : '<span class="si-no-email-tag">no email</span>') +
+        '</label>';
+    }).join('');
+}
+
+function siSelectAll() {
+    document.querySelectorAll('.si-check:not(:disabled)').forEach(cb => cb.checked = true);
+}
+window.siSelectAll = siSelectAll;
+
+function siSelectNone() {
+    document.querySelectorAll('.si-check').forEach(cb => cb.checked = false);
+}
+window.siSelectNone = siSelectNone;
+
+async function sendCalendarInvites() {
+    const title     = (document.getElementById('si-title')?.value    || '').trim();
+    const location  = (document.getElementById('si-location')?.value || '').trim();
+    const date      = (document.getElementById('si-date')?.value     || '').trim();
+    const startTime = (document.getElementById('si-start')?.value    || '').trim();
+    const endTime   = (document.getElementById('si-end')?.value      || '').trim();
+    const notes     = (document.getElementById('si-notes')?.value    || '').trim();
+    const includeParents = document.getElementById('si-include-parents')?.checked;
+
+    if (!title || !date || !startTime || !endTime) {
+        showToast('Title, date, start, and end time are required', 'error'); return;
+    }
+
+    const selectedIds = Array.from(document.querySelectorAll('.si-check:checked')).map(cb => cb.dataset.id);
+    if (!selectedIds.length) { showToast('Select at least one performer', 'error'); return; }
+
+    // Collect attendee emails
+    const emails = new Set();
+    selectedIds.forEach(id => {
+        const p = state.performerDirectory.find(p => p.id === id);
+        if (!p) return;
+        if (p.email) emails.add(p.email);
+        if (includeParents) {
+            (p.parents || []).forEach(par => { if (par.email) emails.add(par.email); });
+        }
+    });
+
+    if (!emails.size) { showToast('No valid email addresses found for selected performers', 'error'); return; }
+
+    const statusEl = document.getElementById('si-auth-status');
+    if (statusEl) { statusEl.style.display = ''; statusEl.textContent = 'Authorizing with Google…'; statusEl.className = 'si-auth-status si-auth-pending'; }
+
+    initGoogleTokenClient(async (accessToken) => {
+        try {
+            if (statusEl) { statusEl.textContent = 'Creating calendar event…'; }
+
+            const startISO = date + 'T' + startTime + ':00';
+            const endISO   = date + 'T' + endTime   + ':00';
+
+            const event = {
+                summary: title,
+                location: location || undefined,
+                description: notes || undefined,
+                start: { dateTime: startISO, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone },
+                end:   { dateTime: endISO,   timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone },
+                attendees: Array.from(emails).map(email => ({ email })),
+                guestsCanSeeOtherGuests: false,
+                sendUpdates: 'all',
+            };
+
+            const resp = await fetch(
+                'https://www.googleapis.com/calendar/v3/calendars/primary/events?sendUpdates=all&conferenceDataVersion=0',
+                {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': 'Bearer ' + accessToken,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(event),
+                }
+            );
+
+            if (!resp.ok) {
+                const err = await resp.json();
+                throw new Error(err.error?.message || resp.statusText);
+            }
+
+            const created = await resp.json();
+            if (statusEl) { statusEl.textContent = '✓ Invitations sent to ' + emails.size + ' address' + (emails.size !== 1 ? 'es' : '') + '!'; statusEl.className = 'si-auth-status si-auth-ok'; }
+            showToast('Calendar invites sent to ' + emails.size + ' recipient' + (emails.size !== 1 ? 's' : ''));
+            console.log('Created calendar event:', created.htmlLink);
+
+        } catch (e) {
+            console.error('sendCalendarInvites error:', e);
+            if (statusEl) { statusEl.textContent = 'Error: ' + e.message; statusEl.className = 'si-auth-status si-auth-error'; }
+            showToast('Error sending invites: ' + e.message, 'error');
+            _gAccessToken = null; // reset token so next attempt re-authorizes
+        }
+    });
+}
+window.sendCalendarInvites = sendCalendarInvites;
+
+// ==========================================
 // PACKING LIST
 // ==========================================
 
