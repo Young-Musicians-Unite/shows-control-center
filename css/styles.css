@@ -993,6 +993,20 @@ body {
     margin-top: 2px;
 }
 .db-issue-arrow { color: rgba(255,255,255,0.16); font-size: 1rem; flex-shrink: 0; }
+.db-issues-more {
+    display: block;
+    width: 100%;
+    padding: 8px 1.25rem;
+    background: none;
+    border: none;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    color: rgba(201,169,97,0.75);
+    font-size: 0.78rem;
+    text-align: left;
+    cursor: pointer;
+    letter-spacing: 0.02em;
+}
+.db-issues-more:hover { color: #c9a961; background: rgba(201,169,97,0.05); }
 .db-all-clear {
     padding: 2.5rem 1.25rem;
     text-align: center;

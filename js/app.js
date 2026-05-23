@@ -1694,9 +1694,9 @@ function renderDashboard() {
                         <span>Needs Attention</span>
                         <span class="db-badge ${panelClear ? 'ok' : ''}">${panelClear ? '✓' : issues.length}</span>
                     </div>
-                    ${issues.length > 0 ? `
-                    <div class="db-issues-list">
-                        ${issues.map(iss => `
+                    ${issues.length > 0 ? (() => {
+                        const PREVIEW = 3;
+                        const renderIssue = iss => `
                         <div class="db-issue" onclick="switchPage('${iss.page}')">
                             <span class="db-issue-dot ${iss.type}"></span>
                             <div class="db-issue-body">
@@ -1704,8 +1704,19 @@ function renderDashboard() {
                                 <div class="db-issue-tag">${iss.type === 'staff' ? 'Staff' : iss.type === 'contact' ? 'Contact' : iss.type === 'budget' ? 'Budget' : 'Timeline'}</div>
                             </div>
                             <span class="db-issue-arrow">›</span>
-                        </div>`).join('')}
-                    </div>` : `
+                        </div>`;
+                        const visible = issues.slice(0, PREVIEW).map(renderIssue).join('');
+                        const hidden  = issues.slice(PREVIEW).map(renderIssue).join('');
+                        const extra   = issues.length - PREVIEW;
+                        return `
+                    <div class="db-issues-list">
+                        ${visible}
+                        ${extra > 0 ? `
+                        <div class="db-issues-overflow" id="db-issues-overflow" style="display:none">${hidden}</div>
+                        <button class="db-issues-more" id="db-issues-more-btn" onclick="toggleDashIssues()">Show ${extra} more</button>
+                        ` : ''}
+                    </div>`;
+                    })() : `
                     <div class="db-all-clear">
                         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                         All looking good
@@ -1799,6 +1810,17 @@ async function removeDashboardResource(index) {
     }
 }
 window.removeDashboardResource = removeDashboardResource;
+
+function toggleDashIssues() {
+    const overflow = document.getElementById('db-issues-overflow');
+    const btn = document.getElementById('db-issues-more-btn');
+    if (!overflow || !btn) return;
+    const expanded = overflow.style.display !== 'none';
+    overflow.style.display = expanded ? 'none' : '';
+    const extra = overflow.querySelectorAll('.db-issue').length;
+    btn.textContent = expanded ? `Show ${extra} more` : 'Show less';
+}
+window.toggleDashIssues = toggleDashIssues;
 // ─────────────────────────────────────────────────────────────────
 
 function updateBudgetStats() {
