@@ -6855,37 +6855,12 @@ window.renderStaffIndex = renderStaffIndex;
 async function deleteDirectoryContact(id) {
     const contact = state.staffDirectory.find(c => c.id === id);
     if (!contact) return;
-    const name = contact.name || 'this contact';
-    if (!confirm('Remove ' + name + ' from the directory and from all events?\n\nThis cannot be undone.')) return;
-
-    // Optimistic local remove
+    if (!confirm('Remove ' + (contact.name || 'this contact') + ' from the directory?')) return;
     state.staffDirectory = state.staffDirectory.filter(c => c.id !== id);
     renderStaffIndex();
-
     try {
-        // Delete from global directory
         await staffDirectoryCollection.doc(id).delete();
-
-        // Cascade: remove from every event's staff sub-collection by name match
-        const eventsSnap = await eventsCollection.get();
-        const nameLower = name.trim().toLowerCase();
-        const cascadeDeletes = [];
-        for (const eventDoc of eventsSnap.docs) {
-            const staffSnap = await eventDoc.ref.collection('staff')
-                .where('name', '==', name.trim()).get();
-            staffSnap.docs.forEach(d => cascadeDeletes.push(d.ref.delete()));
-            // Also catch slight capitalisation differences
-            if (!staffSnap.docs.length) {
-                const allStaff = await eventDoc.ref.collection('staff').get();
-                allStaff.docs
-                    .filter(d => (d.data().name || '').trim().toLowerCase() === nameLower)
-                    .forEach(d => cascadeDeletes.push(d.ref.delete()));
-            }
-        }
-        await Promise.all(cascadeDeletes);
-
-        const removed = cascadeDeletes.length;
-        showToast(name + ' removed from directory' + (removed ? ' and ' + removed + ' event record' + (removed !== 1 ? 's' : '') : ''));
+        showToast('Contact removed from directory');
     } catch (e) {
         console.error('deleteDirectoryContact error:', e);
         showToast('Error removing contact', 'error');
