@@ -6730,16 +6730,26 @@ async function upsertStaffContact(name, phone, email, role) {
 function openStaffIndex() {
     const modal = document.getElementById('staff-index-modal');
     if (!modal) return;
-    // Hide add form and role mappings panel on open
     const addForm = document.getElementById('staff-dir-add-form');
     if (addForm) addForm.style.display = 'none';
     const rolePanel = document.getElementById('role-mappings-panel');
     if (rolePanel) rolePanel.style.display = 'none';
-    // Auto-sync current event staff into directory on first open
     syncStaffToDirectory(true);
     renderStaffIndex();
     modal.classList.add('active');
+    // Close hamburger if open
+    document.getElementById('nav-menu')?.classList.remove('open');
 }
+
+function openJobTemplates() {
+    // Reuse the staff index modal but flip to the role mappings panel
+    openStaffIndex();
+    setTimeout(() => {
+        const rolePanel = document.getElementById('role-mappings-panel');
+        if (rolePanel) { rolePanel.style.display = ''; renderJobTemplates(); }
+    }, 50);
+}
+window.openJobTemplates = openJobTemplates;
 window.openStaffIndex = openStaffIndex;
 
 function closeStaffIndex() {
@@ -6840,6 +6850,7 @@ function renderStaffIndex() {
                 '<button class="btn btn-icon btn-sm dir-contact-btn' + (hasContact ? '' : ' dir-contact-btn--missing') + '" title="' + (hasContact ? 'View contact info' : 'No contact info saved') + '" onclick="' + (hasContact ? 'toggleDirContactPopover(event,\'' + c.id + '\')' : 'showDirMissingContact(event)') + '">' +
                     contactIconSvg + (hasContact ? '' : '<span class="dir-contact-missing-dot">!</span>') +
                 '</button>' +
+                (inEvent ? '<button class="btn btn-sm btn-primary-gold" onclick="addDirectoryContactToStaff(\'' + c.id + '\')">+ Staff</button>' : '') +
                 (inEvent ? '<button class="btn btn-sm btn-secondary" onclick="addDirectoryContactToBudget(\'' + c.id + '\')">+ Budget</button>' : '') +
                 '<button class="btn btn-icon btn-sm" title="Delete" onclick="deleteDirectoryContact(\'' + c.id + '\')">' + trashIconSvg + '</button>' +
             '</td>' +
@@ -6867,6 +6878,24 @@ async function deleteDirectoryContact(id) {
     }
 }
 window.deleteDirectoryContact = deleteDirectoryContact;
+
+function addDirectoryContactToStaff(contactId) {
+    if (!state.currentEventId) { showToast('Enter an event first', 'error'); return; }
+    const contact = state.staffDirectory.find(c => c.id === contactId);
+    if (!contact) return;
+    const primaryRole = (contact.roles || [])[0] || '';
+    const category = getCategoryForRole(primaryRole);
+    closeStaffIndex();
+    openStaffModal();
+    setTimeout(() => {
+        const set = (id, val) => { const el = document.getElementById(id); if (el && val) el.value = val; };
+        set('staff-name', contact.name);
+        set('staff-phone', contact.phone);
+        set('staff-email', contact.email);
+        set('staff-role', primaryRole);
+    }, 50);
+}
+window.addDirectoryContactToStaff = addDirectoryContactToStaff;
 
 function addDirectoryContactToBudget(contactId) {
     if (!state.currentEventId) { showToast('Enter an event first', 'error'); return; }
