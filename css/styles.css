@@ -5255,6 +5255,12 @@ body.menu-open::after {
     font-weight: 600;
 }
 
+.ta-del {
+    width: 36px;
+    text-align: center;
+    vertical-align: middle;
+}
+
 .ta-footer {
     display: flex;
     gap: 10px;

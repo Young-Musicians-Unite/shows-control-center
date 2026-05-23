@@ -6834,8 +6834,10 @@ function renderTemplateAssignment() {
         return;
     }
 
+    const trashSvg = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>';
+
     container.innerHTML = '<table class="ta-table"><thead><tr>' +
-        '<th>Name</th><th>Current Role</th><th>Job Templates</th>' +
+        '<th>Name</th><th>Current Role</th><th>Job Templates</th><th></th>' +
         '</tr></thead><tbody>' +
         staff.map(s => {
             const assigned = s.jobTemplates || [];
@@ -6846,10 +6848,11 @@ function renderTemplateAssignment() {
                 escapeHtml(t.name) +
                 '</label>'
             ).join('');
-            return '<tr>' +
+            return '<tr id="ta-row-' + s.id + '">' +
                 '<td class="ta-name"><strong>' + escapeHtml(s.name || '') + '</strong></td>' +
                 '<td class="ta-role">' + escapeHtml(s.role || '—') + '</td>' +
                 '<td class="ta-chips" data-staff-id="' + s.id + '">' + chips + '</td>' +
+                '<td class="ta-del"><button class="btn btn-icon btn-sm" title="Remove from staff" onclick="removeFromAssignList(\'' + s.id + '\',\'' + escapeHtml(s.name || 'this person').replace(/'/g,"\\'") + '\')">' + trashSvg + '</button></td>' +
                 '</tr>';
         }).join('') +
         '</tbody></table>';
@@ -6889,6 +6892,21 @@ async function saveAllTemplateAssignments() {
     closeTemplateAssignment();
 }
 window.saveAllTemplateAssignments = saveAllTemplateAssignments;
+
+async function removeFromAssignList(staffId, name) {
+    if (!confirm('Remove ' + name + ' from this event\'s staff?')) return;
+    // Remove row immediately
+    const row = document.getElementById('ta-row-' + staffId);
+    if (row) row.remove();
+    try {
+        await collections.staff.doc(staffId).delete();
+        showToast(name + ' removed from staff');
+    } catch (e) {
+        console.error('removeFromAssignList error:', e);
+        showToast('Error removing staff member', 'error');
+    }
+}
+window.removeFromAssignList = removeFromAssignList;
 
 function renderStaffIndex() {
     const container = document.getElementById('staff-index-content');
