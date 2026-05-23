@@ -1574,7 +1574,7 @@ function renderDashboard() {
     // ── Issues list ──────────────────────────────────────────────
     const issues = [];
     unfilledStaff.forEach(s => issues.push({
-        type: 'staff', page: 'staff',
+        type: 'staff', page: 'staff', id: s.id,
         title: (s.name || 'Unnamed role') + ' — unfilled'
     }));
     tlIncomplete.forEach(t => {
@@ -1583,18 +1583,18 @@ function renderDashboard() {
         if (!t.time) missing.push('time');
         if (!(t.event || '').trim()) missing.push('description');
         issues.push({
-            type: 'timeline', page: 'timeline',
+            type: 'timeline', page: 'timeline', id: t.id,
             title: label + ' — missing ' + missing.join(' & ')
         });
     });
     // Staff members missing contact info
     state.staff.filter(s => !s.isPlaceholder && !s.phone && !s.email).forEach(s => issues.push({
-        type: 'contact', page: 'staff',
+        type: 'contact', page: 'staff', id: s.id,
         title: (s.name || 'Staff member') + ' — missing contact info'
     }));
     // Budget entries missing contact info
     state.budget.filter(b => !b.noContactNeeded && !b.phone && !b.email).forEach(b => issues.push({
-        type: 'contact', page: 'budget',
+        type: 'contact', page: 'budget', id: b.id,
         title: (b.vendor || 'Budget entry') + ' — missing contact info'
     }));
 
@@ -1697,7 +1697,7 @@ function renderDashboard() {
                     ${issues.length > 0 ? (() => {
                         const PREVIEW = 3;
                         const renderIssue = iss => `
-                        <div class="db-issue" onclick="switchPage('${iss.page}')">
+                        <div class="db-issue" onclick="goToIssue('${iss.page}','${iss.id || ''}','${iss.type}')">
                             <span class="db-issue-dot ${iss.type}"></span>
                             <div class="db-issue-body">
                                 <div class="db-issue-title">${escapeHtml(iss.title)}</div>
@@ -1821,6 +1821,27 @@ function toggleDashIssues() {
     btn.textContent = expanded ? `Show ${extra} more` : 'Show less';
 }
 window.toggleDashIssues = toggleDashIssues;
+
+function goToIssue(page, itemId, issueType) {
+    switchPage(page);
+    if (!itemId) return;
+
+    // For staff/contact-on-staff: open the modal directly so the user can fill in info
+    if (page === 'staff') {
+        setTimeout(() => openStaffModal(itemId), 150);
+        return;
+    }
+
+    // For budget and timeline: scroll to the row and flash it
+    setTimeout(() => {
+        const el = document.querySelector(`tr[data-id="${itemId}"], [data-id="${itemId}"]`);
+        if (!el) return;
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.classList.add('issue-flash');
+        setTimeout(() => el.classList.remove('issue-flash'), 1800);
+    }, 150);
+}
+window.goToIssue = goToIssue;
 // ─────────────────────────────────────────────────────────────────
 
 function updateBudgetStats() {
@@ -6143,6 +6164,7 @@ function renderStaffTeamView(isSearching, searchQuery) {
             }).join('');
 
             return '<div class="staff-card' + (member.isPlaceholder ? ' placeholder' : '') + '"' +
+                ' data-id="' + member.id + '"' +
                 ' style="--team-color: ' + color + '; animation-delay: ' + (idx * 30) + 'ms"' +
                 ' onclick="openStaffModal(\'' + member.id + '\')">' +
                 (budgetHtml ? '<span class="staff-budget-badge staff-budget-corner">' + '$' + '</span>' : '') +

@@ -1007,6 +1007,13 @@ body {
     letter-spacing: 0.02em;
 }
 .db-issues-more:hover { color: #c9a961; background: rgba(201,169,97,0.05); }
+
+@keyframes issue-flash {
+    0%   { background: rgba(201,169,97,0.35); }
+    60%  { background: rgba(201,169,97,0.18); }
+    100% { background: transparent; }
+}
+.issue-flash { animation: issue-flash 1.8s ease-out forwards; }
 .db-all-clear {
     padding: 2.5rem 1.25rem;
     text-align: center;
