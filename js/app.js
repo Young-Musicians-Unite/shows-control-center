@@ -6724,26 +6724,29 @@ function renderStaffIndex() {
     }
 
     const inEvent = !!state.currentEventId;
+    const contactIconSvg = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
+    const trashIconSvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>';
+
     container.innerHTML = '<table class="staff-index-table"><thead><tr>' +
-        '<th>Name</th><th>Roles</th><th>Phone</th><th>Email</th><th></th>' +
+        '<th>Name</th><th>Roles</th><th></th>' +
         '</tr></thead><tbody>' +
-        filtered.map(c =>
-            '<tr class="staff-index-row" onclick="expandDirectoryRow(event,\'' + c.id + '\')">' +
+        filtered.map(c => {
+            const hasContact = c.phone || c.email;
+            return '<tr class="staff-index-row">' +
             '<td><strong>' + escapeHtml(c.name || '') + '</strong></td>' +
             '<td><span class="dir-role-pills">' +
                 (c.roles || []).map(r => '<span class="dir-role-pill">' + escapeHtml(r) + '</span>').join('') +
             '</span></td>' +
-            '<td>' + escapeHtml(c.phone || '—') + '</td>' +
-            '<td>' + escapeHtml(c.email || '—') + '</td>' +
-            '<td class="dir-row-actions" onclick="event.stopPropagation()">' +
+            '<td class="dir-row-actions">' +
+                (hasContact
+                    ? '<button class="btn btn-icon btn-sm dir-contact-btn" title="View contact info" onclick="toggleDirContactPopover(event,\'' + c.id + '\')">' + contactIconSvg + '</button>'
+                    : '') +
                 (inEvent ? '<button class="btn btn-sm btn-secondary" title="Add to Budget" onclick="addDirectoryContactToBudget(\'' + c.id + '\')">' +
-                    '+ Budget</button> ' : '') +
-                '<button class="btn btn-icon btn-sm" title="Delete" onclick="deleteDirectoryContact(\'' + c.id + '\')">' +
-                    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M9 6V4h6v2"></path></svg>' +
-                '</button>' +
+                    '+ Budget</button>' : '') +
+                '<button class="btn btn-icon btn-sm" title="Delete" onclick="deleteDirectoryContact(\'' + c.id + '\')">' + trashIconSvg + '</button>' +
             '</td>' +
-            '</tr>'
-        ).join('') +
+            '</tr>';
+        }).join('') +
         '</tbody></table>';
 }
 window.renderStaffIndex = renderStaffIndex;
@@ -6783,10 +6786,48 @@ function addDirectoryContactToBudget(contactId) {
 }
 window.addDirectoryContactToBudget = addDirectoryContactToBudget;
 
-function expandDirectoryRow(e, contactId) {
-    // No-op placeholder — click is handled by the row highlight; actions are on the buttons
-}
+function expandDirectoryRow(e, contactId) {}
 window.expandDirectoryRow = expandDirectoryRow;
+
+function toggleDirContactPopover(e, contactId) {
+    e.stopPropagation();
+    const contact = state.staffDirectory.find(c => c.id === contactId);
+    if (!contact) return;
+
+    let popover = document.getElementById('dir-contact-popover');
+    // If already open for this contact, close it
+    if (popover && popover.dataset.contactId === contactId && popover.style.display !== 'none') {
+        popover.style.display = 'none';
+        return;
+    }
+    if (!popover) {
+        popover = document.createElement('div');
+        popover.id = 'dir-contact-popover';
+        document.body.appendChild(popover);
+    }
+    popover.dataset.contactId = contactId;
+    popover.innerHTML =
+        (contact.phone ? '<div class="dir-popover-row"><span class="dir-popover-label">Phone</span><a href="tel:' + escapeHtml(contact.phone) + '">' + escapeHtml(contact.phone) + '</a></div>' : '') +
+        (contact.email ? '<div class="dir-popover-row"><span class="dir-popover-label">Email</span><a href="mailto:' + escapeHtml(contact.email) + '">' + escapeHtml(contact.email) + '</a></div>' : '');
+
+    // Position below the button
+    const btn = e.currentTarget;
+    const rect = btn.getBoundingClientRect();
+    popover.style.display = 'block';
+    popover.style.top = (rect.bottom + window.scrollY + 6) + 'px';
+    // Align right edge with button right edge, but keep on screen
+    const popW = 220;
+    let left = rect.right + window.scrollX - popW;
+    if (left < 8) left = 8;
+    popover.style.left = left + 'px';
+}
+window.toggleDirContactPopover = toggleDirContactPopover;
+
+// Dismiss popover on any outside click
+document.addEventListener('click', () => {
+    const p = document.getElementById('dir-contact-popover');
+    if (p) p.style.display = 'none';
+});
 
 // ==========================================
 // PACKING LIST

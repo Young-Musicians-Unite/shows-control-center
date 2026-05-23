@@ -5048,6 +5048,52 @@ body.menu-open::after {
     align-items: center;
     gap: 6px;
     white-space: nowrap;
+    justify-content: flex-end;
+}
+
+#dir-contact-popover {
+    position: absolute;
+    z-index: 9000;
+    background: #fff;
+    border: 1px solid #e0dcd3;
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+    padding: 10px 14px;
+    width: 220px;
+    display: none;
+}
+
+.dir-popover-row {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 5px 0;
+    border-bottom: 1px solid #f0ece4;
+    font-size: 0.85rem;
+}
+
+.dir-popover-row:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.dir-popover-label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: #8a7a4a;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.dir-popover-row a {
+    color: #2c2c2c;
+    text-decoration: none;
+    word-break: break-all;
+}
+
+.dir-popover-row a:hover {
+    color: #c9a961;
+    text-decoration: underline;
 }
 
 .dir-role-pills {
