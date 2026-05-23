@@ -5052,6 +5052,50 @@ body.menu-open::after {
     border-bottom: none;
 }
 
+.dir-edit-row td {
+    padding: 0 !important;
+    border-bottom: 2px solid #c9a961 !important;
+}
+
+.dir-edit-form {
+    background: #fdfaf4;
+    padding: 12px 14px;
+}
+
+.dir-edit-fields {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 14px;
+    margin-bottom: 10px;
+}
+
+.dir-edit-fields .form-group {
+    margin: 0;
+}
+
+.dir-edit-fields label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: #8a7a4a;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    display: block;
+    margin-bottom: 3px;
+}
+
+.dir-edit-fields input {
+    width: 100%;
+    padding: 5px 8px;
+    border: 1px solid #e0dcd3;
+    border-radius: 6px;
+    font-size: 0.85rem;
+}
+
+.dir-edit-actions {
+    display: flex;
+    gap: 8px;
+}
+
 .dir-group-header td {
     background: #f5f1e8;
     color: #8a7a4a;

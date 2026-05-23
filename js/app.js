@@ -6830,6 +6830,7 @@ function renderStaffIndex() {
     const inEvent = !!state.currentEventId;
     const contactIconSvg = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
     const trashIconSvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>';
+    const editIconSvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
 
     let lastRole = null;
     const rows = filtered.map(c => {
@@ -6840,6 +6841,22 @@ function renderStaffIndex() {
             lastRole = primaryRole;
             groupHeader = '<tr class="dir-group-header"><td colspan="3">' + escapeHtml(primaryRole) + '</td></tr>';
         }
+        const editRow = '<tr class="dir-edit-row" id="dir-edit-' + c.id + '" style="display:none">' +
+            '<td colspan="3">' +
+            '<div class="dir-edit-form">' +
+                '<div class="dir-edit-fields">' +
+                    '<div class="form-group"><label>Name</label><input id="de-name-' + c.id + '" type="text" value="' + escapeHtml(c.name || '') + '"></div>' +
+                    '<div class="form-group"><label>Roles <span style="font-weight:400;color:#999">(comma-separated)</span></label><input id="de-roles-' + c.id + '" type="text" value="' + escapeHtml((c.roles || []).join(', ')) + '"></div>' +
+                    '<div class="form-group"><label>Phone</label><input id="de-phone-' + c.id + '" type="tel" value="' + escapeHtml(c.phone || '') + '"></div>' +
+                    '<div class="form-group"><label>Email</label><input id="de-email-' + c.id + '" type="email" value="' + escapeHtml(c.email || '') + '"></div>' +
+                '</div>' +
+                '<div class="dir-edit-actions">' +
+                    '<button class="btn btn-primary-gold btn-sm" onclick="saveDirContactEdit(\'' + c.id + '\')">Save</button>' +
+                    '<button class="btn btn-secondary btn-sm" onclick="toggleDirEditRow(\'' + c.id + '\')">Cancel</button>' +
+                '</div>' +
+            '</div>' +
+            '</td></tr>';
+
         return groupHeader +
             '<tr class="staff-index-row">' +
             '<td><strong>' + escapeHtml(c.name || '') + '</strong></td>' +
@@ -6850,11 +6867,12 @@ function renderStaffIndex() {
                 '<button class="btn btn-icon btn-sm dir-contact-btn' + (hasContact ? '' : ' dir-contact-btn--missing') + '" title="' + (hasContact ? 'View contact info' : 'No contact info saved') + '" onclick="' + (hasContact ? 'toggleDirContactPopover(event,\'' + c.id + '\')' : 'showDirMissingContact(event)') + '">' +
                     contactIconSvg + (hasContact ? '' : '<span class="dir-contact-missing-dot">!</span>') +
                 '</button>' +
+                '<button class="btn btn-icon btn-sm" title="Edit" onclick="toggleDirEditRow(\'' + c.id + '\')">' + editIconSvg + '</button>' +
                 (inEvent ? '<button class="btn btn-sm btn-primary-gold" onclick="addDirectoryContactToStaff(\'' + c.id + '\')">+ Staff</button>' : '') +
                 (inEvent ? '<button class="btn btn-sm btn-secondary" onclick="addDirectoryContactToBudget(\'' + c.id + '\')">+ Budget</button>' : '') +
                 '<button class="btn btn-icon btn-sm" title="Delete" onclick="deleteDirectoryContact(\'' + c.id + '\')">' + trashIconSvg + '</button>' +
             '</td>' +
-            '</tr>';
+            '</tr>' + editRow;
     }).join('');
 
     container.innerHTML = '<table class="staff-index-table"><thead><tr>' +
@@ -6862,6 +6880,39 @@ function renderStaffIndex() {
         '</tr></thead><tbody>' + rows + '</tbody></table>';
 }
 window.renderStaffIndex = renderStaffIndex;
+
+function toggleDirEditRow(contactId) {
+    const row = document.getElementById('dir-edit-' + contactId);
+    if (!row) return;
+    const showing = row.style.display !== 'none';
+    row.style.display = showing ? 'none' : '';
+    if (!showing) document.getElementById('de-name-' + contactId)?.focus();
+}
+window.toggleDirEditRow = toggleDirEditRow;
+
+async function saveDirContactEdit(contactId) {
+    const name  = (document.getElementById('de-name-'  + contactId)?.value || '').trim();
+    const roles = (document.getElementById('de-roles-' + contactId)?.value || '')
+        .split(',').map(r => r.trim()).filter(Boolean);
+    const phone = (document.getElementById('de-phone-' + contactId)?.value || '').trim();
+    const email = (document.getElementById('de-email-' + contactId)?.value || '').trim();
+
+    if (!name) { showToast('Name is required', 'error'); return; }
+
+    // Optimistic local update
+    const idx = state.staffDirectory.findIndex(c => c.id === contactId);
+    if (idx !== -1) state.staffDirectory[idx] = { ...state.staffDirectory[idx], name, roles, phone: phone || null, email: email || null };
+    renderStaffIndex();
+
+    try {
+        await staffDirectoryCollection.doc(contactId).update({ name, roles, phone: phone || null, email: email || null });
+        showToast('Contact updated');
+    } catch (e) {
+        console.error('saveDirContactEdit error:', e);
+        showToast('Error saving contact', 'error');
+    }
+}
+window.saveDirContactEdit = saveDirContactEdit;
 
 async function deleteDirectoryContact(id) {
     const contact = state.staffDirectory.find(c => c.id === id);
