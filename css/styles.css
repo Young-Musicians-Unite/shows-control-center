@@ -9218,10 +9218,10 @@ body.menu-open::after {
     color: #e2ddd6;
     vertical-align: middle;
 }
-.hub-cell-date  { color: #94a3b8; font-size: 0.85rem; white-space: nowrap; width: 120px; }
-.hub-cell-name  { font-weight: 500; }
-.hub-cell-lead  { color: #94a3b8; width: 120px; }
-.hub-cell-phase { width: 340px; }
+.hub-cell-date   { color: #94a3b8; font-size: 0.85rem; white-space: nowrap; width: 120px; }
+.hub-cell-name   { font-weight: 500; width: 35%; }
+.hub-cell-groups { color: #94a3b8; width: 160px; font-size: 0.83rem; }
+.hub-cell-phase  { width: 280px; }
 .hub-cell-actions { text-align: right; width: 100px; }
 
 .hub-cell-editable { cursor: pointer; }
