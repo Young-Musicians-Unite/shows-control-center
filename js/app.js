@@ -898,12 +898,9 @@ async function migrateToMultiEvent() {
         return;
     }
 
-    // Check several representative legacy collections so we don't miss data
-    // if budget happens to be empty on a real single-event install
+    // Check every legacy collection so no module's data is silently skipped
     const legacyChecks = await Promise.all(
-        ['budget', 'timeline', 'staff', 'guests', 'event-info'].map(c =>
-            db.collection(c).limit(1).get()
-        )
+        LEGACY_COLLECTIONS.map(c => db.collection(c).limit(1).get())
     );
     if (legacyChecks.every(s => s.empty)) return;
 
