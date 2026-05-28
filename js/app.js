@@ -1132,10 +1132,46 @@ window.updateEventPhase = async function(eventId, phaseId, selectEl) {
     }
 };
 
+const EVENT_SUBCOLLECTIONS = [
+    'vendors', 'budget', 'timeline', 'mainStageInputs', 'cocktailStageInputs',
+    'staff', 'event-info', 'stagePlots', 'venueMapLayers', 'setLists',
+    'packingList', 'packingCategoryColors', 'menuItems', 'printedMaterials',
+    'digitalAssets', 'guests', 'seatingTables', 'invitees', 'intake',
+];
+
+async function deleteEventWithSubcollections(eventId) {
+    const eventRef = eventsCollection.doc(eventId);
+
+    for (const collName of EVENT_SUBCOLLECTIONS) {
+        const snap = await eventRef.collection(collName).get();
+        if (snap.empty) continue;
+
+        // For stagePlots, delete the nested objects subcollection first
+        if (collName === 'stagePlots') {
+            for (const plotDoc of snap.docs) {
+                const objSnap = await plotDoc.ref.collection('objects').get();
+                for (let i = 0; i < objSnap.docs.length; i += 499) {
+                    const batch = db.batch();
+                    objSnap.docs.slice(i, i + 499).forEach(d => batch.delete(d.ref));
+                    await batch.commit();
+                }
+            }
+        }
+
+        for (let i = 0; i < snap.docs.length; i += 499) {
+            const batch = db.batch();
+            snap.docs.slice(i, i + 499).forEach(d => batch.delete(d.ref));
+            await batch.commit();
+        }
+    }
+
+    await eventRef.delete();
+}
+
 window.deleteEvent = async function(eventId, eventName) {
     if (!confirm(`Delete "${eventName}"?\n\nThis will permanently remove the event. This cannot be undone.`)) return;
     try {
-        await eventsCollection.doc(eventId).delete();
+        await deleteEventWithSubcollections(eventId);
         showToast(`"${eventName}" deleted`);
     } catch (e) {
         showToast('Error deleting event. Please try again.', 'error');
@@ -1148,7 +1184,7 @@ window.deleteCurrentEvent = async function() {
     if (!confirm(`Delete "${event.name}"?\n\nThis will permanently remove the event. This cannot be undone.`)) return;
     closeEventSettings();
     try {
-        await eventsCollection.doc(event.id).delete();
+        await deleteEventWithSubcollections(event.id);
         showToast(`"${event.name}" deleted`);
         backToHub();
     } catch (e) {
