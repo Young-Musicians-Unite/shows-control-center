@@ -1212,6 +1212,7 @@ async function enterEvent(eventId) {
     if (!snap.exists) return;
     const event = { id: snap.id, ...snap.data() };
     state.activeEvent = event;
+    state.globalUndoStack = [];
     // Reset timeline days — will be initialized lazily on first renderTimeline()
     state.timelineDays = null;
     state.currentDay = 'Thursday';
@@ -3898,7 +3899,7 @@ function createDeleteHandler(collectionKey, itemName) {
             const item = state[collectionKey]?.find(i => i.id === id);
             if (item) {
                 const { id: _id, ...data } = item;
-                state.globalUndoStack.push({ collection: collectionKey, id, data });
+                state.globalUndoStack.push({ collection: collectionKey, id, data, eventId: state.currentEventId });
                 if (state.globalUndoStack.length > 20) state.globalUndoStack.shift();
             }
             try {
@@ -3915,6 +3916,10 @@ function createDeleteHandler(collectionKey, itemName) {
 async function undoGlobalAction() {
     const action = state.globalUndoStack.pop();
     if (!action) { showToast('Nothing to undo', 'info'); return; }
+    if (action.eventId && action.eventId !== state.currentEventId) {
+        showToast('Nothing to undo', 'info');
+        return;
+    }
     try {
         await collections[action.collection].doc(action.id).set(action.data);
         showToast('Undone');
@@ -3938,7 +3943,7 @@ window.deleteTimelineItem = async (id) => {
     const item = state.timeline.find(i => i.id === id);
     if (item) {
         const { id: _id, ...data } = item;
-        state.globalUndoStack.push({ collection: 'timeline', id, data });
+        state.globalUndoStack.push({ collection: 'timeline', id, data, eventId: state.currentEventId });
         if (state.globalUndoStack.length > 20) state.globalUndoStack.shift();
     }
     try {
