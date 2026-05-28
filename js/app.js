@@ -16920,6 +16920,7 @@ function editGuestCell(cell) {
     row?.classList.add('gi-editing');
 
     const original = isPhantom ? (state.guestPendingNew[field] || '') : (cell.textContent.trim());
+    if (!isPhantom) cell.dataset.original = original;
 
     if (field === 'status')            { openGuestStatusPicker(cell, row, original, isPhantom, invId);   return; }
     if (field === 'interviewPriority') { openGuestPriorityPicker(cell, row, original, isPhantom, invId); return; }
