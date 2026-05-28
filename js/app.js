@@ -921,6 +921,20 @@ async function migrateToMultiEvent() {
             snap.docs.slice(i, i + 499).forEach(doc => batch.set(dest.doc(doc.id), doc.data()));
             await batch.commit();
         }
+
+        // For stage plots, also migrate the nested objects subcollection (v2 schema)
+        if (collName === 'stagePlots') {
+            for (const plotDoc of snap.docs) {
+                const objSnap = await db.collection('stagePlots').doc(plotDoc.id).collection('objects').get();
+                if (objSnap.empty) continue;
+                const destObjects = dest.doc(plotDoc.id).collection('objects');
+                for (let i = 0; i < objSnap.docs.length; i += 499) {
+                    const batch = db.batch();
+                    objSnap.docs.slice(i, i + 499).forEach(doc => batch.set(destObjects.doc(doc.id), doc.data()));
+                    await batch.commit();
+                }
+            }
+        }
     }
 
     showToast('Data synced — all your Gala info is ready!', 'success');
