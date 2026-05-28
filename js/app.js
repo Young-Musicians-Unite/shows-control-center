@@ -1194,6 +1194,7 @@ async function enterEvent(eventId) {
     const event = { id: snap.id, ...snap.data() };
     state.activeEvent = event;
     state.globalUndoStack = [];
+    await flushStagePlotAutosave();
     // Reset timeline days — will be initialized lazily on first renderTimeline()
     state.timelineDays = null;
     state.currentDay = 'Thursday';
@@ -1229,7 +1230,8 @@ async function enterEvent(eventId) {
     switchPage(pageToRestore);
 }
 
-function backToHub() {
+async function backToHub() {
+    await flushStagePlotAutosave();
     teardownListeners();
     state.currentEventId = null;
     state.activeEvent = null;
@@ -10433,6 +10435,18 @@ async function migrateOldPlotFormat(plotId, canvasData) {
             resolve();
         });
     });
+}
+
+// Cancel pending autosave and flush any dirty objects synchronously.
+// Must be called before collections is replaced (backToHub / enterEvent).
+async function flushStagePlotAutosave() {
+    if (state.autoSaveTimeout) {
+        clearTimeout(state.autoSaveTimeout);
+        state.autoSaveTimeout = null;
+    }
+    await savePlot();
+    state.currentPlotId = null;
+    state.isDraftPlot = false;
 }
 
 // Trigger Auto-Save (debounced)
