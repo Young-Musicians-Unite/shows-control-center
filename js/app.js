@@ -881,15 +881,6 @@ async function migrateToMultiEvent() {
     const eventId = 'ymu-gala-2026';
     const eventRef = eventsCollection.doc(eventId);
 
-    // Check sub-collection data vs top-level data — not just whether event doc exists
-    const [subBudget, topBudget] = await Promise.all([
-        eventRef.collection('budget').limit(1).get(),
-        db.collection('budget').limit(1).get(),
-    ]);
-
-    const alreadyCopied = !subBudget.empty;
-    const legacyDataExists = !topBudget.empty;
-
     // Ensure the event document itself exists (idempotent)
     const eventDoc = await eventRef.get();
     if (!eventDoc.exists) {
@@ -902,13 +893,19 @@ async function migrateToMultiEvent() {
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
             updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
         });
+    } else if (eventDoc.data().migratedAt) {
+        // Migration already completed — migratedAt is set only after a full successful run
+        return;
     }
 
-    // If data is already in sub-collections, nothing left to do
-    if (alreadyCopied) return;
-
-    // If there's no legacy top-level data to copy, done
-    if (!legacyDataExists) return;
+    // Check several representative legacy collections so we don't miss data
+    // if budget happens to be empty on a real single-event install
+    const legacyChecks = await Promise.all(
+        ['budget', 'timeline', 'staff', 'guests', 'event-info'].map(c =>
+            db.collection(c).limit(1).get()
+        )
+    );
+    if (legacyChecks.every(s => s.empty)) return;
 
     showToast('Syncing your existing Gala data…', 'info');
 
@@ -937,6 +934,7 @@ async function migrateToMultiEvent() {
         }
     }
 
+    await eventRef.update({ migratedAt: firebase.firestore.FieldValue.serverTimestamp() });
     showToast('Data synced — all your Gala info is ready!', 'success');
 }
 
