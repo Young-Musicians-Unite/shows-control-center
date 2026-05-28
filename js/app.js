@@ -1052,9 +1052,9 @@ function renderHub() {
             `<option value="${ph.id}" ${ph.id === ev.phase ? 'selected' : ''}>${ph.label}</option>`
         ).join('');
         return `<tr>
-            <td class="hub-cell-date hub-cell-editable" onclick="editHubCell(this,'${ev.id}','date','${escapeHtml(ev.date || '')}')" title="Click to edit">${dateStr}</td>
-            <td class="hub-cell-name hub-cell-editable" onclick="editHubCell(this,'${ev.id}','name','${escapeHtml(ev.name || '')}')" title="Click to edit">${escapeHtml(ev.name || '—')}</td>
-            <td class="hub-cell-groups hub-cell-editable" onclick="editHubCell(this,'${ev.id}','performingGroups','${escapeHtml(ev.performingGroups || '')}')" title="Click to edit">${escapeHtml(ev.performingGroups || '—')}</td>
+            <td class="hub-cell-date hub-cell-editable" onclick="editHubCell(this,'${ev.id}','date')" data-value="${escapeHtml(ev.date || '')}" title="Click to edit">${dateStr}</td>
+            <td class="hub-cell-name hub-cell-editable" onclick="editHubCell(this,'${ev.id}','name')" data-value="${escapeHtml(ev.name || '')}" title="Click to edit">${escapeHtml(ev.name || '—')}</td>
+            <td class="hub-cell-groups hub-cell-editable" onclick="editHubCell(this,'${ev.id}','performingGroups')" data-value="${escapeHtml(ev.performingGroups || '')}" title="Click to edit">${escapeHtml(ev.performingGroups || '—')}</td>
             <td class="hub-cell-phase">
                 <select class="phase-select" style="background:${phase.color};color:${phase.text}"
                     onchange="updateEventPhase('${ev.id}', this.value, this)">
@@ -1075,7 +1075,8 @@ function renderHub() {
     </table>`;
 }
 
-window.editHubCell = function(cell, eventId, field, currentValue) {
+window.editHubCell = function(cell, eventId, field) {
+    const currentValue = cell.dataset.value || '';
     if (cell.querySelector('input')) return; // already editing
     const isDate = field === 'date';
     const input = document.createElement('input');
