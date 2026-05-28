@@ -17208,7 +17208,7 @@ function renderFbDirectoryList() {
         const hasBio   = inv.bio?.trim();
         const sub      = [inv.title, inv.organization].filter(Boolean).map(s => s.replace(/</g,'&lt;')).join(', ');
         const thumb    = hasPhoto
-            ? `<img class="fb-dir-thumb" src="${inv.headshotUrl}" alt="" onerror="this.style.display='none'">`
+            ? `<img class="fb-dir-thumb" src="${escapeHtml(inv.headshotUrl)}" alt="" onerror="this.style.display='none'">`
             : `<div class="fb-dir-thumb-ph">${ph}</div>`;
         const photoBadge = `<span class="fb-dir-badge ${hasPhoto ? 'fb-dir-badge-ok' : 'fb-dir-badge-miss'}">📷 ${hasPhoto ? '✓' : '✗'}</span>`;
         const bioBadge   = `<span class="fb-dir-badge ${hasBio   ? 'fb-dir-badge-ok' : 'fb-dir-badge-miss'}">bio ${hasBio ? '✓' : '✗'}</span>`;
