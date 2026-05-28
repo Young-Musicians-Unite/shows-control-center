@@ -707,9 +707,8 @@ function switchPage(pageName) {
         }
         if (pageName === 'budget') renderBudget();
         if (pageName === 'timeline') {
-            // Reset to first day tab (Thursday)
             state.timelineAnimateRows = true;
-            state.currentDay = 'Thursday';
+            state.currentDay = state.timelineDays?.[0]?.id ?? 'Thursday';
             const dayTabs = document.querySelectorAll('.day-tab[data-day]');
             dayTabs.forEach(t => t.classList.remove('active'));
             if (dayTabs.length > 0) dayTabs[0].classList.add('active');
