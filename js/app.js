@@ -935,8 +935,11 @@ function renderSeasonNav() {
     const list = document.getElementById('hub-seasons-list');
     if (!list) return;
     list.innerHTML = state.seasons.map(s =>
-        `<button class="hub-season-link ${s === state.currentSeason ? 'active' : ''}" onclick="switchSeason('${escapeHtml(s)}')">${escapeHtml(s)}</button>`
+        `<button class="hub-season-link ${s === state.currentSeason ? 'active' : ''}" data-season="${escapeHtml(s)}">${escapeHtml(s)}</button>`
     ).join('');
+    list.querySelectorAll('button[data-season]').forEach(btn => {
+        btn.addEventListener('click', () => window.switchSeason(btn.dataset.season));
+    });
 }
 
 window.switchSeason = function(season) {
