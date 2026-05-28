@@ -1213,10 +1213,8 @@ async function enterEvent(eventId) {
     updateNavForEvent(event);
     loadAllData();
 
-    // Update countdown target to this event's date
-    if (event.date) {
-        window._hubEventDate = new Date(event.date + 'T18:00:00');
-    }
+    // Update countdown target to this event's date (null if undated)
+    window._hubEventDate = event.date ? new Date(event.date + 'T18:00:00') : null;
 
     const firstPage = (event.enabledPages || []).includes('dashboard')
         ? 'dashboard'
