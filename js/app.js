@@ -801,29 +801,12 @@ function switchPage(pageName) {
     }
 }
 
-// Countdown Timer
+// Keep the dashboard countdown live — re-render once per minute so the
+// display stays accurate in events with no Firestore activity.
 function setupCountdown() {
-    updateCountdown();
-    setInterval(updateCountdown, 60000); // Update every minute
-}
-
-function updateCountdown() {
-    const now = new Date();
-    const diff = eventDate - now;
-
-    if (diff > 0) {
-        const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-        const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-
-        document.getElementById('days').textContent = days;
-        document.getElementById('hours').textContent = hours;
-        document.getElementById('minutes').textContent = minutes;
-    } else {
-        document.getElementById('days').textContent = '0';
-        document.getElementById('hours').textContent = '0';
-        document.getElementById('minutes').textContent = '0';
-    }
+    setInterval(() => {
+        if (state.currentPage === 'dashboard') renderDashboard();
+    }, 60000);
 }
 
 // Generic utility functions for data loading
