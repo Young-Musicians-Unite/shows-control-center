@@ -1005,32 +1005,15 @@ function loadEvents() {
     const el = document.getElementById('events-hub-content');
     if (el) el.innerHTML = '<p style="padding:2rem;color:#888">Connecting to database…</p>';
 
-    fetch('/api/firestore/events')
-        .then(r => r.json())
-        .then(data => {
-            state.events = (data.documents || []).map(doc => {
-                const id = doc.name.split('/').pop();
-                const parsed = { id };
-                Object.entries(doc.fields || {}).forEach(([k, v]) => { parsed[k] = parseFirestoreValue(v); });
-                return parsed;
-            }).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-            renderSeasonNav();
-            renderHub();
-        })
-        .catch(e => {
-            const el = document.getElementById('events-hub-content');
-            if (el) el.innerHTML = '<p style="padding:2rem;color:#c0392b">Could not reach database: ' + e.message + '</p>';
-        });
-
-    // Also wire up real-time SDK updates if available
-    try {
-        _eventsListener = eventsCollection.onSnapshot(snap => {
-            state.events = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
-                .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-            renderSeasonNav();
-            renderHub();
-        }, () => {});
-    } catch (e) {}
+    _eventsListener = eventsCollection.onSnapshot(snap => {
+        state.events = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+            .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+        renderSeasonNav();
+        renderHub();
+    }, e => {
+        const el = document.getElementById('events-hub-content');
+        if (el) el.innerHTML = '<p style="padding:2rem;color:#c0392b">Could not reach database: ' + e.message + '</p>';
+    });
 }
 
 function renderHub() {
