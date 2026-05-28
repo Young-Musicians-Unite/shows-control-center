@@ -1211,6 +1211,16 @@ async function enterEvent(eventId) {
     document.querySelector('.nav-menu').classList.remove('hub-mode');
 
     updateNavForEvent(event);
+
+    // Zero out stale per-event data before new listeners fire so the
+    // restored page never briefly shows the previous event's rows.
+    [
+        'budget', 'timeline', 'mainStageInputs', 'cocktailStageInputs',
+        'staff', 'stagePlots', 'setLists', 'packingList', 'packingCategoryColors',
+        'menuItems', 'printedMaterials', 'digitalAssets', 'guests', 'seatingTables',
+        'invitees',
+    ].forEach(k => { state[k] = []; });
+
     loadAllData();
 
     // Update countdown target to this event's date (null if undated)
