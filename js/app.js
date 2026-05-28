@@ -3223,6 +3223,15 @@ function renderTimeline() {
 const CUE_SHEET_FIELD_ORDER = ['time', 'duration', 'event', 'audio', 'liveVideo', 'stageLighting', 'houseLighting', 'centerScreen', 'sideScreens', 'screenCue'];
 const CUE_SHEET_MULTILINE_FIELDS = new Set(['audio', 'liveVideo', 'stageLighting']);
 
+// Returns the day ID that the Technical Cue Sheet should filter on.
+// Legacy events use 'Saturday' as both id and label; dynamic events
+// use the last day in timelineDays as the show day.
+function getCueSheetDayId() {
+    const days = state.timelineDays;
+    if (!days || days.length === 0) return 'Saturday';
+    return days.find(d => d.id === 'Saturday') ? 'Saturday' : days[days.length - 1].id;
+}
+
 function renderCueSheet() {
     const tbody = document.getElementById('cue-sheet-tbody');
     if (!tbody) return;
@@ -3232,8 +3241,11 @@ function renderCueSheet() {
         return;
     }
 
+    const dayId = getCueSheetDayId();
+    const dayLabel = state.timelineDays?.find(d => d.id === dayId)?.label || dayId;
+
     const all = state.timeline.filter(item =>
-        item.day === 'Saturday' &&
+        item.day === dayId &&
         typeof item.time === 'string' &&
         item.time >= '18:20'
     );
@@ -3253,7 +3265,7 @@ function renderCueSheet() {
     });
 
     if (sorted.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="11" class="empty-state">No Saturday timeline rows ≥ 6:20 PM yet.</td></tr>';
+        tbody.innerHTML = `<tr><td colspan="11" class="empty-state">No ${escapeHtml(dayLabel)} timeline rows ≥ 6:20 PM yet.</td></tr>`;
         return;
     }
 
