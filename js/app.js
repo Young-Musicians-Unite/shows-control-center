@@ -874,7 +874,7 @@ const LEGACY_COLLECTIONS = [
     'vendors', 'budget', 'timeline', 'mainStageInputs', 'cocktailStageInputs',
     'staff', 'stagePlots', 'venueMapLayers', 'setLists', 'packingList',
     'packingCategoryColors', 'menuItems', 'printedMaterials', 'digitalAssets',
-    'guests', 'seatingTables',
+    'guests', 'seatingTables', 'event-info',
 ];
 
 async function migrateToMultiEvent() {
