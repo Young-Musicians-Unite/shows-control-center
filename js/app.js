@@ -10439,7 +10439,15 @@ async function flushStagePlotAutosave() {
         clearTimeout(state.autoSaveTimeout);
         state.autoSaveTimeout = null;
     }
-    await savePlot();
+    if (state.isDraftPlot) {
+        // Only promote if there are unsaved changes — avoids creating empty plot docs
+        if (state.dirtyObjectIds?.size || state.deletedObjectIds?.size) {
+            await promoteDraftPlot();
+            await savePlot();
+        }
+    } else {
+        await savePlot();
+    }
     state.currentPlotId = null;
     state.isDraftPlot = false;
 }
