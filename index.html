@@ -7,21 +7,30 @@
     <link rel="stylesheet" href="css/styles.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=Cormorant+Garamond:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=Cormorant+Garamond:wght@400;500;600;700&family=Fjalla+One&family=Roboto+Mono:wght@400;500;600&family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
 </head>
 <body>
     <!-- Navigation -->
     <nav class="navbar">
         <div class="nav-container">
-            <div class="nav-brand">YMU Gala 2026</div>
+            <div class="nav-brand">YMU Events</div>
+            <button id="nav-event-settings-btn" class="nav-settings-btn" onclick="openEventSettings()" title="Manage Pages" style="display:none">
+                <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><circle cx="9" cy="9" r="3"/><path d="M9 1v2M9 15v2M1 9h2M15 9h2M3.05 3.05l1.41 1.41M13.54 13.54l1.41 1.41M3.05 14.95l1.41-1.41M13.54 4.46l1.41-1.41"/></svg>
+            </button>
             <button class="hamburger" id="hamburger" aria-label="Toggle menu">
                 <span></span>
                 <span></span>
                 <span></span>
             </button>
             <div class="nav-menu" id="nav-menu">
+                <!-- Intake - direct link -->
+                <a href="#intake" class="nav-link" data-page="intake">
+                    <svg class="nav-icon" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1z"/><line x1="5" y1="6" x2="13" y2="6"/><line x1="5" y1="9" x2="13" y2="9"/><line x1="5" y1="12" x2="9" y2="12"/></svg>
+                    <span class="nav-label">Intake</span>
+                </a>
+
                 <!-- Dashboard - direct link -->
-                <a href="#dashboard" class="nav-link active" data-page="dashboard">
+                <a href="#dashboard" class="nav-link" data-page="dashboard">
                     <svg class="nav-icon" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="1" width="7" height="7" rx="1"/><rect x="10" y="1" width="7" height="7" rx="1"/><rect x="1" y="10" width="7" height="7" rx="1"/><rect x="10" y="10" width="7" height="7" rx="1"/></svg>
                     <span class="nav-label">Dashboard</span>
                 </a>
@@ -85,6 +94,10 @@
                             <svg class="nav-icon" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8V3a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v5"/><path d="M3 8h12v4H3z"/><path d="M5 12v4"/><path d="M13 12v4"/></svg>
                             <span class="nav-label">Seating</span>
                         </a>
+                        <a href="#guests" class="nav-link" data-page="guests">
+                            <svg class="nav-icon" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="5" r="3"/><path d="M1 17c0-3.9 3.6-7 8-7s8 3.1 8 7"/><circle cx="15" cy="5" r="2.2"/><path d="M17 14.5c1.3.5 1 2.5 1 2.5"/></svg>
+                            <span class="nav-label">Guests</span>
+                        </a>
                     </div>
                 </div>
 
@@ -118,127 +131,123 @@
                     <svg class="nav-icon" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 1C6 1 4 3.5 4 6.5S9 17 9 17s5-7.5 5-10.5S12 1 9 1z"/><circle cx="9" cy="6.5" r="2"/></svg>
                     <span class="nav-label">Venue Map</span>
                 </a>
+
+                <!-- App Settings — always visible -->
+                <div class="hub-seasons-nav app-settings-nav">
+                    <div class="hub-seasons-label">App Settings</div>
+                    <button class="app-settings-btn" onclick="openStaffIndex()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                        Staff Directory
+                    </button>
+                    <button class="app-settings-btn" onclick="openJobTemplates()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                        Job Templates
+                    </button>
+                    <button class="app-settings-btn" onclick="openPerformerIndex()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="12" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/><path d="M2 21v-2a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v2"/><path d="M19 8l2 2 4-4" stroke-width="1.8"/></svg>
+                        Performer Directory
+                    </button>
+                </div>
+
+                <!-- Seasons — visible only on events hub -->
+                <div class="hub-seasons-nav" id="hub-seasons-nav">
+                    <div class="hub-seasons-label">Seasons</div>
+                    <div id="hub-seasons-list"></div>
+                    <button class="hub-season-add-btn" onclick="promptAddSeason()">+ New Season</button>
+                </div>
             </div>
         </div>
     </nav>
 
+    <!-- Event Settings Modal -->
+    <div id="event-settings-modal" class="hub-modal-overlay">
+        <div class="hub-modal">
+            <div class="hub-modal-header">
+                <h2 id="event-settings-title">Event Settings</h2>
+                <button class="hub-modal-close" onclick="closeEventSettings()">&times;</button>
+            </div>
+            <div class="hub-modal-body">
+                <div class="hub-field">
+                    <label>Enabled Pages</label>
+                    <p class="hub-field-hint">Toggle modules on or off. Disabled pages appear blacked out in the navigation.</p>
+                    <div id="event-settings-pages" class="page-toggles-grid"></div>
+                </div>
+            </div>
+            <div class="hub-modal-footer settings-modal-footer">
+                <button class="btn-danger" onclick="deleteCurrentEvent()">Delete Event</button>
+                <button class="btn-primary" onclick="closeEventSettings()">Done</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- New Event Modal -->
+    <div id="new-event-modal" class="hub-modal-overlay">
+        <div class="hub-modal">
+            <div class="hub-modal-header">
+                <h2>New Event</h2>
+                <button class="hub-modal-close" onclick="closeNewEventModal()">&times;</button>
+            </div>
+            <div class="hub-modal-body">
+                <div class="hub-field">
+                    <label>Event Name <span class="required">*</span></label>
+                    <input type="text" id="new-event-name" placeholder="e.g. YMU Spring Gala 2027">
+                </div>
+                <div class="hub-field">
+                    <label>Date</label>
+                    <input type="date" id="new-event-date">
+                </div>
+                <div class="hub-field">
+                    <label>Event Lead</label>
+                    <input type="text" id="new-event-lead" placeholder="e.g. Zach">
+                </div>
+                <div class="hub-field">
+                    <label>Phase</label>
+                    <select id="new-event-phase"></select>
+                </div>
+                <div class="hub-field">
+                    <label>Enable Pages</label>
+                    <p class="hub-field-hint">Select the modules you need for this event. You can enable or disable pages later from the Pages button in the nav.</p>
+                    <div id="new-event-pages" class="page-toggles-grid"></div>
+                </div>
+            </div>
+            <div class="hub-modal-footer">
+                <button class="btn-secondary" onclick="closeNewEventModal()">Cancel</button>
+                <button class="btn-primary" onclick="createNewEvent()">Create Event</button>
+            </div>
+        </div>
+    </div>
+
+
     <!-- Main Content -->
     <div class="container">
+
+        <!-- Events Hub Page -->
+        <div id="events-hub" class="page active">
+            <div class="page-header hub-page-header">
+                <h1>Events</h1>
+                <button class="hub-new-btn" onclick="openNewEventModal()">+ New Event</button>
+            </div>
+            <div id="events-hub-content">
+                <div class="hub-loading">Loading events…</div>
+            </div>
+        </div>
+
+        <!-- Intake Page -->
+        <div id="intake" class="page">
+            <div class="page-header intake-page-header">
+                <h1>Show Intake</h1>
+                <span class="intake-save-status" id="intake-save-status"></span>
+                <button class="btn btn-secondary btn-sm intake-cal-btn" onclick="openIntakeCalendarPanel()">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                    Send Performer Invites
+                </button>
+            </div>
+            <div id="intake-form-body" class="intake-form"></div>
+        </div>
+
         <!-- Dashboard Page -->
-        <div id="dashboard" class="page active">
-            <div class="page-header">
-                <h1>Gala Dashboard</h1>
-            </div>
-
-            <!-- Countdown -->
-            <div class="countdown-card">
-                <div class="countdown-content">
-                    <h2>Event Countdown</h2>
-                    <div id="countdown" class="countdown-display">
-                        <div class="countdown-item">
-                            <span class="countdown-number" id="days">0</span>
-                            <span class="countdown-label">Days</span>
-                        </div>
-                        <div class="countdown-item">
-                            <span class="countdown-number" id="hours">0</span>
-                            <span class="countdown-label">Hours</span>
-                        </div>
-                        <div class="countdown-item">
-                            <span class="countdown-number" id="minutes">0</span>
-                            <span class="countdown-label">Minutes</span>
-                        </div>
-                    </div>
-                    <p class="event-date">April 25, 2026 at 6:00 PM</p>
-                </div>
-            </div>
-
-            <!-- Stats Grid -->
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <div class="stat-icon budget-icon">$</div>
-                    <div class="stat-content">
-                        <div class="stat-label">Total Budget</div>
-                        <div class="stat-value" id="total-budget">$0</div>
-                    </div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-icon spent-icon">$</div>
-                    <div class="stat-content">
-                        <div class="stat-label">Total Spent</div>
-                        <div class="stat-value" id="total-spent">$0</div>
-                    </div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-icon remaining-icon">$</div>
-                    <div class="stat-content">
-                        <div class="stat-label">Remaining</div>
-                        <div class="stat-value" id="total-remaining">$0</div>
-                    </div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-icon vendor-icon">✓</div>
-                    <div class="stat-content">
-                        <div class="stat-label">Vendors Confirmed</div>
-                        <div class="stat-value" id="vendors-confirmed">0</div>
-                    </div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-icon" style="background: linear-gradient(135deg, #c9a961, #e8d5a3); color: #1a3a35;">♫</div>
-                    <div class="stat-content">
-                        <div class="stat-label" id="dashboard-setlist-label">Performances</div>
-                        <div class="stat-value" id="dashboard-setlist-count">0</div>
-                    </div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-icon" style="background: linear-gradient(135deg, #2d6a5a, #3d8b75); color: #fff;">🍽</div>
-                    <div class="stat-content">
-                        <div class="stat-label" id="dashboard-menu-label">Menu Items</div>
-                        <div class="stat-value" id="dashboard-menu-count">0</div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Budget Progress -->
-            <div class="card">
-                <div class="card-header">
-                    <h2>Budget Overview</h2>
-                </div>
-                <div class="card-body">
-                    <div class="progress-container">
-                        <div class="progress-bar">
-                            <div class="progress-fill" id="budget-progress" style="width: 0%"></div>
-                        </div>
-                        <div class="progress-labels">
-                            <span id="budget-percentage">0%</span>
-                            <span>of budget spent</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Vendor Status -->
-            <div class="card">
-                <div class="card-header">
-                    <h2>Vendor Status</h2>
-                </div>
-                <div class="card-body">
-                    <div class="status-grid" id="vendor-status-grid">
-                        <div class="status-item status-item-clickable" id="dashboard-confirmed-link">
-                            <span class="status-label">Confirmed</span>
-                            <span class="status-count confirmed" id="vendor-confirmed-count">0</span>
-                        </div>
-                        <div class="status-item status-item-clickable" id="dashboard-pending-link">
-                            <span class="status-label">Pending</span>
-                            <span class="status-count pending" id="vendor-pending-count">0</span>
-                        </div>
-                        <div class="status-item status-item-clickable" id="dashboard-issues-link">
-                            <span class="status-label">Issues</span>
-                            <span class="status-count issue" id="vendor-issue-count">0</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
+        <div id="dashboard" class="page">
+            <!-- Rendered dynamically by updateDashboard() -->
         </div>
 
         <!-- Vendors Page -->
@@ -375,36 +384,15 @@
                 </div>
             </div>
 
-            <!-- Day Tabs -->
-            <div class="day-tabs">
-                <button class="day-tab active" data-day="Thursday">
-                    <span class="day-tab-name">Thursday</span>
-                    <span class="day-tab-date">Apr 23</span>
-                </button>
-                <button class="day-tab" data-day="Friday">
-                    <span class="day-tab-name">Friday</span>
-                    <span class="day-tab-date">Apr 24</span>
-                </button>
-                <button class="day-tab" data-day="Saturday">
-                    <span class="day-tab-name">Saturday</span>
-                    <span class="day-tab-date">Apr 25</span>
-                </button>
-                <button class="day-tab" data-day="Sunday">
-                    <span class="day-tab-name">Sunday</span>
-                    <span class="day-tab-date">Apr 26</span>
-                </button>
-            </div>
+            <!-- Day Tabs (rendered dynamically by renderDayTabs()) -->
+            <div class="day-tabs" id="timeline-day-tabs"></div>
 
             <!-- Timeline Filters & Column Toggles -->
             <div class="timeline-toolbar">
                 <div class="timeline-filters">
                     <button class="filter-btn active" data-filter="all" onclick="setTimelineFilter('all')">All</button>
                     <button class="filter-btn" data-filter="production" onclick="setTimelineFilter('production')">Production</button>
-                    <button class="filter-btn" data-filter="runner" onclick="setTimelineFilter('runner')">Runner Tasks</button>
                     <button class="filter-btn" data-filter="run-of-show" onclick="setTimelineFilter('run-of-show')">Run of Show</button>
-                    <button class="filter-btn" data-filter="screencue" onclick="setTimelineFilter('screencue')">Screen Cue</button>
-                    <button class="filter-btn" data-filter="andi" onclick="setTimelineFilter('andi')">Andi</button>
-                    <button class="filter-btn" data-filter="pedro" onclick="setTimelineFilter('pedro')">Pedro</button>
                 </div>
                 <div class="timeline-columns-wrapper">
                     <button class="btn btn-columns-toggle" onclick="toggleColumnsDropdown()" id="columns-toggle-btn">
@@ -416,12 +404,8 @@
                         <label class="col-toggle"><input type="checkbox" checked onchange="toggleTimelineCol('duration', this.checked)"> Duration</label>
                         <label class="col-toggle"><input type="checkbox" checked onchange="toggleTimelineCol('event', this.checked)"> Event</label>
                         <label class="col-toggle"><input type="checkbox" checked onchange="toggleTimelineCol('prod', this.checked)"> Prod</label>
-                        <label class="col-toggle"><input type="checkbox" checked onchange="toggleTimelineCol('andi', this.checked)"> Andi</label>
-                        <label class="col-toggle"><input type="checkbox" checked onchange="toggleTimelineCol('pedro', this.checked)"> Pedro</label>
-                        <label class="col-toggle"><input type="checkbox" checked onchange="toggleTimelineCol('runner', this.checked)"> Runner</label>
                         <label class="col-toggle"><input type="checkbox" checked onchange="toggleTimelineCol('responsible', this.checked)"> Responsible</label>
                         <label class="col-toggle"><input type="checkbox" checked onchange="toggleTimelineCol('staff', this.checked)"> Staff</label>
-                        <label class="col-toggle"><input type="checkbox" checked onchange="toggleTimelineCol('screencue', this.checked)"> Screen Cue</label>
                         <label class="col-toggle"><input type="checkbox" checked onchange="toggleTimelineCol('setlist', this.checked)"> Set List</label>
                         <label class="col-toggle"><input type="checkbox" checked onchange="toggleTimelineCol('stageplot', this.checked)"> Stage Plot</label>
                     </div>
@@ -445,12 +429,8 @@
                                 <th class="duration-col">Duration</th>
                                 <th class="event-col">Event</th>
                                 <th class="prod-col">Prod</th>
-                                <th class="andi-col">Andi</th>
-                                <th class="pedro-col">Pedro</th>
-                                <th class="runner-col">Runner</th>
                                 <th class="responsible-col">Responsible</th>
                                 <th class="staff-col">Staff</th>
-                                <th class="screencue-col">Screen Cue #</th>
                                 <th class="setlist-col">Set List</th>
                                 <th class="stageplot-col">Stage Plot</th>
                                 <th class="actions-col no-print">Actions</th>
@@ -458,7 +438,7 @@
                         </thead>
                         <tbody id="timeline-tbody">
                             <tr>
-                                <td colspan="14" class="empty-state">No tasks for this day</td>
+                                <td colspan="10" class="empty-state">No tasks for this day</td>
                             </tr>
                         </tbody>
                     </table>
@@ -475,7 +455,6 @@
                 <span><kbd>N</kbd> new row</span>
                 <span><kbd>Ctrl</kbd>+<kbd>Z</kbd> undo</span>
             </div>
-
         </div>
 
         <!-- Technical Cue Sheet Page -->
@@ -597,6 +576,7 @@
                     <button class="btn btn-icon" id="export-staff-btn" title="Export to Excel">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                     </button>
+                    <button class="btn btn-secondary" onclick="openStaffIndex()">Staff Index</button>
                     <button class="btn btn-primary-gold" id="add-staff-btn">+ Add Staff</button>
                 </div>
             </div>
@@ -853,6 +833,48 @@
             </div>
         </div>
 
+        <!-- Guests Page -->
+        <div id="guests" class="page">
+            <div class="gi-page">
+                <div class="gi-page-header">
+                    <h1 class="gi-page-title">Guest List</h1>
+                    <div class="gi-toolbar-right">
+                        <div class="gi-search-wrap">
+                            <svg class="gi-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                            <input id="gi-search-input" class="gi-search-input" placeholder="Search guests…" oninput="guestHandleSearch(this.value)" autocomplete="off">
+                        </div>
+                        <button class="gi-btn" onclick="exportGuestCSV()">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            Export
+                        </button>
+                        <button class="gi-btn gi-btn-fb" onclick="openFacebookExport()">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                            Directory
+                        </button>
+                        <div class="gi-col-wrap">
+                            <button class="gi-btn" onclick="toggleGuestColumnsMenu()">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18"/></svg>
+                                Columns
+                            </button>
+                            <div class="gi-col-menu" id="gi-col-menu"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="gi-stats-bar" id="gi-stats-bar"></div>
+                <div class="gi-table-container">
+                    <div class="gi-table-scroll">
+                        <div id="gi-table-wrapper"></div>
+                    </div>
+                </div>
+                <div class="gi-hints" id="gi-hints">
+                    <span><kbd>Click</kbd> cell to edit</span>
+                    <span><kbd>Tab</kbd> next cell</span>
+                    <span><kbd>Enter</kbd> next row</span>
+                    <span><kbd>Esc</kbd> cancel</span>
+                </div>
+            </div>
+        </div>
+
         <!-- Menu Page -->
         <div id="menu" class="page">
             <div class="page-header">
@@ -1039,6 +1061,13 @@
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                     Delete
                 </button>
+
+                <div class="vm-separator"></div>
+                <button class="vm-action-btn" onclick="vmUploadBackground()" title="Upload venue map image">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    Upload Map
+                </button>
+                <input type="file" id="vm-bg-upload" accept="image/*,application/pdf" style="display:none">
             </div>
 
             <!-- Main Content: Layers Panel + Canvas -->
@@ -1056,6 +1085,16 @@
 
                 <!-- Canvas Area -->
                 <div class="vm-canvas-area">
+                    <!-- Upload prompt overlay — shown when no map has been uploaded yet -->
+                    <div id="vm-upload-prompt" class="vm-upload-prompt" style="display:none;">
+                        <div class="vm-upload-prompt-box" id="vm-upload-drop-zone">
+                            <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                            <h3>Upload your venue map</h3>
+                            <p>Drag &amp; drop an image or PDF here, or click the button below.</p>
+                            <button class="btn btn-primary" onclick="vmUploadBackground()">Choose File</button>
+                            <button class="vm-upload-skip-btn" onclick="document.getElementById('vm-upload-prompt').style.display='none'">Skip for now</button>
+                        </div>
+                    </div>
                     <div class="vm-canvas-wrapper" id="vm-canvas-wrapper">
                         <canvas id="vm-canvas"></canvas>
                     </div>
@@ -1809,8 +1848,13 @@
                         </div>
                         <div class="form-group">
                             <label for="staff-role">Role *</label>
-                            <input type="text" id="staff-role" required>
+                            <input type="text" id="staff-role" required oninput="onStaffRoleInput(this.value)" placeholder="e.g. Audio Engineer">
                         </div>
+                    </div>
+                    <!-- Directory suggestions: shown when role has matches -->
+                    <div id="staff-dir-suggestions" style="display:none">
+                        <div class="dir-suggestions-label">People used in this role before:</div>
+                        <div id="staff-dir-list" class="dir-suggestions-list"></div>
                     </div>
                     <div class="form-row">
                         <div class="form-group">
@@ -2188,17 +2232,10 @@
                             <label for="timeline-staff">Staff</label>
                             <input type="text" id="timeline-staff">
                         </div>
-                        <div class="form-group">
-                            <label for="timeline-screen-cue">Screen Cue #</label>
-                            <input type="text" id="timeline-screen-cue" inputmode="numeric" placeholder="e.g. 17 or 9, 10, 13">
-                        </div>
                     </div>
                     <div class="form-row">
                         <div class="form-group">
                             <label class="checkbox-label"><input type="checkbox" id="timeline-production"> Production</label>
-                            <label class="checkbox-label"><input type="checkbox" id="timeline-andi"> Andi</label>
-                            <label class="checkbox-label"><input type="checkbox" id="timeline-pedro"> Pedro</label>
-                            <label class="checkbox-label"><input type="checkbox" id="timeline-runner"> Runner Task</label>
                         </div>
                         <div class="form-group">
                             <label for="timeline-notes">Notes</label>
@@ -2299,8 +2336,300 @@
     <!-- Fabric.js for Stage Plot Canvas -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.0/fabric.min.js"></script>
 
+    <!-- PDF.js for rendering PDF venue maps -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>
+        if (window.pdfjsLib) {
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        }
+    </script>
+
+    <!-- Delete Guest Modal -->
+    <div class="modal" id="delete-guest-modal" onclick="if(event.target===this)closeDeleteGuestModal()">
+        <div class="modal-dark-box">
+            <div class="modal-title">Remove Guest</div>
+            <p style="color:rgba(255,255,255,0.55);font-size:14px;margin-bottom:20px;">
+                Remove <strong id="delete-guest-name"></strong> from the guest list?
+            </p>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeDeleteGuestModal()">Cancel</button>
+                <button class="btn btn-danger" id="confirm-delete-guest-btn">Remove</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Guest Directory (Facebook) Modal -->
+    <div class="modal" id="fb-export-modal" onclick="if(event.target===this)closeFacebookExport()">
+        <div class="modal-dark-box fb-modal">
+            <div class="modal-title">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#d4845a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                Guest Directory
+            </div>
+            <div class="fb-dir-header">
+                <span style="font-size:0.78rem;color:rgba(255,255,255,0.35)">Auto-fetches bios &amp; photos from Wikipedia for guests missing them.</span>
+                <div class="fb-dir-actions">
+                    <button class="fb-dir-btn fb-dir-btn-fetch" id="fb-fetch-all-btn" onclick="fetchAllMissingFbInfo()">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                        Fetch Missing Info
+                    </button>
+                    <button class="fb-dir-btn fb-dir-btn-generate" onclick="generateGuestDirectoryPdf()">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                        Generate PDF
+                    </button>
+                </div>
+            </div>
+            <div class="fb-dir-list" id="fb-dir-list"></div>
+            <div class="fb-dir-note">Guests marked <strong style="color:rgba(255,255,255,0.5)">excluded</strong> won't appear in the directory. Click <em>Generate PDF</em> then use your browser's Print → Save as PDF.</div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeFacebookExport()">Done</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Staff Index Modal -->
+    <div id="staff-index-modal" class="modal" onclick="if(event.target===this)closeStaffIndex()">
+        <div class="modal-content modal-lg">
+            <div class="modal-header">
+                <h2>Staff Directory</h2>
+                <button class="modal-close" onclick="closeStaffIndex()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="staff-index-toolbar">
+                    <div class="staff-index-toolbar-row">
+                        <input type="text" id="staff-index-search" class="search-input" placeholder="Search by name or role…" oninput="renderStaffIndex()" style="flex:1">
+                        <button class="btn btn-secondary btn-sm" onclick="toggleRoleMappings()">Role → Budget</button>
+                        <button class="btn btn-secondary btn-sm" onclick="syncStaffToDirectory()">Sync from Event</button>
+                        <button class="btn btn-primary-gold btn-sm" onclick="toggleAddDirectoryContact()">+ Add Contact</button>
+                    </div>
+                </div>
+                <!-- Inline add-contact form (hidden by default) -->
+                <div id="staff-dir-add-form" style="display:none">
+                    <div class="staff-dir-add-inner">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Name *</label>
+                                <input type="text" id="dir-add-name" placeholder="Full name">
+                            </div>
+                            <div class="form-group">
+                                <label>Role *</label>
+                                <input type="text" id="dir-add-role" placeholder="e.g. Audio Engineer">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Phone</label>
+                                <input type="tel" id="dir-add-phone" placeholder="Phone number">
+                            </div>
+                            <div class="form-group">
+                                <label>Email</label>
+                                <input type="email" id="dir-add-email" placeholder="Email address">
+                            </div>
+                        </div>
+                        <div class="staff-dir-add-actions">
+                            <button class="btn btn-primary-gold btn-sm" onclick="saveDirectoryContact()">Save Contact</button>
+                            <button class="btn btn-secondary btn-sm" onclick="toggleAddDirectoryContact()">Cancel</button>
+                        </div>
+                    </div>
+                </div>
+                <!-- Role → Budget category mapping panel -->
+                <div id="role-mappings-panel" style="display:none">
+                    <div class="role-map-header">
+                        <strong>Job Templates</strong> — generic roles used across all events. Each maps to a budget category and auto-fills when you click + Budget. Add event-specific detail in the Staff or Budget page.
+                    </div>
+                    <div id="role-mappings-content"></div>
+                </div>
+
+                <div id="staff-index-content"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Intake: Send Performer Invites Modal -->
+    <div id="intake-cal-modal" class="modal" onclick="if(event.target===this)closeIntakeCalendarPanel()">
+        <div class="modal-content modal-lg">
+            <div class="modal-header">
+                <h2>Send Performer Invitations</h2>
+                <button class="modal-close" onclick="closeIntakeCalendarPanel()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="send-invites-inner" style="border:none;padding:0;background:none">
+                    <div class="send-invites-fields">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Event Title</label>
+                                <input type="text" id="ical-title" placeholder="e.g. YMU Gala 2026 — Performer Call">
+                            </div>
+                            <div class="form-group">
+                                <label>Location / Venue</label>
+                                <input type="text" id="ical-location" placeholder="e.g. The Beverly Hilton">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Date</label>
+                                <input type="date" id="ical-date">
+                            </div>
+                            <div class="form-group">
+                                <label>Start Time</label>
+                                <input type="time" id="ical-start">
+                            </div>
+                            <div class="form-group">
+                                <label>End Time</label>
+                                <input type="time" id="ical-end">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Notes / Description</label>
+                            <textarea id="ical-notes" rows="8" placeholder="e.g. Load-in at 4pm. Dressing rooms on level 2."></textarea>
+                        </div>
+                    </div>
+                    <div class="send-invites-select-hdr">
+                        <span>Select Performers</span>
+                        <label class="si-check-label"><input type="checkbox" id="ical-include-parents" checked> Include parents</label>
+                        <button class="btn btn-sm btn-secondary" onclick="icalSelectAll()">Select All</button>
+                        <button class="btn btn-sm btn-secondary" onclick="icalSelectNone()">None</button>
+                    </div>
+                    <div id="ical-performer-list" class="si-performer-list"></div>
+                    <div id="ical-auth-status" class="si-auth-status" style="display:none"></div>
+                    <div class="send-invites-actions">
+                        <button class="btn btn-primary-gold" onclick="sendIntakeCalendarInvites()">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.39 2 2 0 0 1 3.58 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.54a16 16 0 0 0 6 6l.92-.92a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21.72 16h.2z"/></svg>
+                            Send Invitations
+                        </button>
+                        <button class="btn btn-secondary" onclick="closeIntakeCalendarPanel()">Cancel</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Performer Directory Modal -->
+    <div id="performer-index-modal" class="modal" onclick="if(event.target===this)closePerformerIndex()">
+        <div class="modal-content modal-lg">
+            <div class="modal-header">
+                <h2>Performer Directory</h2>
+                <button class="modal-close" onclick="closePerformerIndex()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="staff-index-toolbar">
+                    <div class="staff-index-toolbar-row">
+                        <input type="text" id="performer-index-search" class="search-input" placeholder="Search by name or act…" oninput="renderPerformerIndex()" style="flex:1">
+                        <button class="btn btn-secondary btn-sm" onclick="toggleSendInvitesPanel()">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                            Send Invites
+                        </button>
+                        <button class="btn btn-primary-gold btn-sm" onclick="toggleAddPerformer()">+ Add Performer</button>
+                    </div>
+                </div>
+
+                <!-- Send Invites panel -->
+                <div id="send-invites-panel" style="display:none">
+                    <div class="send-invites-inner">
+                        <div class="send-invites-hdr">
+                            <strong>Send Calendar Invitations</strong>
+                            <span class="send-invites-hint">Creates a Google Calendar event and emails selected performers</span>
+                        </div>
+                        <div class="send-invites-fields">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Event Title</label>
+                                    <input type="text" id="si-title" placeholder="e.g. YMU Gala 2026 — Performer Call">
+                                </div>
+                                <div class="form-group">
+                                    <label>Location / Venue</label>
+                                    <input type="text" id="si-location" placeholder="e.g. The Beverly Hilton">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Date</label>
+                                    <input type="date" id="si-date">
+                                </div>
+                                <div class="form-group">
+                                    <label>Start Time</label>
+                                    <input type="time" id="si-start">
+                                </div>
+                                <div class="form-group">
+                                    <label>End Time</label>
+                                    <input type="time" id="si-end">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Notes / Description</label>
+                                <textarea id="si-notes" rows="8" placeholder="e.g. Load-in at 4pm. Dressing rooms on level 2."></textarea>
+                            </div>
+                        </div>
+                        <div class="send-invites-select-hdr">
+                            <span>Select Performers</span>
+                            <label class="si-check-label"><input type="checkbox" id="si-include-parents" checked> Include parents in invite</label>
+                            <button class="btn btn-sm btn-secondary" onclick="siSelectAll()">Select All</button>
+                            <button class="btn btn-sm btn-secondary" onclick="siSelectNone()">None</button>
+                        </div>
+                        <div id="si-performer-list" class="si-performer-list"></div>
+                        <div id="si-auth-status" class="si-auth-status" style="display:none"></div>
+                        <div class="send-invites-actions">
+                            <button class="btn btn-primary-gold" onclick="sendCalendarInvites()">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.39 2 2 0 0 1 3.58 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.54a16 16 0 0 0 6 6l.92-.92a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21.72 16h.2z"/></svg>
+                                Send Invitations
+                            </button>
+                            <button class="btn btn-secondary" onclick="toggleSendInvitesPanel()">Cancel</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Inline add-performer form -->
+                <div id="performer-add-form" style="display:none">
+                    <div class="staff-dir-add-inner">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Name *</label>
+                                <input type="text" id="pa-name" placeholder="Performer's full name">
+                            </div>
+                            <div class="form-group">
+                                <label>Act / Band *</label>
+                                <input type="text" id="pa-act" placeholder="e.g. The Jazz Quartet">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Phone</label>
+                                <input type="tel" id="pa-phone" placeholder="Performer's phone">
+                            </div>
+                            <div class="form-group">
+                                <label>Email</label>
+                                <input type="email" id="pa-email" placeholder="Performer's email">
+                            </div>
+                        </div>
+                        <div class="perf-parents-section">
+                            <div class="perf-parents-label">Parents / Guardians</div>
+                            <div id="pa-parents-list"></div>
+                            <button class="btn btn-secondary btn-sm" onclick="addParentRow('pa-parents-list')">+ Add Parent</button>
+                        </div>
+                        <div class="staff-dir-add-actions">
+                            <button class="btn btn-primary-gold btn-sm" onclick="saveNewPerformer()">Save Performer</button>
+                            <button class="btn btn-secondary btn-sm" onclick="toggleAddPerformer()">Cancel</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="performer-index-content"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Session restore overlay (shown during hard-refresh re-entry) -->
+    <div id="session-loader" style="display:none">
+        <div class="session-loader-inner">
+            <div class="session-loader-spinner"></div>
+            <p>Restoring your session…</p>
+        </div>
+    </div>
+
     <!-- Toast Notifications -->
     <div class="toast-container" id="toast-container"></div>
+
+    <!-- Google Identity Services (for Calendar OAuth) -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
 
     <!-- App Scripts -->
     <script src="js/config.js"></script>

@@ -13,11 +13,22 @@ const CLIENT_ID = sessionStorage.getItem('clientId');
 
 // Global state
 const state = {
+    // Multi-event hub
+    events: [],
+    activeEvent: null,
+    currentEventId: null,
+    seasons: ['2025-2026', '2026-2027'],
+    currentSeason: '2025-2026',
+    // Per-event data
     budget: [],
     timeline: [],
     mainStageInputs: [],
     cocktailStageInputs: [],
     staff: [],
+    staffDirectory: [],
+    performerDirectory: [],
+    roleCategoryMap: {},      // role (lowercase) → budget category string (derived from jobTemplates)
+    jobTemplates: [],         // [{id, name, category}] global reusable role → budget mappings
     stagePlots: [],
     setLists: [],
     setListSearch: '',
@@ -25,8 +36,9 @@ const state = {
     setListsExpanded: new Set(),
     budgetSort: { field: null, direction: 'asc' },
     budgetSearch: '',
-    currentPage: 'dashboard',
+    currentPage: 'events-hub',
     currentDay: 'Thursday',  // For timeline filtering
+    timelineDays: null,       // [{id, label}] — null until initialized
     vendorFilter: 'all',  // For vendor page filtering (all/confirmed/pending/issues)
     vendorSearch: '',
     vendorView: 'grid',                     // 'grid' | 'schedule'
@@ -69,7 +81,7 @@ const state = {
     vmUndoStack: [],  // Undo history for venue map canvas
     vmRedoStack: [],  // Redo history for venue map canvas
     vmIsUndoRedoing: false,  // Flag to prevent history recording during undo/redo
-    timelineUndoStack: [],  // Undo history for timeline actions
+    globalUndoStack: [],   // Undo history for delete actions across all pages
     timelineFilter: 'all',  // Current timeline filter: 'all', 'production', 'run-of-show'
     timelineAnimateRows: true,  // Only animate rows on day/filter switch, not data updates
     timelineEditingRowId: null,  // Row ID currently being inline-edited (blocks re-render)
@@ -251,31 +263,201 @@ function showToast(message, type = 'success', duration = 3000) {
 // Event date
 const eventDate = new Date('2026-04-25T18:00:00-04:00');
 
+// --- Multi-event system ---
+
+const PHASES = [
+    { id: 'phase-0', label: 'Phase 0 (Idea)',                                         color: '#9e9e9e', text: '#fff' },
+    { id: 'phase-1', label: 'Phase 1 (Talks w/Client)',                               color: '#9c6fe4', text: '#fff' },
+    { id: 'phase-2', label: 'Phase 2 (Awaiting Walk Thru)',                           color: '#4db6ac', text: '#fff' },
+    { id: 'phase-3', label: 'Phase 3 (Event Details Confirmed / Quote Exchange)',     color: '#64b5f6', text: '#1a1a1a' },
+    { id: 'phase-4', label: 'Phase 4 (Invoice Sent) waiting on payment',              color: '#795548', text: '#fff' },
+    { id: 'phase-5', label: 'Phase 5 (Docs being made and staffing confirmed)',       color: '#81c784', text: '#1a1a1a' },
+    { id: 'phase-6', label: 'Phase 6 (Crew has received info)',                       color: '#90caf9', text: '#1a1a1a' },
+    { id: 'phase-7', label: 'Phase 7 (Ready for Showday)',                            color: '#ffb74d', text: '#1a1a1a' },
+    { id: 'phase-8', label: 'Phase 8 (Awaiting Final Payment)',                       color: '#ef9a9a', text: '#1a1a1a' },
+    { id: 'phase-9', label: 'Phase 9 (Send Thank you email)',                         color: '#7b1fa2', text: '#fff' },
+    { id: 'completed', label: 'Completed!!!',                                         color: '#2e7d32', text: '#fff' },
+];
+
+const ALL_PAGES = [
+    { id: 'intake',              label: 'Intake' },
+    { id: 'dashboard',           label: 'Dashboard' },
+    { id: 'timeline',            label: 'Timeline' },
+    { id: 'technical-cue-sheet', label: 'Technical Cue Sheet' },
+    { id: 'input-lists',         label: 'Input Lists' },
+    { id: 'stage-plots',         label: 'Stage Plots' },
+    { id: 'set-lists',           label: 'Performers' },
+    { id: 'vendors',             label: 'Vendors' },
+    { id: 'budget',              label: 'Budget' },
+    { id: 'staff',               label: 'Staff' },
+    { id: 'packing-list',        label: 'Packing List' },
+    { id: 'seating',             label: 'Seating' },
+    { id: 'printed-materials',   label: 'Printed Materials' },
+    { id: 'digital-assets',      label: 'Digital Assets' },
+    { id: 'menu',                label: 'Menu' },
+    { id: 'venue-map',           label: 'Venue Map' },
+    { id: 'guests',              label: 'Guests' },
+];
+
+const INTAKE_SCHEMA = [
+    { type: 'section', label: 'Venue — Day of Contact' },
+    { field: 'venue_contact_name', label: 'Name',         inputType: 'text'  },
+    { field: 'venue_phone',        label: 'Phone Number', inputType: 'tel'   },
+    { field: 'venue_email',        label: 'Email',        inputType: 'email' },
+    { field: 'venue_org',          label: 'Organization', inputType: 'text'  },
+
+    { type: 'section', label: 'Preliminary Info' },
+    { field: 'nature_of_performance', label: 'Nature of the Performance',                   inputType: 'textarea' },
+    { field: 'num_guests',            label: 'Number of Guests',                            inputType: 'number'   },
+    { field: 'other_activations',     label: 'Other Activations / Speeches / Experiences',  inputType: 'textarea' },
+
+    { type: 'section', label: 'Event Info' },
+    { field: 'event_name',       label: 'Event Name',             inputType: 'text' },
+    { field: 'venue_name',       label: 'Venue Name',             inputType: 'text' },
+    { field: 'venue_address',    label: 'Venue Address',          inputType: 'text' },
+    { field: 'staff_entrance',   label: 'Staff / Vendor Entrance',inputType: 'text' },
+    { field: 'performing_bands', label: 'Performing Bands',       inputType: 'text' },
+    { field: 'event_date',       label: 'Event Date',             inputType: 'date' },
+
+    { type: 'dynamic-section', id: 'pre_show_rows',    label: 'Pre-Show'    },
+    { type: 'dynamic-section', id: 'run_of_show_rows', label: 'Run of Show' },
+
+    { type: 'section', label: 'Logistics' },
+    { field: 'dress_code',      label: 'Dress Code',                          inputType: 'text'     },
+    { field: 'parking_info',    label: 'Parking (free? validated? by whom?)', inputType: 'textarea' },
+    { field: 'truck_parking',   label: 'Truck Parking (20ft box truck)',      inputType: 'text'     },
+    { field: 'food_provider',   label: 'Who Provides Food for Musicians?',    inputType: 'text'     },
+    { field: 'walkthrough',     label: 'Walk Through Date / Time',            inputType: 'text'     },
+    { field: 'alcohol_served',  label: 'Will Alcohol Be Served?',             inputType: 'yesno'    },
+    { field: 'stage_plot_link', label: 'Stage Plot Link',                     inputType: 'url'      },
+
+    { type: 'section', label: 'Production Responsibilities' },
+    { field: 'stage_provider',       label: 'Who Provides the Stage?',       inputType: 'text'     },
+    { field: 'sound_provider',       label: 'Who Provides the Sound?',       inputType: 'text'     },
+    { field: 'lights_provider',      label: 'Who Provides the Lights?',      inputType: 'text'     },
+    { field: 'sound_setup',          label: 'Sound Setup Needed',            inputType: 'textarea' },
+    { field: 'photographer',         label: 'Who Provides the Photographer?',inputType: 'text'     },
+    { field: 'photographer_contact', label: 'Photographer Contact Info',     inputType: 'text'     },
+    { field: 'additional_services',  label: 'Additional Services',           inputType: 'textarea' },
+
+    { type: 'section', label: 'Marketing' },
+    { field: 'ymu_table',          label: 'May YMU Set Up a Table / Tent?',         inputType: 'yesno'    },
+    { field: 'ymu_donations',      label: 'May YMU Solicit Donations?',             inputType: 'yesno'    },
+    { field: 'ymu_banners',        label: 'May We Set Up Banners?',                 inputType: 'yesno'    },
+    { field: 'ymu_promotion',      label: 'Is YMU Responsible for Promotion?',      inputType: 'yesno'    },
+    { field: 'flyer_provided',     label: 'Will a Flyer Be Provided?',              inputType: 'yesno'    },
+    { field: 'ymu_make_flyer',     label: 'Will YMU Be Required to Make a Flyer?',  inputType: 'yesno'    },
+    { field: 'event_logos',        label: 'Event Logos',                            inputType: 'url'      },
+    { field: 'band_logos',         label: 'Band Logos',                             inputType: 'url'      },
+    { field: 'sponsors',           label: 'Sponsors',                               inputType: 'text'     },
+    { field: 'promo_link',         label: 'Promo Link',                             inputType: 'url'      },
+    { field: 'show_blurb',         label: 'Two Sentence Blurb on Show',             inputType: 'textarea' },
+    { field: 'bands_in_town',      label: 'Bands in Town',                          inputType: 'text'     },
+    { field: 'facebook',           label: 'Facebook',                               inputType: 'url'      },
+    { field: 'eventbrite',         label: 'Eventbrite',                             inputType: 'url'      },
+    { field: 'submit_new_tropic',  label: 'Submit to the New Tropic?',              inputType: 'yesno'    },
+    { field: 'submit_miami_found', label: 'Submit to the Miami Foundation?',        inputType: 'yesno'    },
+    { field: 'ymu_ad_spend',       label: 'YMU Ad Spend',                           inputType: 'text'     },
+    { field: 'social_media',       label: 'Social Media Notes',                     inputType: 'text'     },
+
+    { type: 'section', label: 'Insurance' },
+    { field: 'insured_party1',  label: 'Party #1 — Named Insured', inputType: 'text' },
+    { field: 'insured_address', label: 'Address',                  inputType: 'text' },
+    { type: 'subsection', label: 'Booking Contact' },
+    { field: 'booking_name',  label: 'Name',                    inputType: 'text'  },
+    { field: 'booking_email', label: 'Email',                   inputType: 'email' },
+    { field: 'booking_phone', label: 'Phone Number',            inputType: 'tel'   },
+    { field: 'booking_org',   label: 'Organization / Company',  inputType: 'text'  },
+    { type: 'subsection', label: 'Secondary Contact' },
+    { field: 'contact2_name',  label: 'Name',                   inputType: 'text'  },
+    { field: 'contact2_email', label: 'Email',                  inputType: 'email' },
+    { field: 'contact2_phone', label: 'Phone Number',           inputType: 'tel'   },
+    { field: 'contact2_org',   label: 'Organization / Company', inputType: 'text'  },
+
+    { type: 'section', label: 'Financial Information' },
+    { field: 'invoice_org',     label: 'Organization Being Invoiced', inputType: 'text'  },
+    { field: 'billing_address', label: 'Billing Address',             inputType: 'text'  },
+    { field: 'staff_name',      label: 'Staff Name',                  inputType: 'text'  },
+    { field: 'staff_email',     label: 'Staff Email',                 inputType: 'email' },
+    { field: 'amount',          label: 'Amount',                      inputType: 'text'  },
+];
+
+const DYNAMIC_DEFAULTS = {
+    pre_show_rows: [
+        { label: 'Crew Arrival',           time: '' },
+        { label: 'Band Arrival',           time: '' },
+        { label: 'Sound Check',            time: '' },
+        { label: 'Crew Break / Stage Dark',time: '' },
+    ],
+    run_of_show_rows: [
+        { label: 'Event Starts', time: '' },
+        { label: '',             time: '' },
+        { label: '',             time: '' },
+        { label: 'Show Over',    time: '' },
+    ],
+};
+
+// Tracks active Firestore onSnapshot unsubscribers so we can tear down on event switch
+let _activeListeners = [];
+// Unsubscriber for the hub-level events listener (separate from per-event listeners)
+let _eventsListener = null;
+
+function teardownListeners() {
+    _activeListeners.forEach(fn => { try { fn(); } catch (e) {} });
+    _activeListeners = [];
+}
+
+function setActiveEvent(eventId) {
+    const ref = db.collection('events').doc(eventId);
+    collections = {
+        vendors:               ref.collection('vendors'),
+        budget:                ref.collection('budget'),
+        timeline:              ref.collection('timeline'),
+        mainStageInputs:       ref.collection('mainStageInputs'),
+        cocktailStageInputs:   ref.collection('cocktailStageInputs'),
+        staff:                 ref.collection('staff'),
+        eventInfo:             ref.collection('event-info'),
+        stagePlots:            ref.collection('stagePlots'),
+        venueMapLayers:        ref.collection('venueMapLayers'),
+        setLists:              ref.collection('setLists'),
+        packingList:           ref.collection('packingList'),
+        packingCategoryColors: ref.collection('packingCategoryColors'),
+        menuItems:             ref.collection('menuItems'),
+        printedMaterials:      ref.collection('printedMaterials'),
+        digitalAssets:         ref.collection('digitalAssets'),
+        guests:                ref.collection('guests'),
+        seatingTables:         ref.collection('seatingTables'),
+        invitees:              ref.collection('invitees'),
+        intake:                ref.collection('intake'),
+    };
+    state.currentEventId = eventId;
+}
+
 // Initialize app when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
     initializeApp();
 });
 
 function initializeApp() {
-    setupNavigation();
-    setupHamburgerMenu();
-    setupModals();
-    setupCountdown();
-    loadAllData();
-    setupFormHandlers();
-    setupDayTabs();
-    setupVendorFilters();
-    setupStageTabs();
-    setupExportAndPrint();
-    setupStagePlotTabs();
-    setupStagePlotControls();
-    setupZoomControls();
-    setupUndoRedo();
-    setupKeyboardShortcuts();
-    setupPlotNameInput();
-    setupPropertiesPanel();
-    setupVenueMap();
-    setupSetListPage();
+    const _setup = (name, fn) => { try { fn(); } catch(e) { console.error('SETUP CRASH in ' + name + ':', e); } };
+    _setup('setupNavigation', setupNavigation);
+    _setup('setupHamburgerMenu', setupHamburgerMenu);
+    _setup('setupModals', setupModals);
+    _setup('setupCountdown', setupCountdown);
+    _setup('setupFormHandlers', setupFormHandlers);
+    _setup('setupDayTabs', setupDayTabs);
+    _setup('setupVendorFilters', setupVendorFilters);
+    _setup('setupStageTabs', setupStageTabs);
+    _setup('setupExportAndPrint', setupExportAndPrint);
+    _setup('setupStagePlotTabs', setupStagePlotTabs);
+    _setup('setupStagePlotControls', setupStagePlotControls);
+    _setup('setupZoomControls', setupZoomControls);
+    _setup('setupUndoRedo', setupUndoRedo);
+    _setup('setupKeyboardShortcuts', setupKeyboardShortcuts);
+    _setup('setupPlotNameInput', setupPlotNameInput);
+    _setup('setupPropertiesPanel', setupPropertiesPanel);
+    _setup('setupVenueMap', setupVenueMap);
+    _setup('setupSetListPage', setupSetListPage);
 
     // Flush pending saves on page unload
     window.addEventListener('beforeunload', () => {
@@ -321,17 +503,34 @@ function initializeApp() {
         }
     });
 
-    // Restore page from URL hash (or default to dashboard)
-    const hash = location.hash.replace('#', '');
-    if (hash && document.getElementById(hash)) {
-        switchPage(hash);
-        // Update nav link active state to match
-        const navLinks = document.querySelectorAll('.nav-link');
-        navLinks.forEach(l => l.classList.toggle('active', l.dataset.page === hash));
-        updateNavGroupIndicators();
+    // Read saved session before anything else runs
+    const savedEventId = localStorage.getItem('lastEventId');
+
+    document.querySelector('.nav-menu').classList.add('hub-mode');
+    loadSeasons();
+    loadEvents();
+    loadStaffDirectory();
+    loadPerformerDirectory();
+    loadRoleCategoryMap();
+
+    if (savedEventId) {
+        // Show overlay immediately so the hub never flashes
+        const loader = document.getElementById('session-loader');
+        if (loader) loader.style.display = 'flex';
+        enterEvent(savedEventId)
+            .then(() => { if (loader) loader.style.display = 'none'; })
+            .catch(() => {
+                localStorage.removeItem('lastEventId');
+                localStorage.removeItem('lastPage');
+                if (loader) loader.style.display = 'none';
+                switchPage('events-hub');
+            });
     } else {
-        switchPage('dashboard');
+        switchPage('events-hub');
     }
+    // Run migration in the background; the live events listener will pick up any new docs
+    migrateToMultiEvent()
+        .catch(e => console.warn('migrateToMultiEvent skipped:', e));
 
     // Browser back/forward navigation
     window.addEventListener('hashchange', () => {
@@ -442,6 +641,11 @@ function closeHamburgerMenu() {
 }
 
 function switchPage(pageName) {
+    // Guard: non-hub pages require an active event
+    if (pageName !== 'events-hub' && !state.currentEventId) {
+        pageName = 'events-hub';
+    }
+
     const pages = document.querySelectorAll('.page');
     pages.forEach(page => page.classList.remove('active'));
 
@@ -450,6 +654,8 @@ function switchPage(pageName) {
         targetPage.classList.add('active');
         state.currentPage = pageName;
         window.location.hash = pageName;
+        // Persist so hard-refresh returns to the same spot
+        if (pageName !== 'events-hub') localStorage.setItem('lastPage', pageName);
 
         // Clear editing state when switching pages
         state.budgetEditingRowId = null;
@@ -461,9 +667,13 @@ function switchPage(pageName) {
         state.timelineEditingRowId = null;
         state.timelineRenderPending = false;
         state.pendingNewRow = {};
+        state.guestEditingId = null;
+        state.guestRenderPending = false;
+        state.guestPendingNew = {};
 
         // Refresh data for the page
         if (pageName === 'dashboard') updateDashboard();
+        if (pageName === 'guests') initGuestPage();
         if (pageName === 'vendors') {
             state.vendorFilter = 'all';
             state.vendorSearch = '';
@@ -497,9 +707,8 @@ function switchPage(pageName) {
         }
         if (pageName === 'budget') renderBudget();
         if (pageName === 'timeline') {
-            // Reset to first day tab (Thursday)
             state.timelineAnimateRows = true;
-            state.currentDay = 'Thursday';
+            state.currentDay = state.timelineDays?.[0]?.id ?? 'Thursday';
             const dayTabs = document.querySelectorAll('.day-tab[data-day]');
             dayTabs.forEach(t => t.classList.remove('active'));
             if (dayTabs.length > 0) dayTabs[0].classList.add('active');
@@ -546,10 +755,9 @@ function switchPage(pageName) {
         if (pageName === 'stage-plots') initializeStagePlots();
         if (pageName === 'venue-map') {
             if (state.vmCanvas) {
-                // Re-render canvas after it becomes visible
-                setTimeout(() => state.vmCanvas.renderAll(), 50);
+                // Re-fit canvas to container in case viewport changed, then render
+                requestAnimationFrame(() => { vmFitCanvasToContainer(); state.vmCanvas?.renderAll(); });
             } else {
-                // First visit — initialize canvas now that the page is visible
                 vmInitCanvas();
             }
         }
@@ -593,29 +801,12 @@ function switchPage(pageName) {
     }
 }
 
-// Countdown Timer
+// Keep the dashboard countdown live — re-render once per minute so the
+// display stays accurate in events with no Firestore activity.
 function setupCountdown() {
-    updateCountdown();
-    setInterval(updateCountdown, 60000); // Update every minute
-}
-
-function updateCountdown() {
-    const now = new Date();
-    const diff = eventDate - now;
-
-    if (diff > 0) {
-        const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-        const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-
-        document.getElementById('days').textContent = days;
-        document.getElementById('hours').textContent = hours;
-        document.getElementById('minutes').textContent = minutes;
-    } else {
-        document.getElementById('days').textContent = '0';
-        document.getElementById('hours').textContent = '0';
-        document.getElementById('minutes').textContent = '0';
-    }
+    setInterval(() => {
+        if (state.currentPage === 'dashboard') renderDashboard();
+    }, 60000);
 }
 
 // Generic utility functions for data loading
@@ -624,21 +815,21 @@ function setupCollectionListener(collectionKey, stateKey, renderCallbacks = []) 
         console.warn(`Collection '${collectionKey}' not configured — skipping listener`);
         return;
     }
-    collections[collectionKey].onSnapshot((snapshot) => {
+    const unsub = collections[collectionKey].onSnapshot((snapshot) => {
         state[stateKey] = snapshot.docs.map(doc => ({
             id: doc.id,
             ...doc.data()
         }));
-
-        // Call all render callbacks
         renderCallbacks.forEach(callback => callback());
     }, (error) => {
         console.error(`Error loading ${collectionKey}:`, error);
     });
+    _activeListeners.push(unsub);
 }
 
-// Load all data from Firestore
+// Load all data from Firestore (tears down any existing listeners first)
 function loadAllData() {
+    teardownListeners();
     setupCollectionListener('budget', 'budget', [renderBudget, renderVendors, updateDashboard, renderStaff, backfillLinkedContactInfo]);
     setupCollectionListener('timeline', 'timeline', [renderTimeline, renderCueSheet, updateDashboard]);
     setupCollectionListener('mainStageInputs', 'mainStageInputs', [renderStageInputs]);
@@ -653,30 +844,1032 @@ function loadAllData() {
     setupCollectionListener('digitalAssets', 'digitalAssets', [renderDigitalAssets]);
     setupCollectionListener('guests', 'guests', [renderSeatingTable, renderSeatingMap, renderSeatingPanel, updateSeatingStats]);
     setupCollectionListener('seatingTables', 'seatingTables', [renderSeatingTable, renderSeatingMap, renderSeatingPanel, updateSeatingStats]);
+    setupCollectionListener('invitees', 'invitees', [renderGuestList]);
+    setupIntakeListener();
 }
+
+// ============================================================
+// EVENTS HUB
+// ============================================================
+
+const LEGACY_COLLECTIONS = [
+    'vendors', 'budget', 'timeline', 'mainStageInputs', 'cocktailStageInputs',
+    'staff', 'stagePlots', 'venueMapLayers', 'setLists', 'packingList',
+    'packingCategoryColors', 'menuItems', 'printedMaterials', 'digitalAssets',
+    'guests', 'seatingTables', 'event-info',
+];
+
+async function migrateToMultiEvent() {
+    const eventId = 'ymu-gala-2026';
+    const eventRef = eventsCollection.doc(eventId);
+
+    // Ensure the event document itself exists (idempotent)
+    const eventDoc = await eventRef.get();
+    if (!eventDoc.exists) {
+        await eventRef.set({
+            name: 'YMU Gala 2026',
+            date: '2026-04-25',
+            lead: '',
+            phase: 'phase-7',
+            enabledPages: ALL_PAGES.map(p => p.id),
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        });
+    } else if (eventDoc.data().migratedAt) {
+        // Migration already completed — migratedAt is set only after a full successful run
+        return;
+    }
+
+    // Check every legacy collection so no module's data is silently skipped
+    const legacyChecks = await Promise.all(
+        LEGACY_COLLECTIONS.map(c => db.collection(c).limit(1).get())
+    );
+    if (legacyChecks.every(s => s.empty)) return;
+
+    showToast('Syncing your existing Gala data…', 'info');
+
+    for (const collName of LEGACY_COLLECTIONS) {
+        const snap = await db.collection(collName).get();
+        if (snap.empty) continue;
+        const dest = eventRef.collection(collName);
+        for (let i = 0; i < snap.docs.length; i += 499) {
+            const batch = db.batch();
+            snap.docs.slice(i, i + 499).forEach(doc => batch.set(dest.doc(doc.id), doc.data()));
+            await batch.commit();
+        }
+
+        // For stage plots, also migrate the nested objects subcollection (v2 schema)
+        if (collName === 'stagePlots') {
+            for (const plotDoc of snap.docs) {
+                const objSnap = await db.collection('stagePlots').doc(plotDoc.id).collection('objects').get();
+                if (objSnap.empty) continue;
+                const destObjects = dest.doc(plotDoc.id).collection('objects');
+                for (let i = 0; i < objSnap.docs.length; i += 499) {
+                    const batch = db.batch();
+                    objSnap.docs.slice(i, i + 499).forEach(doc => batch.set(destObjects.doc(doc.id), doc.data()));
+                    await batch.commit();
+                }
+            }
+        }
+    }
+
+    await eventRef.update({ migratedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    showToast('Data synced — all your Gala info is ready!', 'success');
+}
+
+async function loadSeasons() {
+    // Render defaults immediately so the nav is populated right away
+    renderSeasonNav();
+    try {
+        const doc = await db.collection('config').doc('seasons').get({ source: 'server' });
+        if (doc.exists && doc.data().list?.length) {
+            state.seasons = doc.data().list;
+        } else {
+            await db.collection('config').doc('seasons').set({ list: state.seasons });
+        }
+    } catch (e) { /* use defaults */ }
+    renderSeasonNav();
+}
+
+function renderSeasonNav() {
+    const list = document.getElementById('hub-seasons-list');
+    if (!list) return;
+    list.innerHTML = state.seasons.map(s =>
+        `<button class="hub-season-link ${s === state.currentSeason ? 'active' : ''}" data-season="${escapeHtml(s)}">${escapeHtml(s)}</button>`
+    ).join('');
+    list.querySelectorAll('button[data-season]').forEach(btn => {
+        btn.addEventListener('click', () => window.switchSeason(btn.dataset.season));
+    });
+}
+
+window.switchSeason = function(season) {
+    state.currentSeason = season;
+    renderSeasonNav();
+    renderHub();
+    closeHamburgerMenu();
+};
+
+window.promptAddSeason = async function() {
+    const label = prompt('Enter season label (e.g. 2026-2027):');
+    if (!label || !label.trim()) return;
+    const trimmed = label.trim();
+    if (state.seasons.includes(trimmed)) { showToast('Season already exists', 'error'); return; }
+    state.seasons.push(trimmed);
+    try {
+        await db.collection('config').doc('seasons').set({ list: state.seasons });
+    } catch (e) { showToast('Error saving season', 'error'); return; }
+    state.currentSeason = trimmed;
+    renderSeasonNav();
+    renderHub();
+    closeHamburgerMenu();
+};
+
+function parseFirestoreValue(v) {
+    if (!v) return null;
+    if ('stringValue' in v) return v.stringValue;
+    if ('integerValue' in v) return parseInt(v.integerValue);
+    if ('doubleValue' in v) return v.doubleValue;
+    if ('booleanValue' in v) return v.booleanValue;
+    if ('nullValue' in v) return null;
+    if ('arrayValue' in v) return (v.arrayValue.values || []).map(parseFirestoreValue);
+    if ('mapValue' in v) {
+        const obj = {};
+        Object.entries(v.mapValue.fields || {}).forEach(([k, fv]) => { obj[k] = parseFirestoreValue(fv); });
+        return obj;
+    }
+    return null;
+}
+
+function loadEvents() {
+    if (_eventsListener) { try { _eventsListener(); } catch (e) {} _eventsListener = null; }
+
+    // Visual confirmation that this function ran
+    const el = document.getElementById('events-hub-content');
+    if (el) el.innerHTML = '<p style="padding:2rem;color:#888">Connecting to database…</p>';
+
+    _eventsListener = eventsCollection.onSnapshot(snap => {
+        state.events = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+            .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+        renderSeasonNav();
+        renderHub();
+    }, e => {
+        const el = document.getElementById('events-hub-content');
+        if (el) el.innerHTML = '<p style="padding:2rem;color:#c0392b">Could not reach database: ' + e.message + '</p>';
+    });
+}
+
+function renderHub() {
+    const el = document.getElementById('events-hub-content');
+    if (!el) return;
+
+    // Update page heading to reflect current season
+    const heading = document.querySelector('#events-hub .page-header h1');
+    if (heading) heading.textContent = state.currentSeason + ' Events';
+
+    const seasonEvents = (state.events || [])
+        .filter(ev => (ev.season || '2025-2026') === state.currentSeason)
+        .sort((a, b) => {
+            if (!a.date && !b.date) return 0;
+            if (!a.date) return -1;
+            if (!b.date) return 1;
+            return a.date.localeCompare(b.date);
+        });
+
+    if (seasonEvents.length === 0) {
+        el.innerHTML = `<div class="hub-empty"><p>No events in ${escapeHtml(state.currentSeason)} yet.</p></div>`;
+        return;
+    }
+
+    const rows = seasonEvents.map(ev => {
+        const phase = PHASES.find(p => p.id === ev.phase) || PHASES[0];
+        const dateStr = ev.date
+            ? new Date(ev.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+            : '—';
+        const phaseOptions = PHASES.map(ph =>
+            `<option value="${ph.id}" ${ph.id === ev.phase ? 'selected' : ''}>${ph.label}</option>`
+        ).join('');
+        return `<tr>
+            <td class="hub-cell-date hub-cell-editable" onclick="editHubCell(this,'${ev.id}','date')" data-value="${escapeHtml(ev.date || '')}" title="Click to edit">${dateStr}</td>
+            <td class="hub-cell-name hub-cell-editable" onclick="editHubCell(this,'${ev.id}','name')" data-value="${escapeHtml(ev.name || '')}" title="Click to edit">${escapeHtml(ev.name || '—')}</td>
+            <td class="hub-cell-groups hub-cell-editable" onclick="editHubCell(this,'${ev.id}','performingGroups')" data-value="${escapeHtml(ev.performingGroups || '')}" title="Click to edit">${escapeHtml(ev.performingGroups || '—')}</td>
+            <td class="hub-cell-phase">
+                <select class="phase-select" style="background:${phase.color};color:${phase.text}"
+                    onchange="updateEventPhase('${ev.id}', this.value, this)">
+                    ${phaseOptions}
+                </select>
+            </td>
+            <td class="hub-cell-actions">
+                <button class="hub-enter-btn" onclick="enterEvent('${ev.id}')">Enter &rarr;</button>
+            </td>
+        </tr>`;
+    }).join('');
+
+    el.innerHTML = `<table class="hub-table">
+        <thead><tr>
+            <th>Date</th><th>Event Name</th><th>Performing Groups</th><th>Phase</th><th></th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+    </table>`;
+}
+
+window.editHubCell = function(cell, eventId, field) {
+    const currentValue = cell.dataset.value || '';
+    if (cell.querySelector('input')) return; // already editing
+    const isDate = field === 'date';
+    const input = document.createElement('input');
+    input.type = isDate ? 'date' : 'text';
+    input.value = currentValue;
+    input.className = 'hub-cell-input';
+    if (!isDate) input.placeholder = field === 'name' ? 'Event name' : field === 'lead' ? 'Lead name' : field === 'performingGroups' ? 'e.g. The Jazz Quartet, House Band' : '';
+    cell.textContent = '';
+    cell.appendChild(input);
+    input.focus();
+    if (!isDate) input.select();
+
+    const save = async () => {
+        const newVal = input.value.trim();
+        const ev = state.events.find(e => e.id === eventId);
+        if (ev && newVal !== currentValue) {
+            ev[field] = newVal;
+            try {
+                await eventsCollection.doc(eventId).update({
+                    [field]: newVal,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                });
+            } catch (e) {
+                console.error('Failed to update event:', e);
+                showToast('Error saving', 'error');
+            }
+        }
+        renderHub();
+    };
+
+    input.addEventListener('blur', save);
+    input.addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+        if (e.key === 'Escape') { input.value = currentValue; input.blur(); }
+    });
+    input.addEventListener('click', e => e.stopPropagation());
+};
+
+window.updateEventPhase = async function(eventId, phaseId, selectEl) {
+    const phase = PHASES.find(p => p.id === phaseId);
+    if (phase && selectEl) {
+        selectEl.style.background = phase.color;
+        selectEl.style.color = phase.text;
+    }
+    try {
+        await eventsCollection.doc(eventId).update({
+            phase: phaseId,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        });
+        const ev = state.events.find(e => e.id === eventId);
+        if (ev) ev.phase = phaseId;
+    } catch (e) {
+        console.error('Failed to update phase:', e);
+    }
+};
+
+const EVENT_SUBCOLLECTIONS = [
+    'vendors', 'budget', 'timeline', 'mainStageInputs', 'cocktailStageInputs',
+    'staff', 'event-info', 'stagePlots', 'venueMapLayers', 'setLists',
+    'packingList', 'packingCategoryColors', 'menuItems', 'printedMaterials',
+    'digitalAssets', 'guests', 'seatingTables', 'invitees', 'intake',
+];
+
+async function deleteEventWithSubcollections(eventId) {
+    const eventRef = eventsCollection.doc(eventId);
+
+    for (const collName of EVENT_SUBCOLLECTIONS) {
+        const snap = await eventRef.collection(collName).get();
+        if (snap.empty) continue;
+
+        // For stagePlots, delete the nested objects subcollection first
+        if (collName === 'stagePlots') {
+            for (const plotDoc of snap.docs) {
+                const objSnap = await plotDoc.ref.collection('objects').get();
+                for (let i = 0; i < objSnap.docs.length; i += 499) {
+                    const batch = db.batch();
+                    objSnap.docs.slice(i, i + 499).forEach(d => batch.delete(d.ref));
+                    await batch.commit();
+                }
+            }
+        }
+
+        for (let i = 0; i < snap.docs.length; i += 499) {
+            const batch = db.batch();
+            snap.docs.slice(i, i + 499).forEach(d => batch.delete(d.ref));
+            await batch.commit();
+        }
+    }
+
+    await eventRef.delete();
+}
+
+window.deleteEvent = async function(eventId, eventName) {
+    if (!confirm(`Delete "${eventName}"?\n\nThis will permanently remove the event. This cannot be undone.`)) return;
+    try {
+        await deleteEventWithSubcollections(eventId);
+        showToast(`"${eventName}" deleted`);
+    } catch (e) {
+        showToast('Error deleting event. Please try again.', 'error');
+    }
+};
+
+window.deleteCurrentEvent = async function() {
+    const event = state.activeEvent;
+    if (!event) return;
+    if (!confirm(`Delete "${event.name}"?\n\nThis will permanently remove the event. This cannot be undone.`)) return;
+    closeEventSettings();
+    try {
+        await deleteEventWithSubcollections(event.id);
+        showToast(`"${event.name}" deleted`);
+        backToHub();
+    } catch (e) {
+        showToast('Error deleting event. Please try again.', 'error');
+    }
+};
+
+async function enterEvent(eventId) {
+    const snap = await eventsCollection.doc(eventId).get();
+    if (!snap.exists) return;
+    const event = { id: snap.id, ...snap.data() };
+    state.activeEvent = event;
+    state.globalUndoStack = [];
+    await flushStagePlotAutosave();
+    // Reset timeline days — will be initialized lazily on first renderTimeline()
+    state.timelineDays = null;
+    state.currentDay = 'Thursday';
+
+    setActiveEvent(eventId);
+    localStorage.setItem('lastEventId', eventId);
+    vmResetCanvas();
+
+    // Update nav branding
+    const brand = document.querySelector('.nav-brand');
+    brand.innerHTML = `
+        <button class="nav-back-btn" onclick="backToHub()">&#8592; Events</button>
+        <span class="nav-event-title">${escapeHtml(event.name || 'Event')}</span>
+    `;
+
+    document.getElementById('nav-event-settings-btn').style.display = 'flex';
+    document.querySelector('.nav-menu').classList.remove('hub-mode');
+
+    updateNavForEvent(event);
+
+    // Zero out stale per-event data before new listeners fire so the
+    // restored page never briefly shows the previous event's rows.
+    [
+        'budget', 'timeline', 'mainStageInputs', 'cocktailStageInputs',
+        'staff', 'stagePlots', 'setLists', 'packingList', 'packingCategoryColors',
+        'menuItems', 'printedMaterials', 'digitalAssets', 'guests', 'seatingTables',
+        'invitees',
+    ].forEach(k => { state[k] = []; });
+
+    loadAllData();
+
+    // Update countdown target to this event's date (null if undated)
+    window._hubEventDate = event.date ? new Date(event.date + 'T18:00:00') : null;
+
+    const firstPage = (event.enabledPages || []).includes('dashboard')
+        ? 'dashboard'
+        : ((event.enabledPages || [])[0] || 'dashboard');
+    const savedPage = localStorage.getItem('lastPage');
+    const enabledPages = event.enabledPages || [];
+    const pageToRestore = (savedPage && enabledPages.includes(savedPage)) ? savedPage : firstPage;
+    switchPage(pageToRestore);
+}
+
+async function backToHub() {
+    await flushStagePlotAutosave();
+    teardownListeners();
+    state.currentEventId = null;
+    state.activeEvent = null;
+    collections = {};
+    localStorage.removeItem('lastEventId');
+    localStorage.removeItem('lastPage');
+
+    const brand = document.querySelector('.nav-brand');
+    brand.textContent = 'YMU Events';
+    document.getElementById('nav-event-settings-btn').style.display = 'none';
+    document.querySelector('.nav-menu').classList.add('hub-mode');
+    document.querySelectorAll('.nav-link[data-page]').forEach(l => l.classList.remove('nav-link--disabled'));
+
+    switchPage('events-hub');
+    loadEvents();
+}
+
+function updateNavForEvent(event) {
+    const enabled = new Set(event.enabledPages || []);
+    document.querySelectorAll('.nav-link[data-page]').forEach(link => {
+        const page = link.dataset.page;
+        const isEnabled = enabled.has(page);
+        link.classList.toggle('nav-link--disabled', !isEnabled);
+        link.style.display = isEnabled ? '' : 'none';
+    });
+    // Hide nav groups where every sub-link is disabled
+    document.querySelectorAll('.nav-group').forEach(group => {
+        const links = group.querySelectorAll('.nav-link[data-page]');
+        const anyVisible = [...links].some(l => enabled.has(l.dataset.page));
+        group.classList.toggle('nav-group--all-disabled', !anyVisible);
+    });
+    // Flat mode: ≤4 enabled pages → show as direct links, no groups
+    const navMenu = document.getElementById('nav-menu');
+    if (navMenu) navMenu.classList.toggle('nav-flat', enabled.size <= 4);
+    // Apply/remove locked overlay on each page
+    ALL_PAGES.forEach(p => {
+        const el = document.getElementById(p.id);
+        if (!el) return;
+        el.classList.toggle('page--locked', !enabled.has(p.id));
+    });
+}
+
+function openNewEventModal() {
+    const phaseSelect = document.getElementById('new-event-phase');
+    phaseSelect.innerHTML = PHASES.map(ph =>
+        `<option value="${ph.id}">${ph.label}</option>`
+    ).join('');
+
+    const pagesContainer = document.getElementById('new-event-pages');
+    pagesContainer.innerHTML = ALL_PAGES.map(p =>
+        `<label class="page-toggle-label">
+            <input type="checkbox" value="${p.id}" class="page-toggle-cb"> ${escapeHtml(p.label)}
+        </label>`
+    ).join('');
+
+    document.getElementById('new-event-name').value = '';
+    document.getElementById('new-event-date').value = '';
+    document.getElementById('new-event-lead').value = '';
+    document.getElementById('new-event-modal').classList.add('is-open');
+    requestAnimationFrame(() => {
+        const body = document.querySelector('#new-event-modal .hub-modal-body');
+        if (body) body.scrollTop = 0;
+    });
+}
+
+window.closeNewEventModal = function() {
+    document.getElementById('new-event-modal').classList.remove('is-open');
+};
+
+window.createNewEvent = async function() {
+    const name  = document.getElementById('new-event-name').value.trim();
+    const date  = document.getElementById('new-event-date').value;
+    const lead  = document.getElementById('new-event-lead').value.trim();
+    const phase = document.getElementById('new-event-phase').value;
+    const enabledPages = [...document.querySelectorAll('#new-event-pages .page-toggle-cb:checked')].map(cb => cb.value);
+
+    if (!name) {
+        showToast('Please enter an event name', 'error');
+        document.getElementById('new-event-name').focus();
+        return;
+    }
+
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    const id = `${slug}-${Date.now()}`;
+
+    await eventsCollection.doc(id).set({
+        name, date, lead, phase, enabledPages,
+        season: state.currentSeason,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+
+    closeNewEventModal();
+    await loadEvents();
+    enterEvent(id);
+};
+
+function openEventSettings() {
+    const event = state.activeEvent;
+    if (!event) return;
+    const enabled = new Set(event.enabledPages || []);
+
+    document.getElementById('event-settings-title').textContent = event.name || 'Event Settings';
+    document.getElementById('event-settings-pages').innerHTML = ALL_PAGES.map(p =>
+        `<label class="page-toggle-label">
+            <input type="checkbox" value="${p.id}" class="settings-page-cb"
+                ${enabled.has(p.id) ? 'checked' : ''}
+                onchange="toggleEventPage('${p.id}', this.checked)">
+            ${escapeHtml(p.label)}
+        </label>`
+    ).join('');
+
+    document.getElementById('event-settings-modal').classList.add('is-open');
+}
+
+window.closeEventSettings = function() {
+    document.getElementById('event-settings-modal').classList.remove('is-open');
+};
+
+window.toggleEventPage = async function(pageId, isEnabled) {
+    const event = state.activeEvent;
+    if (!event) return;
+    const pages = new Set(event.enabledPages || []);
+    if (isEnabled) pages.add(pageId); else pages.delete(pageId);
+    const enabledPages = [...pages];
+
+    await eventsCollection.doc(event.id).update({
+        enabledPages,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+    state.activeEvent.enabledPages = enabledPages;
+    updateNavForEvent(state.activeEvent);
+};
+
+window.enterEvent = enterEvent;
+window.backToHub = backToHub;
+window.openNewEventModal = openNewEventModal;
+window.openEventSettings = openEventSettings;
+
+// ============================================================
+// INTAKE PAGE
+// ============================================================
+
+function setupIntakeListener() {
+    if (!state.currentEventId) return;
+    const ref = db.collection('events').doc(state.currentEventId).collection('intake').doc('main');
+    const unsub = ref.onSnapshot(snap => {
+        state.intake = snap.exists ? snap.data() : {};
+        renderIntake();
+    }, err => console.error('Intake listener error:', err));
+    _activeListeners.push(unsub);
+}
+
+function buildDynamicSectionRows(sectionId, rows) {
+    const closeIcon = `<svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="1" y1="1" x2="11" y2="11"/><line x1="11" y1="1" x2="1" y2="11"/></svg>`;
+    return rows.map((row, i) => `
+        <div class="intake-dyn-row" data-idx="${i}">
+            <input type="text" class="intake-input intake-dyn-label" value="${escapeHtml(row.label || '')}" placeholder="Label…" onblur="saveIntakeDynamicRows('${sectionId}')">
+            <input type="text" class="intake-input intake-dyn-time" value="${escapeHtml(row.time || '')}" placeholder="e.g. 6:30 – 7:00pm" onblur="saveIntakeDynamicRows('${sectionId}')">
+            <button class="intake-remove-row-btn" onclick="removeIntakeRow('${sectionId}', ${i})" type="button" title="Remove row">${closeIcon}</button>
+        </div>`).join('');
+}
+
+function buildDynamicSectionHTML(id, label) {
+    const defaults = DYNAMIC_DEFAULTS[id] || [];
+    return `
+        <div class="intake-section-header">${escapeHtml(label)}</div>
+        <div class="intake-dyn-col-headers">
+            <span>Item</span><span>Time</span>
+        </div>
+        <div id="intake-dyn-${id}" class="intake-dyn-body">
+            ${buildDynamicSectionRows(id, defaults)}
+        </div>
+        <div class="intake-dyn-footer">
+            <button class="intake-add-row-btn" onclick="addIntakeRow('${id}')" type="button">+ Add Row</button>
+        </div>`;
+}
+
+function buildIntakeHTML() {
+    return INTAKE_SCHEMA.map(item => {
+        if (item.type === 'section') {
+            return `<div class="intake-section-header">${escapeHtml(item.label)}</div>`;
+        }
+        if (item.type === 'subsection') {
+            return `<div class="intake-subsection-header">${escapeHtml(item.label)}</div>`;
+        }
+        if (item.type === 'dynamic-section') {
+            return buildDynamicSectionHTML(item.id, item.label);
+        }
+        let inputHTML;
+        if (item.inputType === 'textarea') {
+            inputHTML = `<textarea id="intake-${item.field}" class="intake-input intake-textarea" placeholder=" " onblur="saveIntakeField('${item.field}', this.value)" rows="2"></textarea>`;
+        } else if (item.inputType === 'yesno') {
+            inputHTML = `<select id="intake-${item.field}" class="intake-input intake-select" onchange="saveIntakeField('${item.field}', this.value)">
+                <option value="">—</option>
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+            </select>`;
+        } else {
+            inputHTML = `<input type="${item.inputType}" id="intake-${item.field}" class="intake-input" placeholder=" " onblur="saveIntakeField('${item.field}', this.value)">`;
+        }
+        return `
+            <div class="intake-row">
+                <label class="intake-label" for="intake-${item.field}">${escapeHtml(item.label)}</label>
+                <div class="intake-field-col">${inputHTML}</div>
+                <button class="intake-note-btn" onclick="toggleIntakeNote('${item.field}')" title="Add note" type="button">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                </button>
+            </div>
+            <div class="intake-note-row" id="note-row-${item.field}">
+                <div class="intake-note-inner">
+                    <textarea id="intake-note_${item.field}" class="intake-note-textarea" placeholder="Notes…" onblur="saveIntakeField('note_${item.field}', this.value)" rows="2"></textarea>
+                </div>
+            </div>`;
+    }).join('');
+}
+
+function renderIntake() {
+    const container = document.getElementById('intake-form-body');
+    if (!container) return;
+    const data = state.intake || {};
+
+    if (!container.children.length) {
+        container.innerHTML = buildIntakeHTML();
+    }
+
+    // Populate static fields
+    const focused = document.activeElement;
+    INTAKE_SCHEMA.forEach(item => {
+        if (item.type) return;
+        const el = document.getElementById(`intake-${item.field}`);
+        if (el && el !== focused) el.value = data[item.field] != null ? data[item.field] : '';
+
+        const noteEl = document.getElementById(`intake-note_${item.field}`);
+        if (noteEl && noteEl !== focused) noteEl.value = data[`note_${item.field}`] || '';
+
+        const noteRow = document.getElementById(`note-row-${item.field}`);
+        if (noteRow && data[`note_${item.field}`] && !noteRow.classList.contains('intake-note-visible')) {
+            noteRow.classList.add('intake-note-visible');
+        }
+    });
+
+    // Populate dynamic sections
+    ['pre_show_rows', 'run_of_show_rows'].forEach(sectionId => {
+        const dynContainer = document.getElementById(`intake-dyn-${sectionId}`);
+        if (!dynContainer || dynContainer.contains(focused)) return;
+        const rows = data[sectionId] || DYNAMIC_DEFAULTS[sectionId];
+        dynContainer.innerHTML = buildDynamicSectionRows(sectionId, rows);
+    });
+}
+
+window.saveIntakeField = function(field, value) {
+    if (!state.currentEventId) return;
+    const ref = db.collection('events').doc(state.currentEventId).collection('intake').doc('main');
+    ref.set({ [field]: value }, { merge: true }).then(() => {
+        const status = document.getElementById('intake-save-status');
+        if (!status) return;
+        status.textContent = 'Saved';
+        status.classList.add('intake-saved--visible');
+        clearTimeout(status._hideTimer);
+        status._hideTimer = setTimeout(() => {
+            status.classList.remove('intake-saved--visible');
+        }, 1500);
+    }).catch(e => console.error('Intake save error:', e));
+};
+
+window.toggleIntakeNote = function(field) {
+    const row = document.getElementById(`note-row-${field}`);
+    if (!row) return;
+    const wasVisible = row.classList.contains('intake-note-visible');
+    row.classList.toggle('intake-note-visible');
+    if (!wasVisible) {
+        const ta = row.querySelector('textarea');
+        if (ta) ta.focus();
+    }
+};
+
+function _intakeSaveStatus() {
+    const status = document.getElementById('intake-save-status');
+    if (!status) return;
+    status.textContent = 'Saved';
+    status.classList.add('intake-saved--visible');
+    clearTimeout(status._hideTimer);
+    status._hideTimer = setTimeout(() => status.classList.remove('intake-saved--visible'), 1500);
+}
+
+window.saveIntakeDynamicRows = function(sectionId) {
+    if (!state.currentEventId) return;
+    const dynContainer = document.getElementById(`intake-dyn-${sectionId}`);
+    if (!dynContainer) return;
+    const rows = Array.from(dynContainer.querySelectorAll('.intake-dyn-row')).map(row => ({
+        label: row.querySelector('.intake-dyn-label')?.value || '',
+        time:  row.querySelector('.intake-dyn-time')?.value  || '',
+    }));
+    db.collection('events').doc(state.currentEventId).collection('intake').doc('main')
+        .set({ [sectionId]: rows }, { merge: true })
+        .then(_intakeSaveStatus)
+        .catch(e => console.error('Dynamic rows save error:', e));
+};
+
+window.addIntakeRow = function(sectionId) {
+    const dynContainer = document.getElementById(`intake-dyn-${sectionId}`);
+    if (!dynContainer) return;
+    const newIdx = dynContainer.querySelectorAll('.intake-dyn-row').length;
+    const closeIcon = `<svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="1" y1="1" x2="11" y2="11"/><line x1="11" y1="1" x2="1" y2="11"/></svg>`;
+    const div = document.createElement('div');
+    div.className = 'intake-dyn-row';
+    div.dataset.idx = newIdx;
+    div.innerHTML = `
+        <input type="text" class="intake-input intake-dyn-label" value="" placeholder="Label…" onblur="saveIntakeDynamicRows('${sectionId}')">
+        <input type="text" class="intake-input intake-dyn-time" placeholder="e.g. 6:30 – 7:00pm" onblur="saveIntakeDynamicRows('${sectionId}')">
+        <button class="intake-remove-row-btn" onclick="removeIntakeRow('${sectionId}', ${newIdx})" type="button" title="Remove row">${closeIcon}</button>`;
+    dynContainer.appendChild(div);
+    div.querySelector('.intake-dyn-label').focus();
+    saveIntakeDynamicRows(sectionId);
+};
+
+window.removeIntakeRow = function(sectionId, rowIdx) {
+    const dynContainer = document.getElementById(`intake-dyn-${sectionId}`);
+    if (!dynContainer) return;
+    const allRows = dynContainer.querySelectorAll('.intake-dyn-row');
+    if (allRows.length <= 1) return;
+    const target = dynContainer.querySelector(`.intake-dyn-row[data-idx="${rowIdx}"]`);
+    if (target) target.remove();
+    // Re-index
+    dynContainer.querySelectorAll('.intake-dyn-row').forEach((row, i) => {
+        row.dataset.idx = i;
+        const btn = row.querySelector('.intake-remove-row-btn');
+        if (btn) btn.setAttribute('onclick', `removeIntakeRow('${sectionId}', ${i})`);
+    });
+    saveIntakeDynamicRows(sectionId);
+};
 
 // Dashboard
 function updateDashboard() {
     updateBudgetStats();
     updateVendorStats();
     updateTimelineStats();
-    updateSetListDashboard();
-    updateMenuDashboard();
+    renderDashboard();
 }
 
-function updateMenuDashboard() {
-    const el = document.getElementById('dashboard-menu-count');
-    if (el) el.textContent = state.menuItems.length;
-    const label = document.getElementById('dashboard-menu-label');
-    if (label) label.textContent = state.menuItems.length === 1 ? 'Menu Item' : 'Menu Items';
+// Legacy stubs kept so any stray references don't throw
+function updateMenuDashboard() {}
+function updateSetListDashboard() {}
+
+function renderDashboard() {
+    const dash = document.getElementById('dashboard');
+    if (!dash) return;
+
+    const event = state.activeEvent;
+    if (!event) return;
+
+    const enabled = new Set(event.enabledPages || []);
+
+    // ── Budget ────────────────────────────────────────────────────
+    const totalBudget = state.budget.reduce((s, i) => s + (parseFloat(i.budgeted) || 0), 0);
+    const totalSpent  = state.budget.reduce((s, i) => s + (parseFloat(i.actual)   || 0), 0);
+    const remaining   = totalBudget - totalSpent;
+    const budgetPct   = totalBudget > 0 ? Math.round(totalSpent / totalBudget * 100) : 0;
+    const overBudget  = budgetPct > 100;
+
+    // ── Timeline ─────────────────────────────────────────────────
+    const tlTotal   = state.timeline.length;
+    const tlDone    = state.timeline.filter(t => t.completed === true || t.status === 'complete').length;
+    const tlPct     = tlTotal > 0 ? Math.round(tlDone / tlTotal * 100) : 0;
+    const tlIncomplete = state.timeline.filter(t => {
+        if (t.completed === true || t.status === 'complete') return false;
+        // Flag items missing time or event description
+        return !t.time || !(t.event || '').trim();
+    });
+
+    // ── Staff ────────────────────────────────────────────────────
+    const staffTotal    = state.staff.length;
+    const unfilledStaff = state.staff.filter(s => s.isPlaceholder);
+    const filledCount   = staffTotal - unfilledStaff.length;
+
+    // ── Issues list ──────────────────────────────────────────────
+    const issues = [];
+    unfilledStaff.forEach(s => issues.push({
+        type: 'staff', page: 'staff', id: s.id,
+        title: (s.name || 'Unnamed role') + ' — unfilled'
+    }));
+    tlIncomplete.forEach(t => {
+        const label = (t.event || '').trim() || (t.item || '').trim() || 'Unnamed item';
+        const missing = [];
+        if (!t.time) missing.push('time');
+        if (!(t.event || '').trim()) missing.push('description');
+        issues.push({
+            type: 'timeline', page: 'timeline', id: t.id,
+            title: label + ' — missing ' + missing.join(' & ')
+        });
+    });
+    // Staff members missing contact info
+    state.staff.filter(s => !s.isPlaceholder && !s.phone && !s.email).forEach(s => issues.push({
+        type: 'contact', page: 'staff', id: s.id,
+        title: (s.name || 'Staff member') + ' — missing contact info'
+    }));
+    // Budget entries missing contact info
+    state.budget.filter(b => !b.noContactNeeded && !b.phone && !b.email).forEach(b => issues.push({
+        type: 'contact', page: 'budget', id: b.id,
+        title: (b.vendor || 'Budget entry') + ' — missing contact info'
+    }));
+
+    // ── Countdown ────────────────────────────────────────────────
+    let countdownHtml = '';
+    const evDate = window._hubEventDate;
+    if (evDate) {
+        const diff = evDate - new Date();
+        if (diff > 0) {
+            const d = Math.floor(diff / 86400000);
+            const h = Math.floor((diff % 86400000) / 3600000);
+            const m = Math.floor((diff % 3600000) / 60000);
+            countdownHtml = `
+                <div class="db-countdown">
+                    <div class="db-cd-block"><span class="db-cd-num">${d}</span><span class="db-cd-lbl">days</span></div>
+                    <div class="db-cd-sep">:</div>
+                    <div class="db-cd-block"><span class="db-cd-num">${h}</span><span class="db-cd-lbl">hrs</span></div>
+                    <div class="db-cd-sep">:</div>
+                    <div class="db-cd-block"><span class="db-cd-num">${m}</span><span class="db-cd-lbl">min</span></div>
+                </div>`;
+        } else {
+            countdownHtml = `<div class="db-cd-past">Event has passed</div>`;
+        }
+    }
+
+    // ── Date string ──────────────────────────────────────────────
+    let dateStr = '';
+    if (event.date) {
+        try {
+            dateStr = new Date(event.date + 'T12:00:00').toLocaleDateString('en-US',
+                { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        } catch(e) { dateStr = event.date; }
+    }
+
+    // ── Icons ────────────────────────────────────────────────────
+    const arrow = `<svg class="db-card-arrow" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>`;
+
+    const budgetIcon = `<div class="db-card-icon" style="background:rgba(201,169,97,0.13);color:#c9a961">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+    </div>`;
+
+    const timelineIcon = `<div class="db-card-icon" style="background:rgba(99,179,237,0.13);color:#63b3ed">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+    </div>`;
+
+    const staffIcon = `<div class="db-card-icon" style="background:rgba(72,187,120,0.13);color:#68d391">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+    </div>`;
+
+    const panelClear = issues.length === 0;
+
+    // ── Resources ────────────────────────────────────────────────
+    const resources = state.activeEvent.resources || [];
+    const resourcesHtml = `
+        <div class="db-panel db-res-panel">
+            <div class="db-panel-hdr">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(201,169,97,0.65)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                <span>Resources</span>
+                <button class="db-res-add-btn" onclick="toggleDashResourceForm()" title="Add resource">+</button>
+            </div>
+            <div class="db-res-form" id="db-res-form">
+                <input class="db-res-input" id="db-res-name" placeholder="Name…" autocomplete="off" />
+                <input class="db-res-input" id="db-res-url" placeholder="https://…" autocomplete="off" onkeydown="if(event.key==='Enter')addDashboardResource()" />
+                <button class="db-res-submit" onclick="addDashboardResource()">Add Resource</button>
+            </div>
+            ${resources.length > 0 ? `
+            <div class="db-issues-list">
+                ${resources.map((r, i) => `
+                <div class="db-resource">
+                    <a href="${escapeHtml(r.url)}" target="_blank" rel="noopener noreferrer" class="db-res-link" onclick="event.stopPropagation()">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                        ${escapeHtml(r.name)}
+                    </a>
+                    <button class="db-res-remove" onclick="removeDashboardResource(${i})" title="Remove">×</button>
+                </div>`).join('')}
+            </div>` : `
+            <div class="db-res-empty">No resources yet — add links, docs, or briefs</div>`}
+        </div>`;
+
+    // ── Render ───────────────────────────────────────────────────
+    dash.innerHTML = `
+        <div class="db-header">
+            <div>
+                <div class="db-event-name">${escapeHtml(event.name || 'Event')}</div>
+                ${dateStr ? `<div class="db-event-date">${dateStr}</div>` : ''}
+            </div>
+            ${countdownHtml}
+        </div>
+
+        <div class="db-grid">
+
+            <!-- ── Left column ── -->
+            <div class="db-left">
+                <div class="db-panel${panelClear ? ' db-panel-clear' : ''}">
+                    <div class="db-panel-hdr">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="${panelClear ? '#68d391' : '#fc8181'}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                        <span>Needs Attention</span>
+                        <span class="db-badge ${panelClear ? 'ok' : ''}">${panelClear ? '✓' : issues.length}</span>
+                    </div>
+                    ${issues.length > 0 ? (() => {
+                        const PREVIEW = 3;
+                        const renderIssue = iss => `
+                        <div class="db-issue" onclick="goToIssue('${iss.page}','${iss.id || ''}','${iss.type}')">
+                            <span class="db-issue-dot ${iss.type}"></span>
+                            <div class="db-issue-body">
+                                <div class="db-issue-title">${escapeHtml(iss.title)}</div>
+                                <div class="db-issue-tag">${iss.type === 'staff' ? 'Staff' : iss.type === 'contact' ? 'Contact' : iss.type === 'budget' ? 'Budget' : 'Timeline'}</div>
+                            </div>
+                            <span class="db-issue-arrow">›</span>
+                        </div>`;
+                        const visible = issues.slice(0, PREVIEW).map(renderIssue).join('');
+                        const hidden  = issues.slice(PREVIEW).map(renderIssue).join('');
+                        const extra   = issues.length - PREVIEW;
+                        return `
+                    <div class="db-issues-list">
+                        ${visible}
+                        ${extra > 0 ? `
+                        <div class="db-issues-overflow" id="db-issues-overflow" style="display:none">${hidden}</div>
+                        <button class="db-issues-more" id="db-issues-more-btn" onclick="toggleDashIssues()">Show ${extra} more</button>
+                        ` : ''}
+                    </div>`;
+                    })() : `
+                    <div class="db-all-clear">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                        All looking good
+                    </div>`}
+                </div>
+                ${resourcesHtml}
+            </div>
+
+            <!-- ── Right: Section cards ── -->
+            <div class="db-cards">
+
+                ${enabled.has('budget') ? `
+                <div class="db-card" style="--card-accent:#c9a961" onclick="switchPage('budget')">
+                    <div class="db-card-hdr">${budgetIcon}<span class="db-card-label">Budget</span>${arrow}</div>
+                    <div class="db-card-main">${formatCurrency(remaining)}</div>
+                    <span class="db-card-sub">remaining of ${formatCurrency(totalBudget)}</span>
+                    <div class="db-card-detail${overBudget ? ' db-card-warn' : ''}">${overBudget ? '⚠ Over budget' : formatCurrency(totalSpent) + ' spent'}</div>
+                    <div class="db-prog">
+                        <div class="db-prog-track"><div class="db-prog-fill${overBudget ? ' over' : ''}" style="width:${Math.min(budgetPct,100)}%"></div></div>
+                        <span class="db-prog-pct">${budgetPct}%</span>
+                    </div>
+                </div>` : ''}
+
+                ${enabled.has('timeline') ? `
+                <div class="db-card" style="--card-accent:#63b3ed" onclick="switchPage('timeline')">
+                    <div class="db-card-hdr">${timelineIcon}<span class="db-card-label">Timeline</span>${arrow}</div>
+                    <div class="db-card-main">${tlDone} <span style="font-size:1.3rem;opacity:0.35;font-weight:400">/ ${tlTotal}</span></div>
+                    <span class="db-card-sub">tasks complete</span>
+                    <div class="db-card-detail${tlIncomplete.length > 0 ? ' db-card-warn' : ''}">${tlIncomplete.length > 0 ? '⚠ ' + tlIncomplete.length + ' incomplete' : (tlTotal === 0 ? 'No items yet' : 'All filled in ✓')}</div>
+                    <div class="db-prog">
+                        <div class="db-prog-track"><div class="db-prog-fill" style="width:${tlPct}%;background:linear-gradient(90deg,#63b3ed,#90cdf4)"></div></div>
+                        <span class="db-prog-pct">${tlPct}%</span>
+                    </div>
+                </div>` : ''}
+
+                ${enabled.has('staff') ? `
+                <div class="db-card db-card-full" style="--card-accent:#68d391" onclick="switchPage('staff')">
+                    <div class="db-card-hdr">${staffIcon}<span class="db-card-label">Staff &amp; Crew</span>${arrow}</div>
+                    <div class="db-card-main">${staffTotal}</div>
+                    <span class="db-card-sub">crew members</span>
+                    <div class="db-pills">
+                        <span class="db-pill neutral">${filledCount} filled</span>
+                        ${unfilledStaff.length > 0 ? `<span class="db-pill warn">${unfilledStaff.length} unfilled</span>` : `<span class="db-pill ok">All filled</span>`}
+                    </div>
+                </div>` : ''}
+
+            </div>
+        </div>`;
 }
 
-function updateSetListDashboard() {
-    const el = document.getElementById('dashboard-setlist-count');
-    if (el) el.textContent = state.setLists.length;
-    const label = document.getElementById('dashboard-setlist-label');
-    if (label) label.textContent = state.setLists.length === 1 ? 'Performance' : 'Performances';
+// ── Dashboard resource helpers ────────────────────────────────────
+function toggleDashResourceForm() {
+    const form = document.getElementById('db-res-form');
+    if (!form) return;
+    const open = form.classList.toggle('db-res-form-open');
+    if (open) {
+        const name = document.getElementById('db-res-name');
+        if (name) setTimeout(() => name.focus(), 50);
+    }
 }
+window.toggleDashResourceForm = toggleDashResourceForm;
+
+async function addDashboardResource() {
+    const nameEl = document.getElementById('db-res-name');
+    const urlEl  = document.getElementById('db-res-url');
+    const name = nameEl?.value?.trim();
+    let   url  = urlEl?.value?.trim();
+    if (!name || !url) return;
+    if (url && !url.match(/^https?:\/\//i)) url = 'https://' + url;
+    if (!state.currentEventId) return;
+    const resources = [...(state.activeEvent.resources || []), { name, url }];
+    state.activeEvent.resources = resources;
+    renderDashboard();
+    try {
+        await eventsCollection.doc(state.currentEventId).update({ resources });
+    } catch(e) {
+        console.error('Failed to save resource:', e);
+    }
+}
+window.addDashboardResource = addDashboardResource;
+
+async function removeDashboardResource(index) {
+    if (!state.currentEventId) return;
+    const resources = (state.activeEvent.resources || []).filter((_, i) => i !== index);
+    state.activeEvent.resources = resources;
+    renderDashboard();
+    try {
+        await eventsCollection.doc(state.currentEventId).update({ resources });
+    } catch(e) {
+        console.error('Failed to remove resource:', e);
+    }
+}
+window.removeDashboardResource = removeDashboardResource;
+
+function toggleDashIssues() {
+    const overflow = document.getElementById('db-issues-overflow');
+    const btn = document.getElementById('db-issues-more-btn');
+    if (!overflow || !btn) return;
+    const expanded = overflow.style.display !== 'none';
+    overflow.style.display = expanded ? 'none' : '';
+    const extra = overflow.querySelectorAll('.db-issue').length;
+    btn.textContent = expanded ? `Show ${extra} more` : 'Show less';
+}
+window.toggleDashIssues = toggleDashIssues;
+
+function goToIssue(page, itemId, issueType) {
+    switchPage(page);
+    if (!itemId) return;
+
+    // For staff/contact-on-staff: open the modal directly so the user can fill in info
+    if (page === 'staff') {
+        setTimeout(() => openStaffModal(itemId), 150);
+        return;
+    }
+
+    // For budget and timeline: scroll to the row and flash it
+    setTimeout(() => {
+        const el = document.querySelector(`tr[data-id="${itemId}"], [data-id="${itemId}"]`);
+        if (!el) return;
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.classList.add('issue-flash');
+        setTimeout(() => el.classList.remove('issue-flash'), 1800);
+    }, 150);
+}
+window.goToIssue = goToIssue;
+// ─────────────────────────────────────────────────────────────────
 
 function updateBudgetStats() {
     const totalBudget = state.budget.reduce((sum, item) => sum + (parseFloat(item.budgeted) || 0), 0);
@@ -684,16 +1877,10 @@ function updateBudgetStats() {
     const remaining = totalBudget - totalSpent;
     const percentage = totalBudget > 0 ? (totalSpent / totalBudget * 100).toFixed(1) : 0;
 
-    document.getElementById('total-budget').textContent = formatCurrency(totalBudget);
-    document.getElementById('total-spent').textContent = formatCurrency(totalSpent);
-    document.getElementById('total-remaining').textContent = formatCurrency(remaining);
-    document.getElementById('budget-progress').style.width = `${Math.min(percentage, 100)}%`;
-    document.getElementById('budget-percentage').textContent = `${percentage}%`;
-
-    // Update budget page stats
-    document.getElementById('budget-total').textContent = formatCurrency(totalBudget);
-    document.getElementById('budget-spent').textContent = formatCurrency(totalSpent);
-    document.getElementById('budget-remaining').textContent = formatCurrency(remaining);
+    // Budget page stats
+    const _bt = document.getElementById('budget-total');     if (_bt) _bt.textContent = formatCurrency(totalBudget);
+    const _bs = document.getElementById('budget-spent');     if (_bs) _bs.textContent = formatCurrency(totalSpent);
+    const _br = document.getElementById('budget-remaining'); if (_br) _br.textContent = formatCurrency(remaining);
 }
 
 function updateVendorStats() {
@@ -702,10 +1889,7 @@ function updateVendorStats() {
     const pending = total - confirmed;
     const issueCount = state.budget.filter(b => getVendorIssues(b).length > 0).length;
 
-    document.getElementById('vendors-confirmed').textContent = confirmed;
-    document.getElementById('vendor-confirmed-count').textContent = confirmed;
-    document.getElementById('vendor-pending-count').textContent = pending;
-    document.getElementById('vendor-issue-count').textContent = issueCount;
+    // (dashboard elements removed — counts rendered dynamically by renderDashboard)
 
     // Update filter button count badges
     const el = (id) => document.getElementById(id);
@@ -1833,6 +3017,13 @@ function renderTimeline() {
         return;
     }
 
+    // Initialize days on first render, then draw tabs
+    if (state.timelineDays === null) {
+        initTimelineDays().then(() => renderDayTabs());
+    } else {
+        renderDayTabs();
+    }
+
     const tbody = document.getElementById('timeline-tbody');
 
     // Filter by current day
@@ -1841,21 +3032,11 @@ function renderTimeline() {
     // Apply tag/time filter
     if (state.timelineFilter === 'production') {
         filteredTimeline = filteredTimeline.filter(item => item.production === true || item.tag === 'production');
-    } else if (state.timelineFilter === 'runner') {
-        filteredTimeline = filteredTimeline.filter(item => item.runner === true);
-    } else if (state.timelineFilter === 'andi') {
-        filteredTimeline = filteredTimeline.filter(item => item.andi === true);
-    } else if (state.timelineFilter === 'pedro') {
-        filteredTimeline = filteredTimeline.filter(item => item.pedro === true);
     } else if (state.timelineFilter === 'run-of-show') {
         filteredTimeline = filteredTimeline.filter(item => {
             if (!item.time) return false;
             return item.time >= '18:20' && item.time <= '23:00';
         });
-    } else if (state.timelineFilter === 'screencue') {
-        filteredTimeline = filteredTimeline.filter(item =>
-            item.screenCue && String(item.screenCue).trim() !== ''
-        );
     }
 
     // Update day title and subtitle
@@ -1868,9 +3049,11 @@ function renderTimeline() {
         'Sunday': 'April 26, 2026'
     };
 
-    const filterLabels = { 'all': '', 'production': ' — Production', 'runner': ' — Runner Tasks', 'run-of-show': ' — Run of Show', 'screencue': ' — Screen Cue', 'andi': ' — Andi', 'pedro': ' — Pedro' };
+    const filterLabels = { 'all': '', 'production': ' — Production', 'run-of-show': ' — Run of Show' };
     if (dayTitle) {
-        dayTitle.textContent = `${state.currentDay} Timeline${filterLabels[state.timelineFilter] || ''}`;
+        const currentDayObj = (state.timelineDays || []).find(d => d.id === state.currentDay);
+        const dayLabel = currentDayObj?.label || state.currentDay;
+        dayTitle.textContent = `${dayLabel} Timeline${filterLabels[state.timelineFilter] || ''}`;
     }
     if (dateSubtitle) {
         dateSubtitle.textContent = dateMap[state.currentDay] || '';
@@ -1884,12 +3067,8 @@ function renderTimeline() {
                 <td class="duration-col" data-field="duration" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ duration</span></td>
                 <td class="event-col" data-field="event" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ event</span></td>
                 <td class="prod-col"></td>
-                <td class="andi-col"></td>
-                <td class="pedro-col"></td>
-                <td class="runner-col"></td>
                 <td class="responsible-col" data-field="responsible" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ responsible</span></td>
                 <td class="staff-col" data-field="staff" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ staff</span></td>
-                <td class="screencue-col" data-field="screenCue" onclick="editTimelineCell(this)"><span class="phantom-placeholder">#</span></td>
                 <td class="setlist-col"></td>
                 <td class="stageplot-col"></td>
                 <td class="actions-col no-print"></td>
@@ -1929,12 +3108,8 @@ function renderTimeline() {
                 <td class="duration-col" data-field="duration" data-original="${escapeHtml(item.duration || '')}" onclick="editTimelineCell(this)">${item.duration ? escapeHtml(item.duration) : '<span class="phantom-placeholder">+ duration</span>'}</td>
                 <td class="event-col" data-field="event" data-original="${escapeHtml(item.event || '')}" onclick="editTimelineCell(this)">${escapeHtml(item.event || '')}</td>
                 <td class="prod-col"><input type="checkbox" class="tl-checkbox" ${item.production === true || item.tag === 'production' ? 'checked' : ''} onchange="toggleTimelineField('${item.id}', 'production', this.checked)"></td>
-                <td class="andi-col"><input type="checkbox" class="tl-checkbox" ${item.andi === true ? 'checked' : ''} onchange="toggleTimelineField('${item.id}', 'andi', this.checked)"></td>
-                <td class="pedro-col"><input type="checkbox" class="tl-checkbox" ${item.pedro === true ? 'checked' : ''} onchange="toggleTimelineField('${item.id}', 'pedro', this.checked)"></td>
-                <td class="runner-col"><input type="checkbox" class="tl-checkbox" ${item.runner === true ? 'checked' : ''} onchange="toggleTimelineField('${item.id}', 'runner', this.checked)"></td>
                 <td class="responsible-col" data-field="responsible" data-original="${escapeHtml(item.responsible || '')}" onclick="editTimelineCell(this)">${escapeHtml(item.responsible || '')}</td>
                 <td class="staff-col" data-field="staff" data-original="${escapeHtml(item.staff || '')}" onclick="editTimelineCell(this)">${escapeHtml(item.staff || '')}</td>
-                <td class="screencue-col" data-field="screenCue" data-original="${escapeHtml(item.screenCue || '')}" onclick="editTimelineCell(this)">${escapeHtml(item.screenCue || '')}</td>
                 <td class="setlist-col">
                     ${item.performer && state.setLists.some(sl => sl.performer && sl.performer.toLowerCase() === item.performer.toLowerCase()) ? `
                     <button class="action-icon action-icon-link" onclick="goToLinkedSetList('${escapeHtml(item.performer).replace(/'/g, "\\'")}')" title="Go to set list: ${escapeHtml(item.performer)}">
@@ -1993,12 +3168,8 @@ function renderTimeline() {
             <td class="duration-col" data-field="duration" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ duration</span></td>
             <td class="event-col" data-field="event" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ event</span></td>
             <td class="prod-col"></td>
-            <td class="andi-col"></td>
-            <td class="pedro-col"></td>
-            <td class="runner-col"></td>
             <td class="responsible-col" data-field="responsible" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ responsible</span></td>
             <td class="staff-col" data-field="staff" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ staff</span></td>
-            <td class="screencue-col" data-field="screenCue" onclick="editTimelineCell(this)"><span class="phantom-placeholder">#</span></td>
             <td class="setlist-col"></td>
             <td class="stageplot-col"></td>
             <td class="actions-col no-print"></td>
@@ -2022,8 +3193,6 @@ function renderTimeline() {
                 const borderStyle = hasHighlight ? `border-left-color: ${rowColor}` : '';
                 const badges = [];
                 if (item.production === true || item.tag === 'production') badges.push('<span class="mobile-card-badge prod">Prod</span>');
-                if (item.andi === true) badges.push('<span class="mobile-card-badge andi">Andi</span>');
-                if (item.pedro === true) badges.push('<span class="mobile-card-badge pedro">Pedro</span>');
 
                 return `
                     <div class="mobile-card ${isComplete ? 'completed' : ''}" style="${borderStyle}">
@@ -2054,6 +3223,15 @@ function renderTimeline() {
 const CUE_SHEET_FIELD_ORDER = ['time', 'duration', 'event', 'audio', 'liveVideo', 'stageLighting', 'houseLighting', 'centerScreen', 'sideScreens', 'screenCue'];
 const CUE_SHEET_MULTILINE_FIELDS = new Set(['audio', 'liveVideo', 'stageLighting']);
 
+// Returns the day ID that the Technical Cue Sheet should filter on.
+// Legacy events use 'Saturday' as both id and label; dynamic events
+// use the last day in timelineDays as the show day.
+function getCueSheetDayId() {
+    const days = state.timelineDays;
+    if (!days || days.length === 0) return 'Saturday';
+    return days.find(d => d.id === 'Saturday') ? 'Saturday' : days[days.length - 1].id;
+}
+
 function renderCueSheet() {
     const tbody = document.getElementById('cue-sheet-tbody');
     if (!tbody) return;
@@ -2063,8 +3241,11 @@ function renderCueSheet() {
         return;
     }
 
+    const dayId = getCueSheetDayId();
+    const dayLabel = state.timelineDays?.find(d => d.id === dayId)?.label || dayId;
+
     const all = state.timeline.filter(item =>
-        item.day === 'Saturday' &&
+        item.day === dayId &&
         typeof item.time === 'string' &&
         item.time >= '18:20'
     );
@@ -2084,7 +3265,7 @@ function renderCueSheet() {
     });
 
     if (sorted.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="11" class="empty-state">No Saturday timeline rows ≥ 6:20 PM yet.</td></tr>';
+        tbody.innerHTML = `<tr><td colspan="11" class="empty-state">No ${escapeHtml(dayLabel)} timeline rows ≥ 6:20 PM yet.</td></tr>`;
         return;
     }
 
@@ -2392,11 +3573,7 @@ function openTimelineModal(itemId = null) {
             'timeline-event': 'event',
             'timeline-responsible': 'responsible',
             'timeline-staff': 'staff',
-            'timeline-screen-cue': 'screenCue',
             'timeline-production': 'production',
-            'timeline-andi': 'andi',
-            'timeline-pedro': 'pedro',
-            'timeline-runner': 'runner',
             'timeline-notes': 'notes',
             'timeline-performer': 'performer',
             'timeline-stage-plot': 'stagePlotId'
@@ -2597,12 +3774,6 @@ async function handleTimelineSubmit(e) {
         durationInput.value = formatDuration(durationInput.value);
     }
 
-    // Normalize screen cue: digits only, max 3 chars
-    const screenCueInput = document.getElementById('timeline-screen-cue');
-    if (screenCueInput) {
-        screenCueInput.value = normalizeScreenCue(screenCueInput.value);
-    }
-
     const result = await handleFormSubmit(e, {
         collection: 'timeline',
         idFieldId: 'timeline-id',
@@ -2614,11 +3785,7 @@ async function handleTimelineSubmit(e) {
             'timeline-event': 'event',
             'timeline-responsible': 'responsible',
             'timeline-staff': 'staff',
-            'timeline-screen-cue': 'screenCue',
             'timeline-production': 'production',
-            'timeline-andi': 'andi',
-            'timeline-pedro': 'pedro',
-            'timeline-runner': 'runner',
             'timeline-notes': 'notes',
             'timeline-performer': 'performer',
             'timeline-stage-plot': 'stagePlotId'
@@ -2626,14 +3793,8 @@ async function handleTimelineSubmit(e) {
         numericFields: []
     });
 
-    if (result) {
-        if (result.isNew) {
-            pushTimelineUndo({ type: 'add', id: result.docId });
-        } else if (previousData) {
-            pushTimelineUndo({ type: 'update', id: result.docId, previousData });
-        }
-    }
 }
+
 
 // CRUD Operations
 window.editBudgetItem = (id) => openBudgetModal(id);
@@ -2720,15 +3881,37 @@ window.duplicateBudgetItem = async (id) => {
 function createDeleteHandler(collectionKey, itemName) {
     return async (id) => {
         if (confirm(`Are you sure you want to delete this ${itemName}?`)) {
+            const item = state[collectionKey]?.find(i => i.id === id);
+            if (item) {
+                const { id: _id, ...data } = item;
+                state.globalUndoStack.push({ collection: collectionKey, id, data, eventId: state.currentEventId });
+                if (state.globalUndoStack.length > 20) state.globalUndoStack.shift();
+            }
             try {
                 await collections[collectionKey].doc(id).delete();
-                showToast(`${itemName.charAt(0).toUpperCase() + itemName.slice(1)} deleted`);
+                showToast(`${itemName.charAt(0).toUpperCase() + itemName.slice(1)} deleted — Cmd+Z to undo`);
             } catch (error) {
                 console.error(`Error deleting ${itemName}:`, error);
                 showToast(`Error deleting ${itemName}. Please try again.`, 'error');
             }
         }
     };
+}
+
+async function undoGlobalAction() {
+    const action = state.globalUndoStack.pop();
+    if (!action) { showToast('Nothing to undo', 'info'); return; }
+    if (action.eventId && action.eventId !== state.currentEventId) {
+        showToast('Nothing to undo', 'info');
+        return;
+    }
+    try {
+        await collections[action.collection].doc(action.id).set(action.data);
+        showToast('Undone');
+    } catch (error) {
+        console.error('Error undoing:', error);
+        showToast('Error undoing action', 'error');
+    }
 }
 
 const _baseDeleteBudgetItem = createDeleteHandler('budget', 'budget item');
@@ -2741,14 +3924,16 @@ window.deleteBudgetItem = async function(id) {
 };
 window.toggleBudgetConfirmed = toggleBudgetConfirmed;
 window.deleteTimelineItem = async (id) => {
+    if (!confirm('Are you sure you want to delete this task?')) return;
     const item = state.timeline.find(i => i.id === id);
     if (item) {
         const { id: _id, ...data } = item;
-        pushTimelineUndo({ type: 'delete', id, previousData: data });
+        state.globalUndoStack.push({ collection: 'timeline', id, data, eventId: state.currentEventId });
+        if (state.globalUndoStack.length > 20) state.globalUndoStack.shift();
     }
     try {
         await collections.timeline.doc(id).delete();
-        showToast('Task deleted');
+        showToast('Task deleted — Cmd+Z to undo');
     } catch (error) {
         console.error('Error deleting task:', error);
         showToast('Error deleting task', 'error');
@@ -2756,9 +3941,6 @@ window.deleteTimelineItem = async (id) => {
 };
 
 window.toggleTaskComplete = async (id, completed) => {
-    const item = state.timeline.find(i => i.id === id);
-    if (item) pushTimelineUndo({ type: 'update', id, previousData: { completed: item.completed || false, status: item.status || 'not-started' } });
-
     try {
         await collections.timeline.doc(id).update({
             completed: completed,
@@ -2772,37 +3954,6 @@ window.toggleTaskComplete = async (id, completed) => {
     }
 };
 
-// Timeline undo system
-function pushTimelineUndo(action) {
-    state.timelineUndoStack.push(action);
-    if (state.timelineUndoStack.length > 30) state.timelineUndoStack.shift();
-    updateTimelineUndoButton();
-}
-
-function updateTimelineUndoButton() {
-    const btn = document.getElementById('timeline-undo-btn');
-    if (btn) btn.disabled = state.timelineUndoStack.length === 0;
-}
-
-window.undoTimelineAction = async () => {
-    const action = state.timelineUndoStack.pop();
-    updateTimelineUndoButton();
-    if (!action) return;
-
-    try {
-        if (action.type === 'update') {
-            await collections.timeline.doc(action.id).update(action.previousData);
-        } else if (action.type === 'add') {
-            await collections.timeline.doc(action.id).delete();
-        } else if (action.type === 'delete') {
-            await collections.timeline.doc(action.id).set(action.previousData);
-        }
-        showToast('Undone');
-    } catch (error) {
-        console.error('Error undoing:', error);
-        showToast('Error undoing action', 'error');
-    }
-};
 
 window.toggleTimelineCol = (col, visible) => {
     const table = document.getElementById('timeline-table');
@@ -2825,9 +3976,6 @@ document.addEventListener('click', (e) => {
 });
 
 window.toggleTimelineField = async (id, field, checked) => {
-    const item = state.timeline.find(i => i.id === id);
-    if (item) pushTimelineUndo({ type: 'update', id, previousData: { [field]: item[field] || false } });
-
     try {
         await collections.timeline.doc(id).update({
             [field]: checked,
@@ -2867,9 +4015,6 @@ document.addEventListener('click', (e) => {
 window.setTimelineColor = async (id, color) => {
     // Close the picker
     document.querySelectorAll('.color-swatch-dropdown.open').forEach(el => el.classList.remove('open'));
-    const item = state.timeline.find(i => i.id === id);
-    if (item) pushTimelineUndo({ type: 'update', id, previousData: { highlightColor: item.highlightColor || '' } });
-
     try {
         const highlightColor = (color === '#ffffff') ? '' : color;
         await collections.timeline.doc(id).update({
@@ -2892,8 +4037,7 @@ window.duplicateTimelineItem = async (id) => {
     data.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
 
     try {
-        const docRef = await collections.timeline.add(data);
-        pushTimelineUndo({ type: 'add', id: docRef.id });
+        await collections.timeline.add(data);
         showToast('Task duplicated');
     } catch (error) {
         console.error('Error duplicating task:', error);
@@ -3013,25 +4157,133 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-// Day Tabs for Timeline
-function setupDayTabs() {
-    const dayTabs = document.querySelectorAll('.day-tab');
+// ── Dynamic Day Tabs ─────────────────────────────────────────────
 
-    dayTabs.forEach(tab => {
-        tab.addEventListener('click', () => {
-            const day = tab.dataset.day;
+async function initTimelineDays() {
+    if (state.timelineDays !== null) return;
+    const event = state.activeEvent;
+    if (!event) return;
 
-            // Update active state
-            dayTabs.forEach(t => t.classList.remove('active'));
-            tab.classList.add('active');
+    if (event.timelineDays && event.timelineDays.length > 0) {
+        // Already stored on the event doc
+        state.timelineDays = event.timelineDays;
+        state.currentDay = event.timelineDays[0].id;
+        return;
+    }
 
-            // Update state and re-render
-            state.currentDay = day;
-            state.timelineAnimateRows = true;
-            renderTimeline();
+    // No timelineDays set yet — check for any existing timeline data
+    const hasLegacyData = (state.timeline || []).some(t => t.day);
+    let days;
+    if (hasLegacyData) {
+        // Preserve all 4 legacy days so nothing is lost
+        days = ['Thursday','Friday','Saturday','Sunday'].map(d => ({id: d, label: d}));
+    } else {
+        days = [{ id: 'day-1', label: '' }];
+    }
+
+    state.timelineDays = days;
+    state.currentDay = days[0].id;
+
+    // Persist so next load is instant
+    await eventsCollection.doc(event.id).update({ timelineDays: days });
+    state.activeEvent.timelineDays = days;
+}
+
+function renderDayTabs() {
+    const container = document.getElementById('timeline-day-tabs');
+    if (!container || !state.timelineDays) return;
+    const days = state.timelineDays;
+    const canRemove = days.length > 1;
+
+    container.innerHTML = days.map(d => `
+        <button class="day-tab ${d.id === state.currentDay ? 'active' : ''}" data-day="${d.id}">
+            <span class="day-tab-name" ondblclick="startRenameDay(event,'${d.id}')">${escapeHtml(d.label || 'Untitled')}</span>
+            ${canRemove ? `<span class="day-tab-remove" onclick="removeTimelineDay(event,'${d.id}')">×</span>` : ''}
+        </button>
+    `).join('') + `<button class="day-tab-add" onclick="addTimelineDay()" title="Add day">+</button>`;
+
+    // Use addEventListener so e.detail lets us skip the 2nd click of a dblclick,
+    // keeping the DOM stable so ondblclick on the span can fire correctly.
+    container.querySelectorAll('.day-tab[data-day]').forEach(btn => {
+        btn.addEventListener('click', e => {
+            if (e.target.closest('.day-tab-remove')) return;
+            if (e.detail >= 2) return;
+            switchTimelineDay(btn.dataset.day);
         });
     });
 }
+
+window.switchTimelineDay = function(dayId) {
+    if (state.currentDay === dayId) return;
+    state.currentDay = dayId;
+    state.timelineAnimateRows = true;
+    renderDayTabs();
+    renderTimeline();
+};
+
+window.addTimelineDay = async function() {
+    const id = 'day-' + Date.now();
+    const days = [...(state.timelineDays || []), { id, label: '' }];
+    state.timelineDays = days;
+    state.activeEvent.timelineDays = days;
+    state.currentDay = id;
+    await eventsCollection.doc(state.activeEvent.id).update({ timelineDays: days });
+    renderDayTabs();
+    renderTimeline();
+    // Auto-open rename on the new tab
+    setTimeout(() => {
+        const newTab = document.querySelector(`.day-tab[data-day="${id}"] .day-tab-name`);
+        if (newTab) newTab.dispatchEvent(new MouseEvent('dblclick'));
+    }, 50);
+};
+
+window.removeTimelineDay = async function(e, dayId) {
+    e.stopPropagation();
+    const day = state.timelineDays.find(d => d.id === dayId);
+    const label = day?.label || 'Untitled';
+    if (!confirm(`Remove "${label}" from the timeline? Tasks assigned to this day won't be deleted — they just won't appear until reassigned.`)) return;
+    const days = state.timelineDays.filter(d => d.id !== dayId);
+    if (days.length === 0) return;
+    state.timelineDays = days;
+    state.activeEvent.timelineDays = days;
+    if (state.currentDay === dayId) state.currentDay = days[0].id;
+    await eventsCollection.doc(state.activeEvent.id).update({ timelineDays: days });
+    renderDayTabs();
+    renderTimeline();
+};
+
+window.startRenameDay = function(e, dayId) {
+    e.stopPropagation();
+    const span = e.target;
+    if (span.tagName === 'INPUT') return;
+    const current = state.timelineDays.find(d => d.id === dayId)?.label || '';
+    const input = document.createElement('input');
+    input.className = 'day-tab-rename-input';
+    input.value = current;
+    input.placeholder = 'Name this day…';
+    span.replaceWith(input);
+    input.focus();
+    input.select();
+    const save = async () => {
+        const newLabel = input.value.trim();
+        const days = state.timelineDays.map(d => d.id === dayId ? { ...d, label: newLabel } : d);
+        state.timelineDays = days;
+        state.activeEvent.timelineDays = days;
+        await eventsCollection.doc(state.activeEvent.id).update({ timelineDays: days });
+        renderDayTabs();
+        if (dayId === state.currentDay) {
+            const titleEl = document.getElementById('timeline-day-title');
+            if (titleEl) titleEl.textContent = `${newLabel || 'Untitled'} Timeline`;
+        }
+    };
+    input.addEventListener('blur', save);
+    input.addEventListener('keydown', ev => {
+        if (ev.key === 'Enter') { ev.preventDefault(); input.blur(); }
+        if (ev.key === 'Escape') { input.value = current; input.blur(); }
+    });
+};
+
+function setupDayTabs() { /* tabs are now dynamic — renderDayTabs() handles setup */ }
 
 function setupStageTabs() {
     const stageTabs = document.querySelectorAll('.day-tab[data-stage]');
@@ -3120,7 +4372,8 @@ function setupExportAndPrint() {
 
     const timelineUndoBtn = document.getElementById('timeline-undo-btn');
     if (timelineUndoBtn) {
-        timelineUndoBtn.addEventListener('click', () => window.undoTimelineAction());
+        timelineUndoBtn.disabled = false;
+        timelineUndoBtn.addEventListener('click', () => undoGlobalAction());
     }
     if (printStaffBtn) {
         printStaffBtn.addEventListener('click', openPrintStaffTeamsModal);
@@ -3289,7 +4542,7 @@ function exportBudgetToExcel() {
 
 // Inline Editing for Timeline
 // Editable cell field order for Tab navigation (skip tag — it has its own <select>)
-const TIMELINE_FIELD_ORDER = ['time', 'duration', 'event', 'responsible', 'staff', 'screenCue'];
+const TIMELINE_FIELD_ORDER = ['time', 'duration', 'event', 'responsible', 'staff'];
 const BUDGET_FIELD_ORDER = ['vendor', 'description', 'owner', 'budgeted', 'actual', 'paymentStatus', 'notes'];
 const STAGE_FIELD_ORDER = ['channel', 'subsnake', 'instrument', 'mics', 'stands', 'notes', 'symbol'];
 
@@ -3445,9 +4698,7 @@ function saveSingleCell(cell, row, keepEditing = false) {
     if (field === 'duration' && newValue) {
         newValue = formatDuration(newValue);
     }
-    if (field === 'screenCue') {
-        newValue = normalizeScreenCue(newValue);
-    }
+
 
     // Restore cell to display mode immediately (remove input so blur handler won't double-fire)
     cell.dataset.original = newValue;
@@ -3474,19 +4725,6 @@ function saveSingleCell(cell, row, keepEditing = false) {
     // Optimistic local update so deferred renders show correct value
     item[field] = newValue;
 
-    // Undo batching: merge if same row within 2 seconds
-    const now = Date.now();
-    const lastUndo = state.timelineUndoStack[state.timelineUndoStack.length - 1];
-    if (lastUndo && lastUndo.type === 'update' && lastUndo.id === id && (now - (lastUndo._ts || 0)) < 2000) {
-        if (!(field in lastUndo.previousData)) {
-            lastUndo.previousData[field] = oldValue;
-        }
-        lastUndo._ts = now;
-    } else {
-        const undoEntry = { type: 'update', id, previousData: { [field]: oldValue }, _ts: now };
-        pushTimelineUndo(undoEntry);
-    }
-
     // Save to Firestore
     const updates = { [field]: newValue, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
     collections.timeline.doc(id).update(updates)
@@ -3503,7 +4741,6 @@ function restoreCellDisplay(cell, isPhantom) {
     const field = cell.dataset.field;
     if (isPhantom) {
         let val = state.pendingNewRow[field] || '';
-        if (field === 'screenCue' && val) val = normalizeScreenCue(val);
         if (val) {
             if (field === 'time') {
                 cell.innerHTML = `<span class="tl-time">${formatTime12Hour(val)}</span>`;
@@ -3511,8 +4748,7 @@ function restoreCellDisplay(cell, isPhantom) {
                 cell.textContent = val;
             }
         } else {
-            const placeholder = field === 'screenCue' ? '#' : `+ ${field}`;
-            cell.innerHTML = `<span class="phantom-placeholder">${placeholder}</span>`;
+            cell.innerHTML = `<span class="phantom-placeholder">+ ${field}</span>`;
         }
     } else {
         const original = cell.dataset.original || '';
@@ -3773,8 +5009,6 @@ async function commitNewRow() {
     // Convert time to 24hr
     if (data.time) data.time = convertTo24Hour(data.time);
     if (data.duration) data.duration = formatDuration(data.duration);
-    if (data.screenCue) data.screenCue = normalizeScreenCue(data.screenCue);
-
     data.day = state.currentDay;
     data.completed = false;
     data.status = 'not-started';
@@ -3789,8 +5023,7 @@ async function commitNewRow() {
     state.pendingNewRow = {};
 
     try {
-        const docRef = await collections.timeline.add(data);
-        pushTimelineUndo({ type: 'add', id: docRef.id });
+        await collections.timeline.add(data);
         showToast('Task added');
     } catch (error) {
         console.error('Error adding task:', error);
@@ -4974,6 +6207,7 @@ function renderStaffTeamView(isSearching, searchQuery) {
             }).join('');
 
             return '<div class="staff-card' + (member.isPlaceholder ? ' placeholder' : '') + '"' +
+                ' data-id="' + member.id + '"' +
                 ' style="--team-color: ' + color + '; animation-delay: ' + (idx * 30) + 'ms"' +
                 ' onclick="openStaffModal(\'' + member.id + '\')">' +
                 (budgetHtml ? '<span class="staff-budget-badge staff-budget-corner">' + '$' + '</span>' : '') +
@@ -5154,6 +6388,10 @@ function openStaffModal(memberId = null) {
 
     form.reset();
     staffModalTeams = [];
+
+    // Always reset directory suggestions on open
+    const dirSug = document.getElementById('staff-dir-suggestions');
+    if (dirSug) dirSug.style.display = 'none';
 
     if (memberId) {
         const member = state.staff.find(s => s.id === memberId);
@@ -5386,6 +6624,11 @@ async function handleStaffSubmit(e) {
             await collections.budget.doc(newLinkedBudgetId).update(budgetUpdate);
         }
 
+        // Save to staff directory (global, cross-event)
+        if (!staffData.isPlaceholder) {
+            upsertStaffContact(staffData.name, staffData.phone, staffData.email, staffData.role);
+        }
+
         closeAllModals();
     } catch (error) {
         console.error('Error saving staff member:', error);
@@ -5411,6 +6654,1245 @@ function deleteStaffFromModal() {
     }
 }
 window.deleteStaffFromModal = deleteStaffFromModal;
+
+// ==========================================
+// STAFF DIRECTORY
+// ==========================================
+
+const staffDirectoryCollection = db.collection('staffDirectory');
+const jobTemplatesCollection = db.collection('jobTemplates');
+
+function loadRoleCategoryMap() {
+    jobTemplatesCollection.onSnapshot(snap => {
+        state.roleCategoryMap = {};
+        state.jobTemplates = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        state.jobTemplates.forEach(t => {
+            if (t.name) state.roleCategoryMap[t.name.trim().toLowerCase()] = t.category || '';
+        });
+    }, err => console.warn('jobTemplates listener error:', err));
+}
+
+async function addJobTemplate(name, category) {
+    name = (name || '').trim();
+    category = (category || '').trim();
+    if (!name || !category) { showToast('Name and category are required', 'error'); return; }
+    const exists = state.jobTemplates.some(t => t.name.trim().toLowerCase() === name.toLowerCase());
+    if (exists) { showToast('A template for "' + name + '" already exists', 'error'); return; }
+    try {
+        await jobTemplatesCollection.add({ name, category, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+        showToast('Job template saved');
+    } catch (e) {
+        console.error('addJobTemplate error:', e);
+        showToast('Error saving template', 'error');
+    }
+}
+window.addJobTemplate = addJobTemplate;
+
+async function deleteJobTemplate(id) {
+    // Optimistic update
+    state.jobTemplates = state.jobTemplates.filter(t => t.id !== id);
+    renderJobTemplates();
+    try {
+        await jobTemplatesCollection.doc(id).delete();
+    } catch (e) {
+        console.error('deleteJobTemplate error:', e);
+        showToast('Error deleting template', 'error');
+    }
+}
+window.deleteJobTemplate = deleteJobTemplate;
+
+function getCategoryForRole(role) {
+    if (!role) return '';
+    const key = role.trim().toLowerCase();
+    // Exact match first
+    if (state.roleCategoryMap[key]) return state.roleCategoryMap[key];
+    // Partial match: template name appears in role or vice versa
+    const match = state.jobTemplates.find(t =>
+        key.includes(t.name.trim().toLowerCase()) || t.name.trim().toLowerCase().includes(key)
+    );
+    return match ? match.category : '';
+}
+
+function loadStaffDirectory() {
+    staffDirectoryCollection.onSnapshot(snap => {
+        state.staffDirectory = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        // Refresh the table if the modal is open — renderStaffIndex preserves any active edit rows
+        const modal = document.getElementById('staff-index-modal');
+        if (modal && modal.classList.contains('active')) renderStaffIndex();
+    }, err => console.warn('staffDirectory listener error:', err));
+}
+
+function normalizeRole(role) {
+    return (role || '').trim().toLowerCase();
+}
+
+function onStaffRoleInput(value) {
+    const role = normalizeRole(value);
+    const suggestionsDiv = document.getElementById('staff-dir-suggestions');
+    const listDiv = document.getElementById('staff-dir-list');
+    if (!suggestionsDiv || !listDiv) return;
+
+    if (!role) { suggestionsDiv.style.display = 'none'; return; }
+
+    // Match job templates first (generic roles)
+    const templateMatches = state.jobTemplates.filter(t =>
+        normalizeRole(t.name).includes(role) || role.includes(normalizeRole(t.name))
+    );
+
+    // Match directory contacts whose roles match
+    const contactMatches = state.staffDirectory.filter(contact =>
+        (contact.roles || []).some(r => normalizeRole(r).includes(role) || role.includes(normalizeRole(r)))
+    );
+
+    if (!templateMatches.length && !contactMatches.length) {
+        suggestionsDiv.style.display = 'none';
+        return;
+    }
+
+    const label = document.querySelector('.dir-suggestions-label');
+    if (label) label.textContent = contactMatches.length ? 'People used in this role before:' : 'Matching job templates:';
+
+    listDiv.innerHTML =
+        // Show matching templates as "use this role" chips
+        templateMatches.map(t =>
+            '<div class="dir-suggestion-item dir-suggestion-template" onclick="applyJobTemplate(\'' + escapeHtml(t.name).replace(/'/g,"\\'") + '\')">' +
+            '<span class="dir-suggestion-name">' + escapeHtml(t.name) + '</span>' +
+            '<span class="dir-suggestion-meta dir-template-badge">template</span>' +
+            '</div>'
+        ).join('') +
+        // Then show people from directory
+        contactMatches.map(c =>
+            '<div class="dir-suggestion-item" onclick="selectFromDirectory(\'' + c.id + '\')">' +
+            '<span class="dir-suggestion-name">' + escapeHtml(c.name || '') + '</span>' +
+            (c.phone ? '<span class="dir-suggestion-meta">' + escapeHtml(c.phone) + '</span>' : '') +
+            (c.email ? '<span class="dir-suggestion-meta">' + escapeHtml(c.email) + '</span>' : '') +
+            '</div>'
+        ).join('');
+
+    suggestionsDiv.style.display = '';
+}
+
+function applyJobTemplate(templateName) {
+    const el = document.getElementById('staff-role');
+    if (el) el.value = templateName;
+    document.getElementById('staff-dir-suggestions').style.display = 'none';
+}
+window.applyJobTemplate = applyJobTemplate;
+window.onStaffRoleInput = onStaffRoleInput;
+
+function selectFromDirectory(contactId) {
+    const contact = state.staffDirectory.find(c => c.id === contactId);
+    if (!contact) return;
+    const nameEl = document.getElementById('staff-name');
+    const phoneEl = document.getElementById('staff-phone');
+    const emailEl = document.getElementById('staff-email');
+    if (nameEl && !nameEl.value) nameEl.value = contact.name || '';
+    if (phoneEl) phoneEl.value = contact.phone || '';
+    if (emailEl) emailEl.value = contact.email || '';
+    document.getElementById('staff-dir-suggestions').style.display = 'none';
+}
+window.selectFromDirectory = selectFromDirectory;
+
+async function upsertStaffContact(name, phone, email, role) {
+    if (!name || !role) return;
+    const normalRole = normalizeRole(role);
+    const existing = state.staffDirectory.find(c =>
+        (c.name || '').trim().toLowerCase() === name.trim().toLowerCase()
+    );
+    try {
+        if (existing) {
+            const roles = existing.roles || [];
+            if (!roles.map(normalizeRole).includes(normalRole)) {
+                roles.push(role.trim());
+            }
+            await staffDirectoryCollection.doc(existing.id).update({
+                phone: phone || existing.phone || null,
+                email: email || existing.email || null,
+                roles
+            });
+        } else {
+            await staffDirectoryCollection.add({
+                name: name.trim(),
+                phone: phone || null,
+                email: email || null,
+                roles: [role.trim()],
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+        }
+    } catch (e) {
+        console.warn('upsertStaffContact error:', e);
+    }
+}
+
+function openStaffIndex() {
+    const modal = document.getElementById('staff-index-modal');
+    if (!modal) return;
+    const addForm = document.getElementById('staff-dir-add-form');
+    if (addForm) addForm.style.display = 'none';
+    const rolePanel = document.getElementById('role-mappings-panel');
+    if (rolePanel) rolePanel.style.display = 'none';
+    renderStaffIndex();
+    modal.classList.add('active');
+    // Close hamburger if open
+    document.getElementById('nav-menu')?.classList.remove('open');
+}
+
+function openJobTemplates() {
+    // Reuse the staff index modal but flip to the role mappings panel
+    openStaffIndex();
+    setTimeout(() => {
+        const rolePanel = document.getElementById('role-mappings-panel');
+        if (rolePanel) { rolePanel.style.display = ''; renderJobTemplates(); }
+    }, 50);
+}
+window.openJobTemplates = openJobTemplates;
+window.openStaffIndex = openStaffIndex;
+
+function closeStaffIndex() {
+    const modal = document.getElementById('staff-index-modal');
+    if (modal) modal.classList.remove('active');
+}
+window.closeStaffIndex = closeStaffIndex;
+
+async function syncStaffToDirectory(silent = false) {
+    const staffToSync = (state.staff || []).filter(m => !m.isPlaceholder && m.name && m.role);
+    if (!staffToSync.length) {
+        if (!silent) showToast('No staff to sync', 'error');
+        return;
+    }
+    let count = 0;
+    for (const m of staffToSync) {
+        await upsertStaffContact(m.name, m.phone, m.email, m.role);
+        count++;
+    }
+    if (!silent) showToast(count + ' staff member' + (count !== 1 ? 's' : '') + ' synced to directory');
+}
+window.syncStaffToDirectory = syncStaffToDirectory;
+
+function toggleAddDirectoryContact() {
+    const form = document.getElementById('staff-dir-add-form');
+    if (!form) return;
+    const showing = form.style.display !== 'none';
+    form.style.display = showing ? 'none' : '';
+    if (!showing) {
+        // Clear fields on open
+        ['dir-add-name','dir-add-role','dir-add-phone','dir-add-email'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+        });
+        document.getElementById('dir-add-name')?.focus();
+    }
+}
+window.toggleAddDirectoryContact = toggleAddDirectoryContact;
+
+async function saveDirectoryContact() {
+    const name = (document.getElementById('dir-add-name')?.value || '').trim();
+    const role = (document.getElementById('dir-add-role')?.value || '').trim();
+    const phone = (document.getElementById('dir-add-phone')?.value || '').trim();
+    const email = (document.getElementById('dir-add-email')?.value || '').trim();
+    if (!name || !role) { showToast('Name and Role are required', 'error'); return; }
+    await upsertStaffContact(name, phone, email, role);
+    showToast('Contact saved');
+    toggleAddDirectoryContact();
+}
+window.saveDirectoryContact = saveDirectoryContact;
+
+function renderStaffIndex() {
+    const container = document.getElementById('staff-index-content');
+    if (!container) return;
+
+    // Preserve any edit rows that are currently open so a re-render doesn't lose the user's work
+    const activeEdits = {};
+    container.querySelectorAll('.dir-edit-row').forEach(row => {
+        if (row.style.display !== 'none') {
+            const id = row.id.replace('dir-edit-', '');
+            activeEdits[id] = {
+                name:  document.getElementById('de-name-'  + id)?.value ?? null,
+                roles: document.getElementById('de-roles-' + id)?.value ?? null,
+                phone: document.getElementById('de-phone-' + id)?.value ?? null,
+                email: document.getElementById('de-email-' + id)?.value ?? null,
+            };
+        }
+    });
+
+    const dir = [...state.staffDirectory].sort((a, b) => {
+        const roleA = ((a.roles || [])[0] || '').toLowerCase();
+        const roleB = ((b.roles || [])[0] || '').toLowerCase();
+        if (roleA !== roleB) return roleA.localeCompare(roleB);
+        return (a.name || '').localeCompare(b.name || '');
+    });
+    const searchVal = (document.getElementById('staff-index-search')?.value || '').trim().toLowerCase();
+
+    const filtered = searchVal
+        ? dir.filter(c =>
+            (c.name || '').toLowerCase().includes(searchVal) ||
+            (c.roles || []).some(r => r.toLowerCase().includes(searchVal))
+        )
+        : dir;
+
+    if (!filtered.length) {
+        container.innerHTML = '<p class="staff-index-empty">' +
+            (searchVal ? 'No contacts match your search.' : 'No contacts yet. Staff members are added automatically when you save them.') +
+            '</p>';
+        return;
+    }
+
+    const inEvent = !!state.currentEventId;
+    const contactIconSvg = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
+    const trashIconSvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>';
+    const editIconSvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
+
+    let lastRole = null;
+    const rows = filtered.map(c => {
+        const hasContact = c.phone || c.email;
+        const primaryRole = (c.roles || [])[0] || 'No Role';
+        let groupHeader = '';
+        if (primaryRole !== lastRole) {
+            lastRole = primaryRole;
+            groupHeader = '<tr class="dir-group-header"><td colspan="3">' + escapeHtml(primaryRole) + '</td></tr>';
+        }
+        const editRow = '<tr class="dir-edit-row" id="dir-edit-' + c.id + '" style="display:none">' +
+            '<td colspan="3">' +
+            '<div class="dir-edit-form">' +
+                '<div class="dir-edit-fields">' +
+                    '<div class="form-group"><label>Name</label><input id="de-name-' + c.id + '" type="text" value="' + escapeHtml(c.name || '') + '"></div>' +
+                    '<div class="form-group"><label>Roles <span style="font-weight:400;color:#999">(comma-separated)</span></label><input id="de-roles-' + c.id + '" type="text" value="' + escapeHtml((c.roles || []).join(', ')) + '"></div>' +
+                    '<div class="form-group"><label>Phone</label><input id="de-phone-' + c.id + '" type="tel" value="' + escapeHtml(c.phone || '') + '"></div>' +
+                    '<div class="form-group"><label>Email</label><input id="de-email-' + c.id + '" type="email" value="' + escapeHtml(c.email || '') + '"></div>' +
+                '</div>' +
+                '<div class="dir-edit-actions">' +
+                    '<button class="btn btn-primary-gold btn-sm" onclick="saveDirContactEdit(\'' + c.id + '\')">Save</button>' +
+                    '<button class="btn btn-secondary btn-sm" onclick="toggleDirEditRow(\'' + c.id + '\')">Cancel</button>' +
+                '</div>' +
+            '</div>' +
+            '</td></tr>';
+
+        return groupHeader +
+            '<tr class="staff-index-row">' +
+            '<td><strong>' + escapeHtml(c.name || '') + '</strong></td>' +
+            '<td><span class="dir-role-pills">' +
+                (c.roles || []).slice(1).map(r => '<span class="dir-role-pill">' + escapeHtml(r) + '</span>').join('') +
+            '</span></td>' +
+            '<td class="dir-row-actions">' +
+                '<button class="btn btn-icon btn-sm dir-contact-btn' + (hasContact ? '' : ' dir-contact-btn--missing') + '" title="' + (hasContact ? 'View contact info' : 'No contact info saved') + '" onclick="' + (hasContact ? 'toggleDirContactPopover(event,\'' + c.id + '\')' : 'showDirMissingContact(event)') + '">' +
+                    contactIconSvg + (hasContact ? '' : '<span class="dir-contact-missing-dot">!</span>') +
+                '</button>' +
+                '<button class="btn btn-icon btn-sm" title="Edit" onclick="toggleDirEditRow(\'' + c.id + '\')">' + editIconSvg + '</button>' +
+                (inEvent ? '<button class="btn btn-sm btn-primary-gold" onclick="addDirectoryContactToStaff(\'' + c.id + '\')">+ Staff</button>' : '') +
+                (inEvent ? '<button class="btn btn-sm btn-secondary" onclick="addDirectoryContactToBudget(\'' + c.id + '\')">+ Budget</button>' : '') +
+                '<button class="btn btn-icon btn-sm" title="Delete" onclick="deleteDirectoryContact(\'' + c.id + '\')">' + trashIconSvg + '</button>' +
+            '</td>' +
+            '</tr>' + editRow;
+    }).join('');
+
+    container.innerHTML = '<table class="staff-index-table"><thead><tr>' +
+        '<th>Name</th><th>Other Roles</th><th></th>' +
+        '</tr></thead><tbody>' + rows + '</tbody></table>';
+
+    // Restore any edit rows that were open before the re-render
+    Object.keys(activeEdits).forEach(id => {
+        const editRow = document.getElementById('dir-edit-' + id);
+        if (!editRow) return;
+        const data = activeEdits[id];
+        editRow.style.display = '';
+        const restore = (field, val) => { if (val !== null) { const el = document.getElementById(field + id); if (el) el.value = val; } };
+        restore('de-name-',  data.name);
+        restore('de-roles-', data.roles);
+        restore('de-phone-', data.phone);
+        restore('de-email-', data.email);
+    });
+}
+window.renderStaffIndex = renderStaffIndex;
+
+function toggleDirEditRow(contactId) {
+    const row = document.getElementById('dir-edit-' + contactId);
+    if (!row) return;
+    const showing = row.style.display !== 'none';
+    row.style.display = showing ? 'none' : '';
+    if (!showing) document.getElementById('de-name-' + contactId)?.focus();
+}
+window.toggleDirEditRow = toggleDirEditRow;
+
+async function saveDirContactEdit(contactId) {
+    const name  = (document.getElementById('de-name-'  + contactId)?.value || '').trim();
+    const roles = (document.getElementById('de-roles-' + contactId)?.value || '')
+        .split(',').map(r => r.trim()).filter(Boolean);
+    const phone = (document.getElementById('de-phone-' + contactId)?.value || '').trim();
+    const email = (document.getElementById('de-email-' + contactId)?.value || '').trim();
+
+    if (!name) { showToast('Name is required', 'error'); return; }
+
+    // Hide the edit row first so renderStaffIndex doesn't treat it as still-active
+    const editRow = document.getElementById('dir-edit-' + contactId);
+    if (editRow) editRow.style.display = 'none';
+
+    // Optimistic local update
+    const idx = state.staffDirectory.findIndex(c => c.id === contactId);
+    if (idx !== -1) state.staffDirectory[idx] = { ...state.staffDirectory[idx], name, roles, phone: phone || null, email: email || null };
+    renderStaffIndex();
+
+    try {
+        await staffDirectoryCollection.doc(contactId).update({ name, roles, phone: phone || null, email: email || null });
+        showToast('Contact updated');
+    } catch (e) {
+        console.error('saveDirContactEdit error:', e);
+        showToast('Error saving contact', 'error');
+    }
+}
+window.saveDirContactEdit = saveDirContactEdit;
+
+async function deleteDirectoryContact(id) {
+    const contact = state.staffDirectory.find(c => c.id === id);
+    if (!contact) return;
+    if (!confirm('Remove ' + (contact.name || 'this contact') + ' from the directory?')) return;
+    state.staffDirectory = state.staffDirectory.filter(c => c.id !== id);
+    renderStaffIndex();
+    try {
+        await staffDirectoryCollection.doc(id).delete();
+        showToast('Contact removed from directory');
+    } catch (e) {
+        console.error('deleteDirectoryContact error:', e);
+        showToast('Error removing contact', 'error');
+    }
+}
+window.deleteDirectoryContact = deleteDirectoryContact;
+
+function addDirectoryContactToStaff(contactId) {
+    if (!state.currentEventId) { showToast('Enter an event first', 'error'); return; }
+    const contact = state.staffDirectory.find(c => c.id === contactId);
+    if (!contact) return;
+    const primaryRole = (contact.roles || [])[0] || '';
+    const category = getCategoryForRole(primaryRole);
+    closeStaffIndex();
+    openStaffModal();
+    setTimeout(() => {
+        const set = (id, val) => { const el = document.getElementById(id); if (el && val) el.value = val; };
+        set('staff-name', contact.name);
+        set('staff-phone', contact.phone);
+        set('staff-email', contact.email);
+        set('staff-role', primaryRole);
+    }, 50);
+}
+window.addDirectoryContactToStaff = addDirectoryContactToStaff;
+
+function addDirectoryContactToBudget(contactId) {
+    if (!state.currentEventId) { showToast('Enter an event first', 'error'); return; }
+    const contact = state.staffDirectory.find(c => c.id === contactId);
+    if (!contact) return;
+
+    // Find a category mapping for any of this contact's roles
+    const matchedRole = (contact.roles || []).find(r => getCategoryForRole(r));
+    const category = matchedRole ? getCategoryForRole(matchedRole) : '';
+
+    closeStaffIndex();
+    openBudgetModal();
+    setTimeout(() => {
+        const set = (id, val) => { const el = document.getElementById(id); if (el && val) el.value = val; };
+        set('budget-vendor', contact.name);
+        set('budget-contact', contact.name);
+        set('budget-phone', contact.phone);
+        set('budget-email', contact.email);
+        set('budget-category', category);
+    }, 50);
+}
+window.addDirectoryContactToBudget = addDirectoryContactToBudget;
+
+function expandDirectoryRow(e, contactId) {}
+window.expandDirectoryRow = expandDirectoryRow;
+
+const BUDGET_CATEGORIES = [
+    { value: '6811a - Talent/Performers & Hosts',         label: 'A — Talent / Performers & Hosts' },
+    { value: '6811b - A/V Production',                    label: 'B — A/V Production' },
+    { value: '6811c - Venue & Permits',                   label: 'C — Venue & Permits' },
+    { value: '6811d - Food & Beverage',                   label: 'D — Food & Beverage' },
+    { value: '6811e - Staff & Labor',                     label: 'E — Staff & Labor' },
+    { value: '6811f - Marketing, Promotion & Branding',   label: 'F — Marketing, Promotion & Branding' },
+    { value: '6811g - Decor & Miscellaneous Supplies',    label: 'G — Decor & Miscellaneous Supplies' },
+];
+
+function toggleRoleMappings() {
+    const panel = document.getElementById('role-mappings-panel');
+    if (!panel) return;
+    const showing = panel.style.display !== 'none';
+    panel.style.display = showing ? 'none' : '';
+    if (!showing) renderJobTemplates();
+}
+window.toggleRoleMappings = toggleRoleMappings;
+
+function renderJobTemplates() {
+    const container = document.getElementById('role-mappings-content');
+    if (!container) return;
+
+    const catOpts = BUDGET_CATEGORIES.map(c =>
+        '<option value="' + escapeHtml(c.value) + '">' + escapeHtml(c.label) + '</option>'
+    ).join('');
+
+    const addRow = '<tr class="role-map-add-row">' +
+        '<td><input type="text" id="jt-add-name" class="role-map-input" placeholder="Job title (e.g. Audio Engineer)"></td>' +
+        '<td><select id="jt-add-cat" class="role-map-select"><option value="">— Pick category —</option>' + catOpts + '</select></td>' +
+        '<td><button class="btn btn-primary-gold btn-sm" onclick="addJobTemplateFromForm()">Add</button></td>' +
+        '</tr>';
+
+    const rows = state.jobTemplates.length
+        ? state.jobTemplates
+            .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+            .map(t => {
+                const catLabel = BUDGET_CATEGORIES.find(c => c.value === t.category);
+                return '<tr>' +
+                    '<td class="role-map-role">' + escapeHtml(t.name || '') + '</td>' +
+                    '<td class="role-map-cat-label">' + escapeHtml(catLabel ? catLabel.label : t.category || '') + '</td>' +
+                    '<td><button class="btn btn-icon btn-sm" onclick="deleteJobTemplate(\'' + t.id + '\')" title="Remove">' +
+                        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>' +
+                    '</button></td>' +
+                    '</tr>';
+            }).join('')
+        : '<tr><td colspan="3" class="role-map-empty">No job templates yet. Add one above.</td></tr>';
+
+    container.innerHTML = '<table class="role-map-table"><tbody>' + addRow + rows + '</tbody></table>';
+}
+window.renderJobTemplates = renderJobTemplates;
+
+function addJobTemplateFromForm() {
+    const name = (document.getElementById('jt-add-name')?.value || '').trim();
+    const category = document.getElementById('jt-add-cat')?.value || '';
+    addJobTemplate(name, category).then(() => renderJobTemplates());
+}
+window.addJobTemplateFromForm = addJobTemplateFromForm;
+
+function toggleDirContactPopover(e, contactId) {
+    e.stopPropagation();
+    const contact = state.staffDirectory.find(c => c.id === contactId);
+    if (!contact) return;
+
+    let popover = document.getElementById('dir-contact-popover');
+    // If already open for this contact, close it
+    if (popover && popover.dataset.contactId === contactId && popover.style.display !== 'none') {
+        popover.style.display = 'none';
+        return;
+    }
+    if (!popover) {
+        popover = document.createElement('div');
+        popover.id = 'dir-contact-popover';
+        document.body.appendChild(popover);
+    }
+    popover.dataset.contactId = contactId;
+    popover.innerHTML =
+        (contact.phone ? '<div class="dir-popover-row"><span class="dir-popover-label">Phone</span><a href="tel:' + escapeHtml(contact.phone) + '">' + escapeHtml(contact.phone) + '</a></div>' : '') +
+        (contact.email ? '<div class="dir-popover-row"><span class="dir-popover-label">Email</span><a href="mailto:' + escapeHtml(contact.email) + '">' + escapeHtml(contact.email) + '</a></div>' : '');
+
+    // Position below the button
+    const btn = e.currentTarget;
+    const rect = btn.getBoundingClientRect();
+    popover.style.display = 'block';
+    popover.style.top = (rect.bottom + window.scrollY + 6) + 'px';
+    // Align right edge with button right edge, but keep on screen
+    const popW = 220;
+    let left = rect.right + window.scrollX - popW;
+    if (left < 8) left = 8;
+    popover.style.left = left + 'px';
+}
+window.toggleDirContactPopover = toggleDirContactPopover;
+
+function showDirMissingContact(e) {
+    e.stopPropagation();
+    let popover = document.getElementById('dir-contact-popover');
+    if (!popover) {
+        popover = document.createElement('div');
+        popover.id = 'dir-contact-popover';
+        document.body.appendChild(popover);
+    }
+    popover.dataset.contactId = '';
+    popover.innerHTML = '<div class="dir-popover-missing">No contact info saved for this person.</div>';
+    const btn = e.currentTarget;
+    const rect = btn.getBoundingClientRect();
+    popover.style.display = 'block';
+    popover.style.top = (rect.bottom + window.scrollY + 6) + 'px';
+    const popW = 220;
+    let left = rect.right + window.scrollX - popW;
+    if (left < 8) left = 8;
+    popover.style.left = left + 'px';
+}
+window.showDirMissingContact = showDirMissingContact;
+
+// Dismiss popover on any outside click
+document.addEventListener('click', () => {
+    const p = document.getElementById('dir-contact-popover');
+    if (p) p.style.display = 'none';
+});
+
+// ==========================================
+// PERFORMER DIRECTORY
+// ==========================================
+
+const performerDirectoryCollection = db.collection('performerDirectory');
+
+function loadPerformerDirectory() {
+    performerDirectoryCollection.onSnapshot(snap => {
+        state.performerDirectory = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const modal = document.getElementById('performer-index-modal');
+        if (modal && modal.classList.contains('active')) renderPerformerIndex();
+    }, err => console.warn('performerDirectory listener error:', err));
+}
+
+function openPerformerIndex() {
+    const modal = document.getElementById('performer-index-modal');
+    if (!modal) return;
+    const addForm = document.getElementById('performer-add-form');
+    if (addForm) addForm.style.display = 'none';
+    renderPerformerIndex();
+    modal.classList.add('active');
+    document.getElementById('nav-menu')?.classList.remove('open');
+}
+window.openPerformerIndex = openPerformerIndex;
+
+function closePerformerIndex() {
+    const modal = document.getElementById('performer-index-modal');
+    if (modal) modal.classList.remove('active');
+}
+window.closePerformerIndex = closePerformerIndex;
+
+function toggleAddPerformer() {
+    const form = document.getElementById('performer-add-form');
+    if (!form) return;
+    const showing = form.style.display !== 'none';
+    form.style.display = showing ? 'none' : '';
+    if (!showing) {
+        ['pa-name','pa-act','pa-phone','pa-email'].forEach(id => {
+            const el = document.getElementById(id); if (el) el.value = '';
+        });
+        document.getElementById('pa-parents-list').innerHTML = '';
+        document.getElementById('pa-name')?.focus();
+    }
+}
+window.toggleAddPerformer = toggleAddPerformer;
+
+// Render a parent row in an add or edit form
+function parentRowHtml(listId, idx, parent) {
+    parent = parent || {};
+    return '<div class="perf-parent-row" data-idx="' + idx + '">' +
+        '<input type="text"  class="perf-par-name"  placeholder="Parent name"  value="' + escapeHtml(parent.name  || '') + '">' +
+        '<input type="tel"   class="perf-par-phone" placeholder="Phone"        value="' + escapeHtml(parent.phone || '') + '">' +
+        '<input type="email" class="perf-par-email"  placeholder="Email"        value="' + escapeHtml(parent.email || '') + '">' +
+        '<button class="btn btn-icon btn-sm perf-par-remove" onclick="removeParentRow(this)" title="Remove parent">' +
+            '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>' +
+        '</button>' +
+    '</div>';
+}
+
+function addParentRow(listId) {
+    const list = document.getElementById(listId);
+    if (!list) return;
+    const idx = list.querySelectorAll('.perf-parent-row').length;
+    const div = document.createElement('div');
+    div.innerHTML = parentRowHtml(listId, idx, {});
+    list.appendChild(div.firstChild);
+}
+window.addParentRow = addParentRow;
+
+function addParentRowEdit(performerId) {
+    addParentRow('pe-parents-' + performerId);
+}
+window.addParentRowEdit = addParentRowEdit;
+
+function removeParentRow(btn) {
+    btn.closest('.perf-parent-row')?.remove();
+}
+window.removeParentRow = removeParentRow;
+
+function collectParents(listId) {
+    const list = document.getElementById(listId);
+    if (!list) return [];
+    return Array.from(list.querySelectorAll('.perf-parent-row')).map(row => ({
+        name:  (row.querySelector('.perf-par-name')?.value  || '').trim(),
+        phone: (row.querySelector('.perf-par-phone')?.value || '').trim(),
+        email: (row.querySelector('.perf-par-email')?.value || '').trim(),
+    })).filter(p => p.name || p.phone || p.email);
+}
+
+async function saveNewPerformer() {
+    const name  = (document.getElementById('pa-name')?.value  || '').trim();
+    const act   = (document.getElementById('pa-act')?.value   || '').trim();
+    const phone = (document.getElementById('pa-phone')?.value || '').trim();
+    const email = (document.getElementById('pa-email')?.value || '').trim();
+    if (!name || !act) { showToast('Name and Act are required', 'error'); return; }
+    const parents = collectParents('pa-parents-list');
+    try {
+        await performerDirectoryCollection.add({
+            name, act, phone: phone || null, email: email || null, parents,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        showToast('Performer added');
+        toggleAddPerformer();
+    } catch (e) {
+        console.error('saveNewPerformer error:', e);
+        showToast('Error saving performer', 'error');
+    }
+}
+window.saveNewPerformer = saveNewPerformer;
+
+function togglePerformerEditRow(performerId) {
+    const row = document.getElementById('pe-edit-' + performerId);
+    if (!row) return;
+    const showing = row.style.display !== 'none';
+    row.style.display = showing ? 'none' : '';
+    if (!showing) document.getElementById('pe-name-' + performerId)?.focus();
+}
+window.togglePerformerEditRow = togglePerformerEditRow;
+
+async function savePerformerEdit(performerId) {
+    const name  = (document.getElementById('pe-name-'  + performerId)?.value || '').trim();
+    const act   = (document.getElementById('pe-act-'   + performerId)?.value || '').trim();
+    const phone = (document.getElementById('pe-phone-' + performerId)?.value || '').trim();
+    const email = (document.getElementById('pe-email-' + performerId)?.value || '').trim();
+    if (!name || !act) { showToast('Name and Act are required', 'error'); return; }
+    const parents = collectParents('pe-parents-' + performerId);
+
+    const editRow = document.getElementById('pe-edit-' + performerId);
+    if (editRow) editRow.style.display = 'none';
+
+    const idx = state.performerDirectory.findIndex(p => p.id === performerId);
+    if (idx !== -1) state.performerDirectory[idx] = { ...state.performerDirectory[idx], name, act, phone: phone || null, email: email || null, parents };
+    renderPerformerIndex();
+
+    try {
+        await performerDirectoryCollection.doc(performerId).update({ name, act, phone: phone || null, email: email || null, parents });
+        showToast('Performer updated');
+    } catch (e) {
+        console.error('savePerformerEdit error:', e);
+        showToast('Error saving performer', 'error');
+    }
+}
+window.savePerformerEdit = savePerformerEdit;
+
+async function deletePerformer(id) {
+    const p = state.performerDirectory.find(p => p.id === id);
+    if (!p) return;
+    if (!confirm('Remove ' + (p.name || 'this performer') + ' from the directory?')) return;
+    state.performerDirectory = state.performerDirectory.filter(p => p.id !== id);
+    renderPerformerIndex();
+    try {
+        await performerDirectoryCollection.doc(id).delete();
+        showToast('Performer removed');
+    } catch (e) {
+        console.error('deletePerformer error:', e);
+        showToast('Error removing performer', 'error');
+    }
+}
+window.deletePerformer = deletePerformer;
+
+function renderPerformerIndex() {
+    const container = document.getElementById('performer-index-content');
+    if (!container) return;
+
+    // Preserve open edit rows
+    const activeEdits = {};
+    container.querySelectorAll('.pe-edit-row').forEach(row => {
+        if (row.style.display !== 'none') {
+            const id = row.id.replace('pe-edit-', '');
+            activeEdits[id] = {
+                name:    document.getElementById('pe-name-'  + id)?.value ?? null,
+                act:     document.getElementById('pe-act-'   + id)?.value ?? null,
+                phone:   document.getElementById('pe-phone-' + id)?.value ?? null,
+                email:   document.getElementById('pe-email-' + id)?.value ?? null,
+                parents: collectParents('pe-parents-' + id),
+            };
+        }
+    });
+
+    const dir = [...state.performerDirectory].sort((a, b) => {
+        const actCmp = (a.act || '').localeCompare(b.act || '');
+        if (actCmp !== 0) return actCmp;
+        return (a.name || '').localeCompare(b.name || '');
+    });
+
+    const searchVal = (document.getElementById('performer-index-search')?.value || '').trim().toLowerCase();
+    const filtered = searchVal
+        ? dir.filter(p =>
+            (p.name || '').toLowerCase().includes(searchVal) ||
+            (p.act  || '').toLowerCase().includes(searchVal) ||
+            (p.parents || []).some(par => (par.name || '').toLowerCase().includes(searchVal))
+          )
+        : dir;
+
+    if (!filtered.length) {
+        container.innerHTML = '<p class="staff-index-empty">' +
+            (searchVal ? 'No performers match your search.' : 'No performers yet. Click + Add Performer to get started.') +
+            '</p>';
+        return;
+    }
+
+    const editIconSvg  = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
+    const trashIconSvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>';
+    const personIconSvg = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
+
+    let lastAct = null;
+    const rows = filtered.map(p => {
+        const hasContact = p.phone || p.email;
+        const parents = p.parents || [];
+
+        let groupHeader = '';
+        if (p.act !== lastAct) {
+            lastAct = p.act;
+            groupHeader = '<tr class="dir-group-header"><td colspan="3">' + escapeHtml(p.act || 'No Act') + '</td></tr>';
+        }
+
+        // Edit row
+        const parentEditHtml = parents.map((par, i) => parentRowHtml('pe-parents-' + p.id, i, par)).join('');
+        const editRow = '<tr class="pe-edit-row dir-edit-row" id="pe-edit-' + p.id + '" style="display:none">' +
+            '<td colspan="3"><div class="dir-edit-form">' +
+                '<div class="dir-edit-fields">' +
+                    '<div class="form-group"><label>Name</label><input id="pe-name-' + p.id + '" type="text" value="' + escapeHtml(p.name || '') + '"></div>' +
+                    '<div class="form-group"><label>Act / Band</label><input id="pe-act-' + p.id + '" type="text" value="' + escapeHtml(p.act || '') + '"></div>' +
+                    '<div class="form-group"><label>Phone</label><input id="pe-phone-' + p.id + '" type="tel" value="' + escapeHtml(p.phone || '') + '"></div>' +
+                    '<div class="form-group"><label>Email</label><input id="pe-email-' + p.id + '" type="email" value="' + escapeHtml(p.email || '') + '"></div>' +
+                '</div>' +
+                '<div class="perf-parents-section">' +
+                    '<div class="perf-parents-label">Parents / Guardians</div>' +
+                    '<div id="pe-parents-' + p.id + '">' + parentEditHtml + '</div>' +
+                    '<button class="btn btn-secondary btn-sm" style="margin-top:6px" onclick="addParentRowEdit(\'' + p.id + '\')">+ Add Parent</button>' +
+                '</div>' +
+                '<div class="dir-edit-actions">' +
+                    '<button class="btn btn-primary-gold btn-sm" onclick="savePerformerEdit(\'' + p.id + '\')">Save</button>' +
+                    '<button class="btn btn-secondary btn-sm" onclick="togglePerformerEditRow(\'' + p.id + '\')">Cancel</button>' +
+                '</div>' +
+            '</div></td></tr>';
+
+        // Parent summary pill(s)
+        const parentPills = parents.length
+            ? '<span class="perf-parent-pills">' +
+                parents.map(par => '<span class="dir-role-pill perf-parent-pill" title="' + escapeHtml((par.phone || '') + (par.email ? '  ' + par.email : '')) + '">' + personIconSvg + ' ' + escapeHtml(par.name || 'Parent') + '</span>').join('') +
+              '</span>'
+            : '<span style="opacity:0.35;font-size:0.78rem">No parents listed</span>';
+
+        const contactBtn = '<button class="btn btn-icon btn-sm dir-contact-btn' + (hasContact ? '' : ' dir-contact-btn--missing') + '" title="' + (hasContact ? 'Contact info' : 'No contact info') + '" onclick="' + (hasContact ? 'togglePerfContactPopover(event,\'' + p.id + '\')' : 'showDirMissingContact(event)') + '">' +
+            '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>' +
+            (hasContact ? '' : '<span class="dir-contact-missing-dot">!</span>') +
+        '</button>';
+
+        const mainRow = '<tr class="staff-index-row">' +
+            '<td><strong>' + escapeHtml(p.name || '') + '</strong></td>' +
+            '<td>' + parentPills + '</td>' +
+            '<td class="dir-row-actions">' +
+                contactBtn +
+                '<button class="btn btn-icon btn-sm" title="Edit" onclick="togglePerformerEditRow(\'' + p.id + '\')">' + editIconSvg + '</button>' +
+                '<button class="btn btn-icon btn-sm" title="Delete" onclick="deletePerformer(\'' + p.id + '\')">' + trashIconSvg + '</button>' +
+            '</td>' +
+        '</tr>';
+
+        return groupHeader + mainRow + editRow;
+    }).join('');
+
+    container.innerHTML = '<table class="staff-index-table"><thead><tr>' +
+        '<th>Name</th><th>Parents</th><th></th>' +
+        '</tr></thead><tbody>' + rows + '</tbody></table>';
+
+    // Restore any open edit rows
+    Object.keys(activeEdits).forEach(id => {
+        const editRow = document.getElementById('pe-edit-' + id);
+        if (!editRow) return;
+        const d = activeEdits[id];
+        editRow.style.display = '';
+        const set = (field, val) => { if (val !== null) { const el = document.getElementById(field + id); if (el) el.value = val; } };
+        set('pe-name-', d.name); set('pe-act-', d.act); set('pe-phone-', d.phone); set('pe-email-', d.email);
+        // Restore parent rows
+        if (d.parents && d.parents.length) {
+            const pList = document.getElementById('pe-parents-' + id);
+            if (pList) {
+                pList.innerHTML = d.parents.map((par, i) => parentRowHtml('pe-parents-' + id, i, par)).join('');
+            }
+        }
+    });
+}
+window.renderPerformerIndex = renderPerformerIndex;
+
+function togglePerfContactPopover(e, performerId) {
+    e.stopPropagation();
+    const p = state.performerDirectory.find(p => p.id === performerId);
+    if (!p) return;
+    let popover = document.getElementById('dir-contact-popover');
+    if (!popover) {
+        popover = document.createElement('div');
+        popover.id = 'dir-contact-popover';
+        document.body.appendChild(popover);
+    }
+    if (popover.dataset.contactId === performerId && popover.style.display !== 'none') {
+        popover.style.display = 'none'; popover.dataset.contactId = ''; return;
+    }
+    popover.dataset.contactId = performerId;
+    let html = '';
+    if (p.phone) html += '<div class="dir-popover-row"><span class="dir-popover-label">Phone</span>' + escapeHtml(p.phone) + '</div>';
+    if (p.email) html += '<div class="dir-popover-row"><span class="dir-popover-label">Email</span>' + escapeHtml(p.email) + '</div>';
+    (p.parents || []).forEach(par => {
+        if (!par.name && !par.phone && !par.email) return;
+        html += '<div class="dir-popover-row" style="border-top:1px solid rgba(255,255,255,0.07);margin-top:4px;padding-top:4px"><span class="dir-popover-label" style="color:#c9a961">Parent</span>' + escapeHtml(par.name || '') + '</div>';
+        if (par.phone) html += '<div class="dir-popover-row"><span class="dir-popover-label">Phone</span>' + escapeHtml(par.phone) + '</div>';
+        if (par.email) html += '<div class="dir-popover-row"><span class="dir-popover-label">Email</span>' + escapeHtml(par.email) + '</div>';
+    });
+    popover.innerHTML = html || '<div class="dir-popover-missing">No contact info.</div>';
+    const btn = e.currentTarget;
+    const rect = btn.getBoundingClientRect();
+    popover.style.display = 'block';
+    popover.style.top = (rect.bottom + window.scrollY + 6) + 'px';
+    const popW = 240;
+    let left = rect.right + window.scrollX - popW;
+    if (left < 8) left = 8;
+    popover.style.left = left + 'px';
+}
+window.togglePerfContactPopover = togglePerfContactPopover;
+
+// ==========================================
+// PERFORMER CALENDAR INVITES
+// ==========================================
+
+let _gTokenClient = null;
+let _gAccessToken  = null;
+
+function buildCalendarDescription() {
+    const d  = state.intake || {};
+    const ev = state.activeEvent || {};
+
+    const eventName     = d.event_name     || ev.name        || '';
+    const venueName     = d.venue_name     || ev.venue       || '';
+    const venueAddress  = d.venue_address  || '';
+    const bands         = d.performing_bands || ev.performingGroups || '';
+    const dressCode     = d.dress_code     || '';
+    const parking       = d.parking_info   || '';
+    const preRows       = d.pre_show_rows  || [];
+    const rosRows       = d.run_of_show_rows || [];
+
+    // Format date
+    let dateStr = '';
+    const rawDate = d.event_date || ev.date || '';
+    if (rawDate) {
+        try { dateStr = new Date(rawDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }); }
+        catch(e) { dateStr = rawDate; }
+    }
+
+    const fmt = (rows) => rows
+        .filter(r => r.label || r.time)
+        .map(r => [r.time, r.label].filter(Boolean).join(' — '))
+        .join('\n');
+
+    let desc = '';
+
+    // Header
+    if (eventName) desc += (eventName.toUpperCase()) + '\n\n';
+
+    // Excitement line
+    if (eventName) desc += `We are so excited for ${eventName}!\n`;
+    desc += 'Please review the full event details below for venue information, arrival times, soundchecks, run of show, and logistics.\n';
+
+    // Venue block
+    desc += '\n';
+    if (venueName)    desc += `📍 Venue: ${venueName}\n`;
+    if (venueAddress) desc += `Address: ${venueAddress}\n`;
+    if (dateStr)      desc += `📅 Date: ${dateStr}\n`;
+    if (bands)        desc += `🎤 Performing Bands: ${bands}\n`;
+
+    // Pre-show
+    if (preRows.length) {
+        desc += '\nPRE-SHOW / SOUNDCHECKS 🎛️\n\n';
+        desc += fmt(preRows) + '\n';
+    }
+
+    // Run of show
+    if (rosRows.length) {
+        desc += '\nRUN OF SHOW 🎶\n\n';
+        desc += fmt(rosRows) + '\n';
+    }
+
+    // Logistics
+    if (dressCode || parking) {
+        desc += '\nLOGISTICS 🚗\n\n';
+        if (dressCode) desc += `Dress Code: ${dressCode}\n`;
+        if (parking)   desc += `Parking: ${parking}\n`;
+    }
+
+    desc += '\nPlease arrive on time and be ready for your scheduled soundcheck/performance window. Schedule is subject to small adjustments as we get closer to the event.';
+
+    return desc.trim();
+}
+
+function initGoogleTokenClient(callback) {
+    if (!window.google || !window.google.accounts) {
+        showToast('Google Sign-In library not loaded yet — try again in a moment', 'error');
+        return;
+    }
+    if (!GOOGLE_CALENDAR_CLIENT_ID || GOOGLE_CALENDAR_CLIENT_ID.startsWith('YOUR_')) {
+        showToast('Google OAuth Client ID not configured — see js/config.js', 'error');
+        return;
+    }
+    _gTokenClient = window.google.accounts.oauth2.initTokenClient({
+        client_id: GOOGLE_CALENDAR_CLIENT_ID,
+        scope: 'https://www.googleapis.com/auth/calendar.events',
+        callback: (resp) => {
+            if (resp.error) {
+                console.error('Google OAuth error:', resp);
+                showToast('Google authorization failed: ' + resp.error, 'error');
+                return;
+            }
+            _gAccessToken = resp.access_token;
+            callback(resp.access_token);
+        },
+    });
+    // If we already have a valid token, skip the prompt
+    if (_gAccessToken) { callback(_gAccessToken); return; }
+    _gTokenClient.requestAccessToken({ prompt: '' });
+}
+
+function openIntakeCalendarPanel() {
+    const modal = document.getElementById('intake-cal-modal');
+    if (!modal) return;
+    populateIntakeCalendarPanel();
+    modal.classList.add('active');
+}
+window.openIntakeCalendarPanel = openIntakeCalendarPanel;
+
+function closeIntakeCalendarPanel() {
+    const modal = document.getElementById('intake-cal-modal');
+    if (modal) modal.classList.remove('active');
+}
+window.closeIntakeCalendarPanel = closeIntakeCalendarPanel;
+
+function populateIntakeCalendarPanel() {
+    const ev = state.activeEvent;
+    const d  = state.intake || {};
+    if (ev) {
+        const t = document.getElementById('ical-title');
+        if (t && !t.value) t.value = (d.event_name || ev.name || '') + ' — Performer Call';
+        const l = document.getElementById('ical-location');
+        if (l && !l.value) l.value = d.venue_name || ev.venue || ev.location || '';
+        const dt = document.getElementById('ical-date');
+        if (dt && !dt.value) dt.value = d.event_date || ev.date || '';
+        const notesEl = document.getElementById('ical-notes');
+        if (notesEl && !notesEl.value) notesEl.value = buildCalendarDescription();
+    }
+    const listEl = document.getElementById('ical-performer-list');
+    if (!listEl) return;
+    const dir = [...state.performerDirectory].sort((a, b) =>
+        (a.act || '').localeCompare(b.act || '') || (a.name || '').localeCompare(b.name || '')
+    );
+    if (!dir.length) { listEl.innerHTML = '<div class="si-empty">No performers in directory yet.</div>'; return; }
+    let lastAct = null;
+    listEl.innerHTML = dir.map(p => {
+        let header = '';
+        if (p.act !== lastAct) { lastAct = p.act; header = '<div class="si-act-header">' + escapeHtml(p.act || 'No Act') + '</div>'; }
+        const hasEmail = p.email || (p.parents || []).some(par => par.email);
+        return header + '<label class="si-performer-row' + (hasEmail ? '' : ' si-no-email') + '">' +
+            '<input type="checkbox" class="ical-check" data-id="' + p.id + '" ' + (hasEmail ? 'checked' : 'disabled') + '>' +
+            '<span class="si-performer-name">' + escapeHtml(p.name || '') + '</span>' +
+            (hasEmail ? '' : '<span class="si-no-email-tag">no email</span>') +
+        '</label>';
+    }).join('');
+}
+
+function icalSelectAll() { document.querySelectorAll('.ical-check:not(:disabled)').forEach(cb => cb.checked = true); }
+window.icalSelectAll = icalSelectAll;
+function icalSelectNone() { document.querySelectorAll('.ical-check').forEach(cb => cb.checked = false); }
+window.icalSelectNone = icalSelectNone;
+
+async function sendIntakeCalendarInvites() {
+    const title    = (document.getElementById('ical-title')?.value    || '').trim();
+    const location = (document.getElementById('ical-location')?.value || '').trim();
+    const date     = (document.getElementById('ical-date')?.value     || '').trim();
+    const start    = (document.getElementById('ical-start')?.value    || '').trim();
+    const end      = (document.getElementById('ical-end')?.value      || '').trim();
+    const notes    = (document.getElementById('ical-notes')?.value    || '').trim();
+    const inclParents = document.getElementById('ical-include-parents')?.checked;
+
+    if (!title || !date || !start || !end) { showToast('Title, date, start and end time are required', 'error'); return; }
+
+    const selectedIds = Array.from(document.querySelectorAll('.ical-check:checked')).map(cb => cb.dataset.id);
+    if (!selectedIds.length) { showToast('Select at least one performer', 'error'); return; }
+
+    const emails = new Set();
+    selectedIds.forEach(id => {
+        const p = state.performerDirectory.find(p => p.id === id);
+        if (!p) return;
+        if (p.email) emails.add(p.email);
+        if (inclParents) (p.parents || []).forEach(par => { if (par.email) emails.add(par.email); });
+    });
+    if (!emails.size) { showToast('No email addresses found for selected performers', 'error'); return; }
+
+    const statusEl = document.getElementById('ical-auth-status');
+    if (statusEl) { statusEl.style.display = ''; statusEl.textContent = 'Authorizing with Google…'; statusEl.className = 'si-auth-status si-auth-pending'; }
+
+    initGoogleTokenClient(async (accessToken) => {
+        try {
+            if (statusEl) statusEl.textContent = 'Creating calendar event…';
+            const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            const event = {
+                summary: title,
+                location: location || undefined,
+                description: notes || undefined,
+                start: { dateTime: date + 'T' + start + ':00', timeZone: tz },
+                end:   { dateTime: date + 'T' + end   + ':00', timeZone: tz },
+                attendees: Array.from(emails).map(email => ({ email })),
+                guestsCanSeeOtherGuests: false,
+                sendUpdates: 'all',
+            };
+            const resp = await fetch(
+                'https://www.googleapis.com/calendar/v3/calendars/primary/events?sendUpdates=all',
+                { method: 'POST', headers: { 'Authorization': 'Bearer ' + accessToken, 'Content-Type': 'application/json' }, body: JSON.stringify(event) }
+            );
+            if (!resp.ok) { const err = await resp.json(); throw new Error(err.error?.message || resp.statusText); }
+            if (statusEl) { statusEl.textContent = '✓ Invitations sent to ' + emails.size + ' address' + (emails.size !== 1 ? 'es' : '') + '!'; statusEl.className = 'si-auth-status si-auth-ok'; }
+            showToast('Calendar invites sent to ' + emails.size + ' recipient' + (emails.size !== 1 ? 's' : ''));
+        } catch (e) {
+            console.error('sendIntakeCalendarInvites error:', e);
+            if (statusEl) { statusEl.textContent = 'Error: ' + e.message; statusEl.className = 'si-auth-status si-auth-error'; }
+            showToast('Error: ' + e.message, 'error');
+            _gAccessToken = null;
+        }
+    });
+}
+window.sendIntakeCalendarInvites = sendIntakeCalendarInvites;
+
+function toggleSendInvitesPanel() {
+    const panel = document.getElementById('send-invites-panel');
+    const addForm = document.getElementById('performer-add-form');
+    if (!panel) return;
+    const opening = panel.style.display === 'none';
+    panel.style.display = opening ? '' : 'none';
+    if (addForm) addForm.style.display = 'none';
+    if (opening) populateSendInvitesPanel();
+}
+window.toggleSendInvitesPanel = toggleSendInvitesPanel;
+
+function populateSendInvitesPanel() {
+    const ev = state.activeEvent;
+    const d  = state.intake || {};
+    if (ev) {
+        const titleEl = document.getElementById('si-title');
+        if (titleEl && !titleEl.value) titleEl.value = (d.event_name || ev.name || '') + ' — Performer Call';
+        const locEl = document.getElementById('si-location');
+        if (locEl && !locEl.value) locEl.value = d.venue_name || ev.venue || ev.location || '';
+        const dateEl = document.getElementById('si-date');
+        if (dateEl && !dateEl.value) dateEl.value = d.event_date || ev.date || '';
+        const notesEl = document.getElementById('si-notes');
+        if (notesEl && !notesEl.value) notesEl.value = buildCalendarDescription();
+    }
+
+    // Render performer checklist grouped by act
+    const listEl = document.getElementById('si-performer-list');
+    if (!listEl) return;
+
+    const dir = [...state.performerDirectory].sort((a, b) =>
+        (a.act || '').localeCompare(b.act || '') || (a.name || '').localeCompare(b.name || '')
+    );
+
+    if (!dir.length) {
+        listEl.innerHTML = '<div class="si-empty">No performers in directory yet.</div>';
+        return;
+    }
+
+    let lastAct = null;
+    listEl.innerHTML = dir.map(p => {
+        let header = '';
+        if (p.act !== lastAct) {
+            lastAct = p.act;
+            header = '<div class="si-act-header">' + escapeHtml(p.act || 'No Act') + '</div>';
+        }
+        const hasEmail = p.email || (p.parents || []).some(par => par.email);
+        return header + '<label class="si-performer-row' + (hasEmail ? '' : ' si-no-email') + '">' +
+            '<input type="checkbox" class="si-check" data-id="' + p.id + '" ' + (hasEmail ? 'checked' : 'disabled') + '>' +
+            '<span class="si-performer-name">' + escapeHtml(p.name || '') + '</span>' +
+            (hasEmail ? '' : '<span class="si-no-email-tag">no email</span>') +
+        '</label>';
+    }).join('');
+}
+
+function siSelectAll() {
+    document.querySelectorAll('.si-check:not(:disabled)').forEach(cb => cb.checked = true);
+}
+window.siSelectAll = siSelectAll;
+
+function siSelectNone() {
+    document.querySelectorAll('.si-check').forEach(cb => cb.checked = false);
+}
+window.siSelectNone = siSelectNone;
+
+async function sendCalendarInvites() {
+    const title     = (document.getElementById('si-title')?.value    || '').trim();
+    const location  = (document.getElementById('si-location')?.value || '').trim();
+    const date      = (document.getElementById('si-date')?.value     || '').trim();
+    const startTime = (document.getElementById('si-start')?.value    || '').trim();
+    const endTime   = (document.getElementById('si-end')?.value      || '').trim();
+    const notes     = (document.getElementById('si-notes')?.value    || '').trim();
+    const includeParents = document.getElementById('si-include-parents')?.checked;
+
+    if (!title || !date || !startTime || !endTime) {
+        showToast('Title, date, start, and end time are required', 'error'); return;
+    }
+
+    const selectedIds = Array.from(document.querySelectorAll('.si-check:checked')).map(cb => cb.dataset.id);
+    if (!selectedIds.length) { showToast('Select at least one performer', 'error'); return; }
+
+    // Collect attendee emails
+    const emails = new Set();
+    selectedIds.forEach(id => {
+        const p = state.performerDirectory.find(p => p.id === id);
+        if (!p) return;
+        if (p.email) emails.add(p.email);
+        if (includeParents) {
+            (p.parents || []).forEach(par => { if (par.email) emails.add(par.email); });
+        }
+    });
+
+    if (!emails.size) { showToast('No valid email addresses found for selected performers', 'error'); return; }
+
+    const statusEl = document.getElementById('si-auth-status');
+    if (statusEl) { statusEl.style.display = ''; statusEl.textContent = 'Authorizing with Google…'; statusEl.className = 'si-auth-status si-auth-pending'; }
+
+    initGoogleTokenClient(async (accessToken) => {
+        try {
+            if (statusEl) { statusEl.textContent = 'Creating calendar event…'; }
+
+            const startISO = date + 'T' + startTime + ':00';
+            const endISO   = date + 'T' + endTime   + ':00';
+
+            const event = {
+                summary: title,
+                location: location || undefined,
+                description: notes || undefined,
+                start: { dateTime: startISO, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone },
+                end:   { dateTime: endISO,   timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone },
+                attendees: Array.from(emails).map(email => ({ email })),
+                guestsCanSeeOtherGuests: false,
+                sendUpdates: 'all',
+            };
+
+            const resp = await fetch(
+                'https://www.googleapis.com/calendar/v3/calendars/primary/events?sendUpdates=all&conferenceDataVersion=0',
+                {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': 'Bearer ' + accessToken,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(event),
+                }
+            );
+
+            if (!resp.ok) {
+                const err = await resp.json();
+                throw new Error(err.error?.message || resp.statusText);
+            }
+
+            const created = await resp.json();
+            if (statusEl) { statusEl.textContent = '✓ Invitations sent to ' + emails.size + ' address' + (emails.size !== 1 ? 'es' : '') + '!'; statusEl.className = 'si-auth-status si-auth-ok'; }
+            showToast('Calendar invites sent to ' + emails.size + ' recipient' + (emails.size !== 1 ? 's' : ''));
+            console.log('Created calendar event:', created.htmlLink);
+
+        } catch (e) {
+            console.error('sendCalendarInvites error:', e);
+            if (statusEl) { statusEl.textContent = 'Error: ' + e.message; statusEl.className = 'si-auth-status si-auth-error'; }
+            showToast('Error sending invites: ' + e.message, 'error');
+            _gAccessToken = null; // reset token so next attempt re-authorizes
+        }
+    });
+}
+window.sendCalendarInvites = sendCalendarInvites;
 
 // ==========================================
 // PACKING LIST
@@ -7957,6 +10439,26 @@ async function migrateOldPlotFormat(plotId, canvasData) {
     });
 }
 
+// Cancel pending autosave and flush any dirty objects synchronously.
+// Must be called before collections is replaced (backToHub / enterEvent).
+async function flushStagePlotAutosave() {
+    if (state.autoSaveTimeout) {
+        clearTimeout(state.autoSaveTimeout);
+        state.autoSaveTimeout = null;
+    }
+    if (state.isDraftPlot) {
+        // Only promote if there are unsaved changes — avoids creating empty plot docs
+        if (state.dirtyObjectIds?.size || state.deletedObjectIds?.size) {
+            await promoteDraftPlot();
+            await savePlot();
+        }
+    } else {
+        await savePlot();
+    }
+    state.currentPlotId = null;
+    state.isDraftPlot = false;
+}
+
 // Trigger Auto-Save (debounced)
 function triggerAutoSave() {
     // Clear existing timeout
@@ -8486,7 +10988,7 @@ function setupKeyboardShortcuts() {
             if (searchInput) searchInput.focus();
         }
 
-        // Timeline: N to focus phantom row, Ctrl/Cmd+Z for undo
+        // Timeline: N to focus phantom row
         if (state.currentPage === 'timeline' && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA' && e.target.tagName !== 'SELECT') {
             if (e.key === 'n' || e.key === 'N') {
                 e.preventDefault();
@@ -8497,18 +10999,17 @@ function setupKeyboardShortcuts() {
                 }
                 return;
             }
-            if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
-                e.preventDefault();
-                undoTimelineAction();
-                return;
-            }
         }
 
-        // Undo: Ctrl+Z or Cmd+Z (stage plots)
+        // Undo: Ctrl+Z or Cmd+Z (global)
         if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
             if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
                 e.preventDefault();
-                undo();
+                if (state.currentPage === 'stage-plots') {
+                    undo();
+                } else {
+                    undoGlobalAction();
+                }
             }
         }
 
@@ -9950,22 +12451,16 @@ function setupVenueMap() {
     const wrapper = document.getElementById('vm-canvas-wrapper');
     if (!wrapper) return;
 
-    // Pre-load the image. Try with CORS first (needed for toDataURL export on
-    // deployed sites). Fall back without CORS for file:// local dev.
-    state.vmBgImage = new Image();
-    state.vmBgImage.crossOrigin = 'anonymous';
-    state.vmBgCORS = true;
-    state.vmBgImage.onerror = () => {
-        // CORS load failed (likely file:// protocol) — retry without crossOrigin
-        state.vmBgCORS = false;
-        const retry = new Image();
-        retry.onload = () => {
-            state.vmBgImage = retry;
-            vmInitCanvas();
-        };
-        retry.src = 'venue-map.png';
-    };
-    state.vmBgImage.src = 'venue-map.png';
+    // Background image is loaded per-event from Firestore in vmInitCanvas().
+    // No static venue-map.png pre-load here.
+
+    // Resize canvas to fit container whenever the window resizes
+    let vmResizeTimer;
+    window.addEventListener('resize', () => {
+        if (state.currentPage !== 'venue-map') return;
+        clearTimeout(vmResizeTimer);
+        vmResizeTimer = setTimeout(vmFitCanvasToContainer, 150);
+    });
 
     // Tool buttons
     document.querySelectorAll('.vm-tool-btn').forEach(btn => {
@@ -10114,25 +12609,171 @@ function setupVenueMap() {
             vmRedo();
         }
     });
-}
 
-function vmInitCanvas() {
-    if (state.vmCanvas) return; // Already initialized
-
-    const wrapper = document.getElementById('vm-canvas-wrapper');
-    const img = state.vmBgImage;
-    if (!wrapper || !img) return;
-
-    // If image hasn't loaded yet, wait for it
-    if (!img.naturalWidth) {
-        img.onload = () => vmInitCanvas();
-        return;
+    // Upload map image file handler
+    const uploadInput = document.getElementById('vm-bg-upload');
+    if (uploadInput) {
+        uploadInput.addEventListener('change', async function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            e.target.value = '';
+            vmProcessMapFile(file);
+        });
     }
 
-    const wrapperWidth = wrapper.clientWidth || 1000;
-    const scale = wrapperWidth / img.naturalWidth;
-    const canvasWidth = Math.floor(img.naturalWidth * scale);
-    const canvasHeight = Math.floor(img.naturalHeight * scale);
+    // Document-level drag & drop — always intercept so browser never navigates to file
+    document.addEventListener('dragover', (e) => e.preventDefault());
+    document.addEventListener('drop', (e) => {
+        e.preventDefault();
+        if (state.currentPage !== 'venue-map') return;
+        const file = e.dataTransfer.files[0];
+        if (!file) return;
+        const ok = file.type.startsWith('image/') || file.type === 'application/pdf';
+        if (!ok) return;
+        document.getElementById('vm-upload-drop-zone')?.classList.remove('drag-over');
+        vmProcessMapFile(file);
+    });
+    document.addEventListener('dragenter', () => {
+        if (state.currentPage === 'venue-map') {
+            document.getElementById('vm-upload-drop-zone')?.classList.add('drag-over');
+        }
+    });
+    document.addEventListener('dragleave', (e) => {
+        if (!e.relatedTarget || e.relatedTarget === document.documentElement) {
+            document.getElementById('vm-upload-drop-zone')?.classList.remove('drag-over');
+        }
+    });
+}
+
+async function vmProcessMapFile(file) {
+    showToast('Processing map…', 'info');
+    try {
+        let dataUrl;
+        if (file.type === 'application/pdf') {
+            dataUrl = await vmRenderPDFtoDataURL(file);
+            if (!dataUrl) { showToast('Could not render PDF. Try a different file.', 'error'); return; }
+        } else {
+            dataUrl = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = e => resolve(e.target.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
+
+        // Compress to max 1400px wide
+        const img = new Image();
+        await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; img.src = dataUrl; });
+        const maxW = 1400;
+        const scale = Math.min(1, maxW / img.width);
+        const w = Math.floor(img.width * scale);
+        const h = Math.floor(img.height * scale);
+        const tmp = document.createElement('canvas');
+        tmp.width = w; tmp.height = h;
+        tmp.getContext('2d').drawImage(img, 0, 0, w, h);
+        const compressed = tmp.toDataURL('image/jpeg', 0.85);
+
+        await collections.venueMapLayers.doc('default').set({ bgImageData: compressed }, { merge: true });
+        const prompt = document.getElementById('vm-upload-prompt');
+        if (prompt) prompt.style.display = 'none';
+        vmResetCanvas();
+        await vmInitCanvas();
+        showToast('Map uploaded!');
+    } catch (err) {
+        console.error('vmProcessMapFile error:', err);
+        showToast('Error saving map. Please try again.', 'error');
+    }
+}
+
+async function vmRenderPDFtoDataURL(file) {
+    if (!window.pdfjsLib) { showToast('PDF renderer not available. Refresh and try again.', 'error'); return null; }
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    const page = await pdf.getPage(1);
+    const viewport = page.getViewport({ scale: 2.5 }); // high-res render
+    const canvas = document.createElement('canvas');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+    return canvas.toDataURL('image/jpeg', 0.9);
+}
+
+window.vmUploadBackground = function() {
+    document.getElementById('vm-bg-upload').click();
+};
+
+function vmResetCanvas() {
+    if (state.vmCanvas) {
+        state.vmCanvas.dispose();
+        state.vmCanvas = null;
+    }
+    state.vmBgImage = null;
+    state.vmBgCORS = true;
+    state.vmLayers = [];
+    state.vmActiveLayerId = null;
+    state.vmUndoStack = [];
+    state.vmRedoStack = [];
+    state.vmImageLoaded = false;
+    state.vmZoom = 1.0;
+    state.vmBaseWidth = 0;
+    state.vmBaseHeight = 0;
+    state.vmDrawingObj = null;
+    state.vmDrawStart = null;
+    if (state.vmAutoSaveTimeout) {
+        clearTimeout(state.vmAutoSaveTimeout);
+        state.vmAutoSaveTimeout = null;
+    }
+    if (state.vmResizeObserver) {
+        state.vmResizeObserver.disconnect();
+        state.vmResizeObserver = null;
+    }
+    const wrapper = document.getElementById('vm-canvas-wrapper');
+    if (wrapper) wrapper.innerHTML = '<canvas id="vm-canvas"></canvas>';
+}
+
+async function vmInitCanvas() {
+    if (state.vmCanvas) return;
+
+    const wrapper = document.getElementById('vm-canvas-wrapper');
+    if (!wrapper) return;
+
+    // Load per-event background image from Firestore
+    if (collections.venueMapLayers) {
+        try {
+            const doc = await collections.venueMapLayers.doc('default').get();
+            if (doc.exists && doc.data().bgImageData) {
+                await new Promise((resolve) => {
+                    const img = new Image();
+                    img.onload = () => { state.vmBgImage = img; resolve(); };
+                    img.onerror = () => resolve();
+                    img.src = doc.data().bgImageData;
+                });
+            }
+        } catch (e) { /* proceed with blank canvas */ }
+    }
+
+    // Wait for layout to settle before reading dimensions
+    await new Promise(resolve => requestAnimationFrame(resolve));
+
+    const img = state.vmBgImage;
+    const canvasArea = wrapper.closest('.vm-canvas-area') || wrapper.parentElement;
+    // getBoundingClientRect() forces a synchronous reflow, guaranteeing the
+    // true rendered width even when clientWidth returns a stale/pre-layout value.
+    const wrapperWidth = Math.round(canvasArea?.getBoundingClientRect().width || 0)
+        || Math.round(wrapper.getBoundingClientRect().width || 0)
+        || 1000;
+    let canvasWidth, canvasHeight;
+
+    if (img) {
+        const scale = wrapperWidth / img.naturalWidth;
+        canvasWidth = Math.floor(img.naturalWidth * scale);
+        canvasHeight = Math.floor(img.naturalHeight * scale);
+        state.vmBgScale = scale;
+    } else {
+        canvasWidth = wrapperWidth;
+        canvasHeight = Math.floor(wrapperWidth * 0.65);
+        state.vmBgScale = 1;
+    }
 
     state.vmCanvas = new fabric.Canvas('vm-canvas', {
         width: canvasWidth,
@@ -10141,23 +12782,25 @@ function vmInitCanvas() {
         preserveObjectStacking: true
     });
 
-    state.vmCanvas.setBackgroundImage(
-        new fabric.Image(img, {
-            scaleX: scale,
-            scaleY: scale,
-            originX: 'left',
-            originY: 'top'
-        }),
-        state.vmCanvas.renderAll.bind(state.vmCanvas)
-    );
-    state.vmBgScale = scale;
+    if (img) {
+        state.vmCanvas.setBackgroundImage(
+            new fabric.Image(img, {
+                scaleX: state.vmBgScale,
+                scaleY: state.vmBgScale,
+                originX: 'left',
+                originY: 'top'
+            }),
+            state.vmCanvas.renderAll.bind(state.vmCanvas)
+        );
+    } else {
+        state.vmCanvas.setBackgroundColor('#111111', state.vmCanvas.renderAll.bind(state.vmCanvas));
+    }
 
     state.vmImageLoaded = true;
     state.vmBaseWidth = canvasWidth;
     state.vmBaseHeight = canvasHeight;
     state.vmZoom = 1.0;
 
-    // Right-click context menu for z-order
     const wrapperEl = document.getElementById('vm-canvas-wrapper');
     wrapperEl.addEventListener('contextmenu', vmShowContextMenu);
     document.addEventListener('click', vmHideContextMenu);
@@ -10166,9 +12809,62 @@ function vmInitCanvas() {
 
     vmSetupDrawingEvents();
     vmLoadLayers().then(() => {
-        // Save initial state so the first action is undoable
-        setTimeout(() => vmSaveCanvasState(), 500);
+        setTimeout(vmSaveCanvasState, 200);
     });
+
+    // ResizeObserver fires (asynchronously) whenever the container resizes,
+    // including right after observe() is called on a visible element.
+    const canvasAreaEl = wrapper.closest('.vm-canvas-area') || wrapper.parentElement;
+    if (canvasAreaEl && window.ResizeObserver) {
+        state.vmResizeObserver = new ResizeObserver(entries => {
+            const w = Math.floor(entries[0]?.contentRect?.width || 0);
+            if (w > 10) vmFitCanvasToContainer();
+        });
+        state.vmResizeObserver.observe(canvasAreaEl);
+    }
+    // Also correct immediately (synchronous), in case the ResizeObserver callback
+    // arrives too late or returns the same stale width as the initial read.
+    // Temporarily zero out vmBaseWidth so the < 2 guard doesn't block a correction.
+    const initialWidth = state.vmBaseWidth;
+    state.vmBaseWidth = 0;
+    vmFitCanvasToContainer();
+    if (state.vmBaseWidth === 0) state.vmBaseWidth = initialWidth; // restore if no resize happened
+
+    // Show upload prompt if no background image exists for this event
+    if (!state.vmBgImage) {
+        const prompt = document.getElementById('vm-upload-prompt');
+        if (prompt) prompt.style.display = 'flex';
+    }
+}
+
+function vmFitCanvasToContainer() {
+    const c = state.vmCanvas;
+    if (!c) return;
+    const wrapper = document.getElementById('vm-canvas-wrapper');
+    if (!wrapper) return;
+    const canvasArea = wrapper.closest('.vm-canvas-area') || wrapper.parentElement;
+    // getBoundingClientRect forces a synchronous reflow for an accurate measurement
+    const newWidth = Math.round(canvasArea?.getBoundingClientRect().width || canvasArea?.clientWidth || wrapper.clientWidth || 0);
+    if (!newWidth || Math.abs(newWidth - state.vmBaseWidth) < 2) return;
+
+    const img = state.vmBgImage;
+    let newHeight;
+    if (img) {
+        const newScale = newWidth / img.naturalWidth;
+        newHeight = Math.floor(img.naturalHeight * newScale);
+        state.vmBgScale = newScale;
+        c.setBackgroundImage(
+            new fabric.Image(img, { scaleX: newScale, scaleY: newScale, originX: 'left', originY: 'top' }),
+            c.renderAll.bind(c)
+        );
+    } else {
+        newHeight = Math.floor(newWidth * 0.65);
+    }
+    c.setWidth(newWidth);
+    c.setHeight(newHeight);
+    state.vmBaseWidth = newWidth;
+    state.vmBaseHeight = newHeight;
+    c.renderAll();
 }
 
 function vmUpdateCanvasMode() {
@@ -13975,6 +16671,778 @@ function exportSeatingToXlsx() {
     const date = new Date().toISOString().slice(0, 10);
     XLSX.writeFile(wb, `gala-seating-${date}.xlsx`);
 }
+
+// ══════════════════════════════════════════════════════════════
+// GUESTS PAGE  (Invite List)
+// ══════════════════════════════════════════════════════════════
+
+const GUEST_FIELD_ORDER = ['name','title','organization','status','seats','tableNumber','invitedBy','interviewPriority','phone','email','notes'];
+const GUEST_STATUS_ORDER = { pending:0, invited:1, confirmed:2, declined:3 };
+const GUEST_PRIORITY_ORDER = { high:0, low:1, na:2, '':3 };
+const GUEST_HEADER_LABELS = {
+    name:'Name', title:'Title', organization:'Organization',
+    status:'Status', seats:'Seats', tableNumber:'Table #', invitedBy:'Invited By',
+    interviewPriority:'Interview?', phone:'Phone', email:'Email', notes:'Notes'
+};
+
+// Extend main state with guest-page state
+Object.assign(state, {
+    invitees:           [],
+    guestSearch:        '',
+    guestSortField:     'status',
+    guestSortDir:       'asc',
+    guestHiddenCols:    new Set(['phone','email','tableNumber']),
+    guestEditingId:     null,
+    guestRenderPending: false,
+    guestPendingNew:    {},
+    guestLastAddedId:   null,
+});
+
+function initGuestPage() {
+    state.guestEditingId    = null;
+    state.guestRenderPending = false;
+    state.guestPendingNew   = {};
+    state.guestSearch       = '';
+    const el = document.getElementById('gi-search-input');
+    if (el) el.value = '';
+    renderGuestColumnsMenu();
+    renderGuestList();
+}
+
+function renderGuestList() {
+    if (state.currentPage !== 'guests') return;
+    if (state.guestEditingId) {
+        state.guestRenderPending = true;
+    } else {
+        renderGuestTable();
+    }
+    renderGuestStats();
+}
+
+function renderGuestStats() {
+    const bar = document.getElementById('gi-stats-bar');
+    if (!bar) return;
+    const invitees = state.invitees || [];
+    const counts = { pending:0, invited:0, confirmed:0, declined:0 };
+    const seats  = { pending:0, invited:0, confirmed:0, declined:0 };
+    invitees.forEach(inv => {
+        const s = inv.status || 'pending';
+        if (s in counts) {
+            counts[s]++;
+            const n = parseInt(inv.seats, 10);
+            seats[s] += isNaN(n) ? 0 : n;
+        }
+    });
+    const total = invitees.length;
+    const pct = n => total > 0 ? ((n / total) * 100).toFixed(1) : 0;
+    const totalSeats = seats.invited + seats.confirmed;
+    bar.innerHTML = `
+        <div class="gi-stat-total">${total} Guest${total !== 1 ? 's' : ''}</div>
+        <div class="gi-chip gi-chip-pending"><span>${counts.pending}</span> Pending</div>
+        <div class="gi-chip gi-chip-declined"><span>${counts.declined}</span> Declined</div>
+        <div class="gi-chip gi-chip-invited"><span>${counts.invited}</span> Invited</div>
+        <div class="gi-chip gi-chip-confirmed"><span>${counts.confirmed}</span> Confirmed</div>
+        <div class="gi-status-bar">
+            <div class="gi-sb-seg gi-sb-pending"   style="width:${pct(counts.pending)}%"></div>
+            <div class="gi-sb-seg gi-sb-declined"  style="width:${pct(counts.declined)}%"></div>
+            <div class="gi-sb-seg gi-sb-invited"   style="width:${pct(counts.invited)}%"></div>
+            <div class="gi-sb-seg gi-sb-confirmed" style="width:${pct(counts.confirmed)}%"></div>
+        </div>
+        <div class="gi-seats-note">
+            ${totalSeats} seat${totalSeats !== 1 ? 's' : ''}
+            <span class="gi-seats-detail">(${seats.invited} invited · ${seats.confirmed} confirmed)</span>
+        </div>`;
+}
+
+function guestGetVisible() {
+    return GUEST_FIELD_ORDER.filter(f => !state.guestHiddenCols.has(f));
+}
+
+function renderGuestTable() {
+    const wrapper = document.getElementById('gi-table-wrapper');
+    if (!wrapper) return;
+
+    let filtered = [...(state.invitees || [])];
+    if (state.guestSearch) {
+        const q = state.guestSearch.toLowerCase();
+        const sf = ['name','title','organization','invitedBy','notes','email','phone'];
+        filtered = filtered.filter(inv => sf.some(f => (inv[f]||'').toLowerCase().includes(q)));
+    }
+
+    const sf = state.guestSortField;
+    filtered.sort((a, b) => {
+        let cmp = 0;
+        if (sf === 'status') {
+            cmp = (GUEST_STATUS_ORDER[a.status] ?? 99) - (GUEST_STATUS_ORDER[b.status] ?? 99);
+        } else if (sf === 'interviewPriority') {
+            cmp = (GUEST_PRIORITY_ORDER[a.interviewPriority||''] ?? 99) - (GUEST_PRIORITY_ORDER[b.interviewPriority||''] ?? 99);
+        } else {
+            cmp = (a[sf]||'').localeCompare(b[sf]||'');
+        }
+        return state.guestSortDir === 'asc' ? cmp : -cmp;
+    });
+
+    const visible = guestGetVisible();
+    const colW = { name:14, title:11, organization:13, status:8, seats:4, tableNumber:5, invitedBy:11, interviewPriority:9, phone:9, email:12, notes:16 };
+    const actW = 4;
+    const totalW = visible.reduce((s, f) => s + colW[f], 0) + actW;
+    const scale = 96 / totalW;
+
+    const rows = filtered.map(inv => renderGuestRow(inv, visible)).join('');
+    const phantom = renderGuestPhantom(visible);
+
+    wrapper.innerHTML = `
+        <table class="gi-table">
+            <colgroup>
+                ${visible.map(f => `<col style="width:${(colW[f]*scale).toFixed(1)}%">`).join('')}
+                <col style="width:${actW}%">
+            </colgroup>
+            <thead><tr>
+                ${visible.map(field => {
+                    const active = state.guestSortField === field;
+                    const arrow = active ? (state.guestSortDir === 'asc' ? ' ▲' : ' ▼') : '';
+                    return `<th class="${active ? 'gi-th-active' : ''}" onclick="guestSort('${field}')">${GUEST_HEADER_LABELS[field]}${arrow}</th>`;
+                }).join('')}
+                <th></th>
+            </tr></thead>
+            <tbody>${rows}${phantom}</tbody>
+        </table>`;
+
+    if (filtered.length === 0 && state.guestSearch) {
+        wrapper.innerHTML = '<div class="gi-empty">No guests match your search.</div>';
+    }
+
+    if (state.guestLastAddedId) {
+        const row = wrapper.querySelector(`tr[data-id="${state.guestLastAddedId}"]`);
+        if (row) {
+            row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            row.classList.add('gi-row-new');
+            setTimeout(() => row.classList.remove('gi-row-new'), 1500);
+        }
+        state.guestLastAddedId = null;
+    }
+}
+
+function renderGuestRow(inv, visible) {
+    const hasPhoto = inv.headshotUrl && inv.headshotUrl.trim();
+    const avatar   = hasPhoto ? `<img class="gi-avatar" src="${escapeHtml(inv.headshotUrl)}" alt="">` : '';
+    const cells = visible.map(field => {
+        if (field === 'name') {
+            return `<td data-field="name" data-id="${inv.id}" onclick="editGuestCell(this)"><span class="gi-name-cell">${avatar}${escapeHtml(inv.name||'')}</span></td>`;
+        }
+        if (field === 'status') {
+            const s = inv.status || 'pending';
+            return `<td data-field="status" data-id="${inv.id}" onclick="editGuestCell(this)"><span class="gi-status gi-status-${s}">${guestFmtStatus(s)}</span></td>`;
+        }
+        if (field === 'interviewPriority') {
+            return `<td data-field="interviewPriority" data-id="${inv.id}" onclick="editGuestCell(this)">${guestPriorityBadge(inv.interviewPriority)}</td>`;
+        }
+        const val = inv[field] || '';
+        const cls = field === 'notes' ? ' class="gi-notes-cell"' : '';
+        return `<td data-field="${field}" data-id="${inv.id}"${cls} onclick="editGuestCell(this)">${escapeHtml(val)}</td>`;
+    }).join('');
+
+    return `<tr data-id="${inv.id}" data-status="${inv.status||'pending'}">
+        ${cells}
+        <td><div class="gi-row-actions">
+            <button class="gi-del-btn" onclick="showDeleteGuestModal('${inv.id}','${escapeHtml(inv.name||'').replace(/'/g,"\\'")}')">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14z"/></svg>
+            </button>
+        </div></td>
+    </tr>`;
+}
+
+function renderGuestPhantom(visible) {
+    const cells = visible.map(field => {
+        const val = state.guestPendingNew[field] || '';
+        let display;
+        if (val) {
+            if (field === 'status') display = `<span class="gi-status gi-status-${val}">${guestFmtStatus(val)}</span>`;
+            else if (field === 'interviewPriority') display = guestPriorityBadge(val);
+            else display = escapeHtml(val);
+        } else if (field === 'name') {
+            display = `<span class="gi-phantom-hint">+ Add guest…</span>`;
+        } else {
+            display = '';
+        }
+        return `<td data-field="${field}" onclick="editGuestCell(this)">${display}</td>`;
+    }).join('');
+    return `<tr class="gi-phantom" data-phantom="true">${cells}<td></td></tr>`;
+}
+
+function guestFmtStatus(s) {
+    return s ? s.charAt(0).toUpperCase() + s.slice(1) : 'Pending';
+}
+
+function guestPriorityBadge(p) {
+    if (!p || p === 'na') return '';
+    return `<span class="gi-priority gi-priority-${p}">${p === 'high' ? 'High' : 'Low'}</span>`;
+}
+
+function guestSort(field) {
+    if (state.guestSortField === field) {
+        state.guestSortDir = state.guestSortDir === 'asc' ? 'desc' : 'asc';
+    } else {
+        state.guestSortField = field;
+        state.guestSortDir = 'asc';
+    }
+    renderGuestTable();
+}
+window.guestSort = guestSort;
+
+function guestHandleSearch(val) {
+    state.guestSearch = val;
+    renderGuestTable();
+}
+window.guestHandleSearch = guestHandleSearch;
+
+function renderGuestColumnsMenu() {
+    const menu = document.getElementById('gi-col-menu');
+    if (!menu) return;
+    menu.innerHTML = GUEST_FIELD_ORDER.map(field => `
+        <label class="gi-col-item">
+            <input type="checkbox" ${state.guestHiddenCols.has(field) ? '' : 'checked'}
+                   onchange="toggleGuestColumn('${field}')">
+            ${GUEST_HEADER_LABELS[field]}
+        </label>`).join('');
+}
+
+function toggleGuestColumnsMenu() {
+    const menu = document.getElementById('gi-col-menu');
+    if (menu) menu.classList.toggle('gi-col-menu-open');
+    // Close on outside click
+    if (menu?.classList.contains('gi-col-menu-open')) {
+        setTimeout(() => {
+            const close = (e) => {
+                if (!e.target.closest('.gi-col-wrap')) {
+                    menu.classList.remove('gi-col-menu-open');
+                    document.removeEventListener('click', close);
+                }
+            };
+            document.addEventListener('click', close);
+        }, 50);
+    }
+}
+window.toggleGuestColumnsMenu = toggleGuestColumnsMenu;
+
+function toggleGuestColumn(field) {
+    if (state.guestHiddenCols.has(field)) state.guestHiddenCols.delete(field);
+    else state.guestHiddenCols.add(field);
+    renderGuestTable();
+}
+window.toggleGuestColumn = toggleGuestColumn;
+
+// ── Inline Cell Editing ──────────────────────────────────────
+function editGuestCell(cell) {
+    if (cell.querySelector('input,textarea,.gi-status-picker,.gi-priority-picker')) return;
+    const row   = cell.closest('tr');
+    const field = cell.dataset.field;
+    const invId = cell.dataset.id;
+    if (!field) return;
+    const isPhantom = row?.dataset.phantom === 'true';
+    state.guestEditingId = isPhantom ? 'phantom' : (invId || null);
+    row?.classList.add('gi-editing');
+
+    const original = isPhantom ? (state.guestPendingNew[field] || '') : (cell.textContent.trim());
+    if (!isPhantom) cell.dataset.original = original;
+
+    if (field === 'status')            { openGuestStatusPicker(cell, row, original, isPhantom, invId);   return; }
+    if (field === 'interviewPriority') { openGuestPriorityPicker(cell, row, original, isPhantom, invId); return; }
+
+    const input = document.createElement('input');
+    input.type  = 'text';
+    input.value = original;
+    input.className = 'gi-inline-input';
+    cell.innerHTML = '';
+    cell.appendChild(input);
+    input.focus();
+    input.select();
+
+    const saveVal = async (val) => {
+        const v = val.trim();
+        if (isPhantom) {
+            if (v) state.guestPendingNew[field] = v;
+            else   delete state.guestPendingNew[field];
+        } else if (invId && v !== original) {
+            await saveGuestField(invId, field, v);
+        }
+    };
+
+    input.addEventListener('keydown', e => guestCellKeydown(e, input, cell, row, isPhantom, invId, saveVal));
+    input.addEventListener('blur', async () => {
+        await saveVal(input.value);
+        state.guestEditingId = null;
+        row?.classList.remove('gi-editing');
+        if (isPhantom) {
+            restoreGuestPhantomCell(cell, field);
+        } else {
+            cell.textContent = input.value.trim();
+        }
+        if (state.guestRenderPending) {
+            state.guestRenderPending = false;
+            renderGuestTable();
+            renderGuestStats();
+        }
+    });
+}
+window.editGuestCell = editGuestCell;
+
+function guestCellKeydown(e, input, cell, row, isPhantom, invId, saveVal) {
+    if (e.key === 'Escape') {
+        e.preventDefault();
+        input.value = isPhantom ? (state.guestPendingNew[cell.dataset.field] || '') : (cell.dataset.original || '');
+        input.blur();
+        return;
+    }
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        const v = input.value.trim();
+        if (isPhantom && v) state.guestPendingNew[cell.dataset.field] = v;
+        input.blur();
+        if (isPhantom && state.guestPendingNew.name) {
+            saveNewGuest();
+        } else {
+            // move to next row same column
+            const tbody = row.closest('tbody');
+            const rows  = [...tbody.querySelectorAll('tr')];
+            const next  = rows[rows.indexOf(row) + 1];
+            if (next) setTimeout(() => next.querySelector(`[data-field="${cell.dataset.field}"]`)?.click(), 30);
+        }
+        return;
+    }
+    if (e.key === 'Tab') {
+        e.preventDefault();
+        const v = input.value.trim();
+        if (isPhantom && v) state.guestPendingNew[cell.dataset.field] = v;
+        input.blur();
+        const visible = guestGetVisible();
+        const fi = visible.indexOf(cell.dataset.field);
+        setTimeout(() => {
+            let targetRow = row, tfi = fi + 1;
+            if (tfi >= visible.length) {
+                const tbody = row.closest('tbody');
+                const rows  = [...tbody.querySelectorAll('tr')];
+                targetRow = rows[rows.indexOf(row) + 1] || row;
+                tfi = 0;
+            }
+            targetRow?.querySelector(`[data-field="${visible[tfi]}"]`)?.click();
+        }, 30);
+    }
+}
+
+function restoreGuestPhantomCell(cell, field) {
+    const val = state.guestPendingNew[field] || '';
+    if (val) {
+        cell.textContent = val;
+    } else if (field === 'name') {
+        cell.innerHTML = '<span class="gi-phantom-hint">+ Add guest…</span>';
+    } else {
+        cell.textContent = '';
+    }
+}
+
+async function saveGuestField(invId, field, value) {
+    if (!state.currentEventId || !collections.invitees) return;
+    try {
+        await collections.invitees.doc(invId).update({
+            [field]: value,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+    } catch(e) { console.error('saveGuestField:', e); }
+}
+
+// ── Status Picker ────────────────────────────────────────────
+function openGuestStatusPicker(cell, row, current, isPhantom, invId) {
+    const statuses = ['pending','invited','confirmed','declined'];
+    const picker = document.createElement('div');
+    picker.className = 'gi-status-picker';
+    picker.innerHTML = statuses.map(s =>
+        `<button class="gi-sp-opt gi-sp-${s}${s===current?' gi-sp-active':''}" data-val="${s}"
+                 onclick="selectGuestStatus(this,'${invId||''}',${isPhantom})">${guestFmtStatus(s)}</button>`
+    ).join('');
+    cell.innerHTML = '';
+    cell.appendChild(picker);
+    picker.querySelector('button')?.focus();
+    picker.addEventListener('keydown', e => {
+        if (e.key === 'Escape') { state.guestEditingId = null; row?.classList.remove('gi-editing'); renderGuestTable(); }
+    });
+}
+
+async function selectGuestStatus(btn, invId, isPhantom) {
+    const val = btn.dataset.val;
+    if (isPhantom) {
+        state.guestPendingNew.status = val;
+    } else if (invId) {
+        await saveGuestField(invId, 'status', val);
+    }
+    state.guestEditingId = null;
+    btn.closest('tr')?.classList.remove('gi-editing');
+    renderGuestTable();
+    renderGuestStats();
+}
+window.selectGuestStatus = selectGuestStatus;
+
+// ── Priority Picker ──────────────────────────────────────────
+function openGuestPriorityPicker(cell, row, current, isPhantom, invId) {
+    const opts = [{val:'high',label:'High'},{val:'low',label:'Low'},{val:'na',label:'N/A'},{val:'',label:'None'}];
+    const picker = document.createElement('div');
+    picker.className = 'gi-priority-picker';
+    picker.innerHTML = opts.map(o =>
+        `<button class="gi-pp-opt${o.val===current?' gi-pp-active':''}" data-val="${o.val}"
+                 onclick="selectGuestPriority(this,'${invId||''}',${isPhantom})">${o.label}</button>`
+    ).join('');
+    cell.innerHTML = '';
+    cell.appendChild(picker);
+    picker.querySelector('button')?.focus();
+}
+
+async function selectGuestPriority(btn, invId, isPhantom) {
+    const val = btn.dataset.val;
+    if (isPhantom) state.guestPendingNew.interviewPriority = val;
+    else if (invId) await saveGuestField(invId, 'interviewPriority', val);
+    state.guestEditingId = null;
+    btn.closest('tr')?.classList.remove('gi-editing');
+    renderGuestTable();
+}
+window.selectGuestPriority = selectGuestPriority;
+
+// ── Add / Delete ─────────────────────────────────────────────
+async function saveNewGuest() {
+    const r = state.guestPendingNew;
+    if (!r.name?.trim() || !state.currentEventId || !collections.invitees) return;
+    const data = {
+        name: r.name||'', title: r.title||'', organization: r.organization||'',
+        status: r.status||'pending', seats: r.seats||'', tableNumber: r.tableNumber||'',
+        invitedBy: r.invitedBy||'', interviewPriority: r.interviewPriority||'',
+        phone: r.phone||'', email: r.email||'', notes: r.notes||'',
+        headshotUrl: '', bio: '',
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    };
+    state.guestPendingNew = {};
+    try {
+        const doc = await collections.invitees.add(data);
+        state.guestLastAddedId = doc.id;
+    } catch(e) { console.error('saveNewGuest:', e); }
+}
+
+function showDeleteGuestModal(invId, name) {
+    const modal  = document.getElementById('delete-guest-modal');
+    const nameEl = document.getElementById('delete-guest-name');
+    if (nameEl) nameEl.textContent = name;
+    if (modal)  {
+        modal.classList.add('active');
+        document.getElementById('confirm-delete-guest-btn').onclick = () => confirmDeleteGuest(invId);
+    }
+}
+window.showDeleteGuestModal = showDeleteGuestModal;
+
+function closeDeleteGuestModal() {
+    document.getElementById('delete-guest-modal')?.classList.remove('active');
+}
+window.closeDeleteGuestModal = closeDeleteGuestModal;
+
+async function confirmDeleteGuest(invId) {
+    closeDeleteGuestModal();
+    if (!state.currentEventId || !collections.invitees) return;
+    try { await collections.invitees.doc(invId).delete(); }
+    catch(e) { console.error('confirmDeleteGuest:', e); }
+}
+
+// ── Guest Directory (Facebook) ───────────────────────────────
+
+// ---- Wikipedia fetch ----------------------------------------
+async function fetchWikiInfo(name, org) {
+    // Try direct name first, then name+org search as fallback
+    const tryTitle = async (title) => {
+        try {
+            const r = await fetch(
+                `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`,
+                { headers: { 'Accept': 'application/json' } }
+            );
+            if (!r.ok) return null;
+            const d = await r.json();
+            if (d.type === 'disambiguation' || !d.extract) return null;
+            return { bio: d.extract, headshotUrl: d.thumbnail?.source || null };
+        } catch(e) { return null; }
+    };
+
+    // 1. Direct name lookup
+    let result = await tryTitle(name);
+    if (result) return result;
+
+    // 2. Search API with name + org
+    try {
+        const q = [name, org].filter(Boolean).join(' ');
+        const r = await fetch(
+            `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(q)}&srlimit=1&format=json&origin=*`
+        );
+        const d = await r.json();
+        const hit = d.query?.search?.[0];
+        if (hit) {
+            result = await tryTitle(hit.title);
+            if (result) return result;
+        }
+    } catch(e) { /* no search result */ }
+
+    return null;
+}
+
+// ---- Modal open/close ---------------------------------------
+function openFacebookExport() {
+    const invitees = state.invitees || [];
+    if (!invitees.length) { showToast('No guests to export', 'error'); return; }
+    document.getElementById('fb-export-modal')?.classList.add('active');
+    renderFbDirectoryList();
+}
+window.openFacebookExport = openFacebookExport;
+
+function closeFacebookExport() {
+    document.getElementById('fb-export-modal')?.classList.remove('active');
+}
+window.closeFacebookExport = closeFacebookExport;
+
+// ---- Directory list render ----------------------------------
+function renderFbDirectoryList() {
+    const list = document.getElementById('fb-dir-list');
+    if (!list) return;
+    const invitees = (state.invitees || [])
+        .filter(inv => (inv.status || 'pending') !== 'declined')
+        .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+    if (!invitees.length) {
+        list.innerHTML = '<div style="padding:1rem;text-align:center;color:rgba(255,255,255,0.3);font-size:0.82rem">No guests</div>';
+        return;
+    }
+
+    const ph = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`;
+
+    list.innerHTML = invitees.map(inv => {
+        const excl    = !!inv.excludeFromFacebook;
+        const hasPhoto = inv.headshotUrl?.trim();
+        const hasBio   = inv.bio?.trim();
+        const sub      = [inv.title, inv.organization].filter(Boolean).map(s => s.replace(/</g,'&lt;')).join(', ');
+        const thumb    = hasPhoto
+            ? `<img class="fb-dir-thumb" src="${escapeHtml(inv.headshotUrl)}" alt="" onerror="this.style.display='none'">`
+            : `<div class="fb-dir-thumb-ph">${ph}</div>`;
+        const photoBadge = `<span class="fb-dir-badge ${hasPhoto ? 'fb-dir-badge-ok' : 'fb-dir-badge-miss'}">📷 ${hasPhoto ? '✓' : '✗'}</span>`;
+        const bioBadge   = `<span class="fb-dir-badge ${hasBio   ? 'fb-dir-badge-ok' : 'fb-dir-badge-miss'}">bio ${hasBio ? '✓' : '✗'}</span>`;
+        const fetchBtn   = (!hasPhoto || !hasBio)
+            ? `<button class="fb-dir-fetch-one" id="fb-fetch-${inv.id}" onclick="fetchOneFbGuest('${inv.id}')">Fetch</button>`
+            : '';
+        const exclBtn = `<button class="fb-dir-fetch-one" onclick="toggleFbExclude('${inv.id}')" title="${excl ? 'Include' : 'Exclude'}" style="color:${excl?'rgba(252,129,129,0.6)':'rgba(255,255,255,0.25)'}">${excl ? 'Excluded' : '—'}</button>`;
+
+        return `<div class="fb-dir-row" id="fb-row-${inv.id}" style="${excl?'opacity:0.4':''}">
+            ${thumb}
+            <div class="fb-dir-info">
+                <div class="fb-dir-name">${(inv.name||'').replace(/</g,'&lt;')}</div>
+                ${sub ? `<div class="fb-dir-sub">${sub}</div>` : ''}
+            </div>
+            <div class="fb-dir-badges">${photoBadge}${bioBadge}</div>
+            ${fetchBtn}
+            ${exclBtn}
+        </div>`;
+    }).join('');
+}
+
+// ---- Per-guest fetch ----------------------------------------
+async function fetchOneFbGuest(invId) {
+    const inv = (state.invitees || []).find(i => i.id === invId);
+    if (!inv) return;
+
+    const btn = document.getElementById(`fb-fetch-${invId}`);
+    if (btn) { btn.textContent = '…'; btn.disabled = true; }
+
+    const result = await fetchWikiInfo(inv.name, inv.organization);
+    const updates = {};
+    if (result) {
+        if (!inv.bio?.trim()         && result.bio)         { inv.bio         = result.bio;         updates.bio         = result.bio; }
+        if (!inv.headshotUrl?.trim() && result.headshotUrl) { inv.headshotUrl = result.headshotUrl; updates.headshotUrl = result.headshotUrl; }
+    }
+    if (Object.keys(updates).length && collections.invitees) {
+        try { await collections.invitees.doc(invId).update(updates); }
+        catch(e) { console.error('fetchOneFbGuest save:', e); }
+    }
+    renderFbDirectoryList();
+    if (!result || (!result.bio && !result.headshotUrl)) {
+        showToast(`No Wikipedia entry found for "${inv.name}"`, 'error');
+    }
+}
+window.fetchOneFbGuest = fetchOneFbGuest;
+
+// ---- Batch fetch --------------------------------------------
+async function fetchAllMissingFbInfo() {
+    const btn = document.getElementById('fb-fetch-all-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Fetching…'; }
+
+    const missing = (state.invitees || []).filter(inv =>
+        (inv.status || 'pending') !== 'declined' &&
+        !inv.excludeFromFacebook &&
+        (!inv.bio?.trim() || !inv.headshotUrl?.trim())
+    );
+
+    let found = 0;
+    for (const inv of missing) {
+        const result = await fetchWikiInfo(inv.name, inv.organization);
+        if (result) {
+            const updates = {};
+            if (!inv.bio?.trim()         && result.bio)         { inv.bio         = result.bio;         updates.bio         = result.bio; }
+            if (!inv.headshotUrl?.trim() && result.headshotUrl) { inv.headshotUrl = result.headshotUrl; updates.headshotUrl = result.headshotUrl; }
+            if (Object.keys(updates).length) {
+                found++;
+                if (collections.invitees) {
+                    try { await collections.invitees.doc(inv.id).update(updates); }
+                    catch(e) { console.error('fetchAllMissingFbInfo save:', e); }
+                }
+            }
+        }
+    }
+    renderFbDirectoryList();
+    if (btn) { btn.disabled = false; btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg> Fetch Missing Info`; }
+    showToast(found > 0 ? `Found info for ${found} guest${found!==1?'s':''}` : 'No new info found — guests may not be on Wikipedia', found > 0 ? 'success' : 'error');
+}
+window.fetchAllMissingFbInfo = fetchAllMissingFbInfo;
+
+// ---- Exclude toggle -----------------------------------------
+async function toggleFbExclude(invId) {
+    const inv = (state.invitees || []).find(i => i.id === invId);
+    if (!inv) return;
+    inv.excludeFromFacebook = !inv.excludeFromFacebook;
+    renderFbDirectoryList();
+    if (collections.invitees) {
+        try { await collections.invitees.doc(invId).update({ excludeFromFacebook: inv.excludeFromFacebook }); }
+        catch(e) { console.error('toggleFbExclude:', e); }
+    }
+}
+window.toggleFbExclude = toggleFbExclude;
+
+// ---- Generate PDF -------------------------------------------
+function generateGuestDirectoryPdf() {
+    const event    = state.activeEvent || {};
+    const invitees = (state.invitees || [])
+        .filter(inv => !inv.excludeFromFacebook && (inv.status || 'pending') !== 'declined')
+        .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+    if (!invitees.length) { showToast('No guests to include', 'error'); return; }
+
+    const esc = s => (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+    const guestEntryHtml = (inv) => {
+        const photoHtml = inv.headshotUrl?.trim()
+            ? `<img class="g-photo" src="${esc(inv.headshotUrl)}" alt="" onerror="this.style.display='none'">`
+            : `<div class="g-photo-ph"><svg viewBox="0 0 24 24" fill="none" stroke="#c0b4a8" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" width="48" height="48"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>`;
+        const bio = inv.bio?.trim()
+            ? esc(inv.bio.length > 400 ? inv.bio.slice(0,400).trimEnd() + '…' : inv.bio)
+            : '';
+        const invitedBy = inv.invitedBy?.trim()
+            ? `<div class="g-invited">Invited by ${esc(inv.invitedBy)}</div>` : '';
+        return `<div class="g-entry">
+            ${photoHtml}
+            <div class="g-info">
+                <div class="g-name">${esc(inv.name||'')}</div>
+                ${inv.title    ? `<div class="g-title">${esc(inv.title)}</div>` : ''}
+                ${inv.organization ? `<div class="g-org">${esc(inv.organization)}</div>` : ''}
+                ${bio ? `<div class="g-bio">${bio}</div>` : ''}
+                ${invitedBy}
+            </div>
+        </div>`;
+    };
+
+    // Pair up guests into spreads (2 per page)
+    const pairs = [];
+    for (let i = 0; i < invitees.length; i += 2) {
+        pairs.push([invitees[i], invitees[i+1] || null]);
+    }
+
+    const spreadsHtml = pairs.map((pair, idx) => {
+        const isLast = idx === pairs.length - 1;
+        return `<div class="spread${isLast ? '' : ' pb'}">
+            ${guestEntryHtml(pair[0])}
+            ${pair[1] ? `<div class="divider"></div>${guestEntryHtml(pair[1])}` : ''}
+        </div>`;
+    }).join('\n');
+
+    let eventDate = '';
+    if (event.date) {
+        try { eventDate = new Date(event.date+'T12:00:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'}); }
+        catch(e) { eventDate = event.date; }
+    }
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>${esc(event.name||'Guest Directory')}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{background:#f4efe9;font-family:'Inter',sans-serif;color:#1a1a1a;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+/* Cover */
+.cover{width:100%;min-height:100vh;display:flex;flex-direction:column;justify-content:center;padding:0 10% 0;position:relative}
+.c-rule{width:50px;height:2px;background:#b05c38;margin-bottom:22px}
+.c-title{font-family:'Cormorant Garamond',serif;font-size:clamp(36px,5vw,58px);font-weight:600;line-height:1.1;max-width:80%;color:#1a1a1a}
+.c-sub{margin-top:18px;font-size:13px;letter-spacing:.18em;text-transform:uppercase;color:#999}
+.c-count{margin-top:8px;font-size:13px;color:#bbb}
+.c-date{margin-top:6px;font-size:13px;color:#bbb}
+.c-bar{position:absolute;bottom:0;left:0;right:0;height:7px;background:#b05c38}
+/* Spreads */
+.spread{min-height:100vh;display:flex;flex-direction:column}
+.pb{page-break-after:always;break-after:page}
+.g-entry{flex:1;display:flex;align-items:flex-start;gap:32px;padding:44px 64px;max-height:50vh;overflow:hidden}
+.g-photo{width:175px;min-width:175px;height:215px;object-fit:cover;object-position:center top;flex-shrink:0;border-radius:2px}
+.g-photo-ph{width:175px;min-width:175px;height:215px;background:#ebe4dc;display:flex;align-items:center;justify-content:center;flex-shrink:0;border-radius:2px}
+.g-info{flex:1;padding-top:6px}
+.g-name{font-family:'Cormorant Garamond',serif;font-size:30px;font-weight:600;line-height:1.1;margin-bottom:6px}
+.g-title{font-size:13px;font-weight:600;color:#b05c38;margin-bottom:2px}
+.g-org{font-size:12.5px;color:#888;margin-bottom:13px}
+.g-bio{font-size:13px;line-height:1.68;color:#2a2a2a;max-height:115px;overflow:hidden}
+.g-invited{margin-top:14px;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:#bbb}
+.divider{height:1px;background:#ddd5cb;margin:0 64px}
+@media print{
+  body{background:#f4efe9!important}
+  .pb{page-break-after:always;break-after:page}
+  .cover{page-break-after:always;break-after:page}
+  @page{size:letter portrait;margin:0}
+}
+</style>
+</head>
+<body>
+<div class="cover">
+  <div class="c-rule"></div>
+  <div class="c-title">${esc(event.name||'Guest Directory')}</div>
+  <div class="c-sub">Guest Directory</div>
+  <div class="c-count">${invitees.length} Guest${invitees.length!==1?'s':''}</div>
+  ${eventDate ? `<div class="c-date">${eventDate}</div>` : ''}
+  <div class="c-bar"></div>
+</div>
+${spreadsHtml}
+<script>window.onload=()=>{window.print()}<\/script>
+</body>
+</html>`;
+
+    const win = window.open('', '_blank');
+    if (!win) { showToast('Allow pop-ups to generate the PDF', 'error'); return; }
+    win.document.write(html);
+    win.document.close();
+}
+window.generateGuestDirectoryPdf = generateGuestDirectoryPdf;
+
+// ── CSV Export ───────────────────────────────────────────────
+function exportGuestCSV() {
+    const invitees = state.invitees || [];
+    if (!invitees.length) { showToast('No guests to export', 'error'); return; }
+    const headers = GUEST_FIELD_ORDER.map(f => GUEST_HEADER_LABELS[f]);
+    const rows = invitees.map(inv =>
+        GUEST_FIELD_ORDER.map(f => `"${(inv[f]||'').toString().replace(/"/g,'""')}"`).join(',')
+    );
+    const csv = [headers.join(','), ...rows].join('\n');
+    const url = URL.createObjectURL(new Blob([csv], {type:'text/csv;charset=utf-8;'}));
+    const a   = Object.assign(document.createElement('a'), { href: url, download: `guest-list.csv` });
+    a.click();
+    URL.revokeObjectURL(url);
+}
+window.exportGuestCSV = exportGuestCSV;
 
 // Window exports
 window.editSeatingCell = editSeatingCell;

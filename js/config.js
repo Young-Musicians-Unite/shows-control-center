@@ -1,14 +1,14 @@
 // Firebase Configuration
-// IMPORTANT: Replace these values with your actual Firebase project configuration
-// You'll get these from the Firebase Console after creating your project
+// Sandbox project for the reusable multi-show platform ("Shows Control Center").
+// SEPARATE from the production gala project (ymu-gala-2026) — safe to develop against.
 
 const firebaseConfig = {
-    apiKey: "AIzaSyCStAOy_a-qGlyPljycOxcLoshpMfuXmlA",
-    authDomain: "ymu-gala-2026.firebaseapp.com",
-    projectId: "ymu-gala-2026",
-    storageBucket: "ymu-gala-2026.firebasestorage.app",
-    messagingSenderId: "415474744493",
-    appId: "1:415474744493:web:17b8c3dfc5f1e4c2345a24"
+    apiKey: "AIzaSyDmLpNKt2fT8KDITAQ5U1sHFgNQ2qdbrsw",
+    authDomain: "shows-control-center.firebaseapp.com",
+    projectId: "shows-control-center",
+    storageBucket: "shows-control-center.firebasestorage.app",
+    messagingSenderId: "159890194451",
+    appId: "1:159890194451:web:219e8ee71b94dfa61dffe6"
 };
 
 // Initialize Firebase
@@ -23,35 +23,16 @@ try {
 const db = firebase.firestore();
 const storage = firebase.storage();
 
-// Enable offline persistence so edits keep working during WiFi drops
-// and sync automatically when the connection returns.
-db.enablePersistence({ synchronizeTabs: true }).catch((err) => {
-    if (err.code === 'failed-precondition') {
-        console.warn('Firestore persistence unavailable: multiple tabs open without synchronizeTabs support.');
-    } else if (err.code === 'unimplemented') {
-        console.warn('Firestore persistence unsupported in this browser.');
-    } else {
-        console.error('Firestore persistence error:', err);
-    }
-});
+// Note: offline persistence intentionally disabled — it blocks ALL Firestore operations
+// until the IndexedDB lock is acquired, which hangs the hub when multiple tabs compete.
 
-// Collection references
-const collections = {
-    vendors: db.collection('vendors'),
-    budget: db.collection('budget'),
-    timeline: db.collection('timeline'),
-    mainStageInputs: db.collection('mainStageInputs'),
-    cocktailStageInputs: db.collection('cocktailStageInputs'),
-    staff: db.collection('staff'),
-    eventInfo: db.collection('event-info'),
-    stagePlots: db.collection('stagePlots'),
-    venueMapLayers: db.collection('venueMapLayers'),
-    setLists: db.collection('setLists'),
-    packingList: db.collection('packingList'),
-    packingCategoryColors: db.collection('packingCategoryColors'),
-    menuItems: db.collection('menuItems'),
-    printedMaterials: db.collection('printedMaterials'),
-    digitalAssets: db.collection('digitalAssets'),
-    guests: db.collection('guests'),
-    seatingTables: db.collection('seatingTables')
-};
+// Top-level events collection for the hub
+const eventsCollection = db.collection('events');
+
+// Per-event collection references — rebuilt by setActiveEvent() in app.js
+let collections = {};
+
+// Google Calendar OAuth — replace with your OAuth 2.0 Client ID from
+// Google Cloud Console → APIs & Services → Credentials → Create OAuth client ID (Web application)
+// Authorized JavaScript origins must include: http://localhost:8745 and your GitHub Pages URL
+const GOOGLE_CALENDAR_CLIENT_ID = 'YOUR_GOOGLE_OAUTH_CLIENT_ID.apps.googleusercontent.com';
