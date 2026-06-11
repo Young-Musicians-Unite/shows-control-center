@@ -1,0 +1,20 @@
+# Serve the static site on Railway's injected $PORT
+{
+	admin off
+	persist_config off
+	auto_https off
+}
+
+:{$PORT:80} {
+	root * /srv
+	encode gzip
+	file_server
+
+	# Single-page app: unknown paths fall back to index.html
+	try_files {path} /index.html
+
+	header {
+		# Don't cache the HTML shell so deploys show up immediately
+		?Cache-Control "no-cache"
+	}
+}

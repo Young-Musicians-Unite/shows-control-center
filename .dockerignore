@@ -1,0 +1,17 @@
+.git
+.gitignore
+.claude
+.playwright-screenshots
+.playwright-mcp
+node_modules
+scripts
+docs
+source-data
+__pycache__
+*.pyc
+*.log
+*.tmp
+*.bak
+deploy.sh
+Dockerfile
+.dockerignore
