@@ -7849,6 +7849,32 @@ function closeIntakeCalendarPanel() {
 }
 window.closeIntakeCalendarPanel = closeIntakeCalendarPanel;
 
+function parseTimeToHHMM(str) {
+    if (!str) return null;
+    str = str.trim();
+    const ampm = str.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+    if (ampm) {
+        let h = parseInt(ampm[1], 10);
+        const m = parseInt(ampm[2], 10);
+        if (ampm[3].toUpperCase() === 'AM') { if (h === 12) h = 0; }
+        else { if (h !== 12) h += 12; }
+        return String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
+    }
+    const plain = str.match(/^(\d{1,2}):(\d{2})$/);
+    if (plain) {
+        const h = parseInt(plain[1], 10), m = parseInt(plain[2], 10);
+        if (h >= 0 && h < 24 && m >= 0 && m < 60)
+            return String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
+    }
+    return null;
+}
+
+function earliestPreShowTime(d) {
+    const rows = (d && d.pre_show_rows) || [];
+    const times = rows.map(r => parseTimeToHHMM(r.time)).filter(Boolean);
+    return times.length ? times.sort()[0] : '';
+}
+
 function populateIntakeCalendarPanel() {
     const ev = state.activeEvent;
     const d  = state.intake || {};
@@ -7859,6 +7885,8 @@ function populateIntakeCalendarPanel() {
         if (l) l.value = d.venue_address || '';
         const dt = document.getElementById('ical-date');
         if (dt && !dt.value) dt.value = d.event_date || ev.date || '';
+        const startEl = document.getElementById('ical-start');
+        if (startEl) startEl.value = earliestPreShowTime(d);
         const notesEl = document.getElementById('ical-notes');
         if (notesEl && !notesEl.value) notesEl.value = buildCalendarDescription();
     }
@@ -8000,6 +8028,8 @@ function populateSendInvitesPanel() {
         if (locEl) locEl.value = d.venue_address || '';
         const dateEl = document.getElementById('si-date');
         if (dateEl && !dateEl.value) dateEl.value = d.event_date || ev.date || '';
+        const siStartEl = document.getElementById('si-start');
+        if (siStartEl) siStartEl.value = earliestPreShowTime(d);
         const notesEl = document.getElementById('si-notes');
         if (notesEl && !notesEl.value) notesEl.value = buildCalendarDescription();
     }
