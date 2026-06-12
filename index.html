@@ -2472,18 +2472,20 @@
                                 <label>Date</label>
                                 <input type="date" id="ical-date">
                             </div>
-                            <div class="form-group">
-                                <label>Start Time</label>
-                                <input type="time" id="ical-start">
-                            </div>
-                            <div class="form-group">
-                                <label>End Time</label>
-                                <input type="time" id="ical-end">
+                            <div class="form-row" style="margin:0;padding:0;gap:8px">
+                                <div class="form-group">
+                                    <label>Start Time</label>
+                                    <input type="time" id="ical-start">
+                                </div>
+                                <div class="form-group">
+                                    <label>End Time</label>
+                                    <input type="time" id="ical-end">
+                                </div>
                             </div>
                         </div>
                         <div class="form-group">
                             <label>Notes / Description</label>
-                            <textarea id="ical-notes" rows="8" placeholder="e.g. Load-in at 4pm. Dressing rooms on level 2."></textarea>
+                            <textarea id="ical-notes" rows="12" placeholder="e.g. Load-in at 4pm. Dressing rooms on level 2."></textarea>
                         </div>
                     </div>
                     <div class="send-invites-select-hdr">
@@ -2493,6 +2495,13 @@
                         <button class="btn btn-sm btn-secondary" onclick="icalSelectNone()">None</button>
                     </div>
                     <div id="ical-performer-list" class="si-performer-list"></div>
+                    <div class="ical-extra-emails-section">
+                        <div class="ical-extra-emails-header">
+                            <span>Additional Recipients</span>
+                            <button class="btn btn-sm btn-secondary" onclick="icalAddExtraEmail()">+ Add Email</button>
+                        </div>
+                        <div id="ical-extra-email-list"></div>
+                    </div>
                     <div id="ical-auth-status" class="si-auth-status" style="display:none"></div>
                     <div class="send-invites-actions">
                         <button class="btn btn-primary-gold" onclick="sendIntakeCalendarInvites()">

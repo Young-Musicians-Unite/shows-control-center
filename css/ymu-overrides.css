@@ -1265,21 +1265,62 @@ select.intake-field-input ~ .intake-field-edit {
 /* ─────────────────────────────────────────────────────────────────────
    18. Send Performer Invites — band-collapsible list
    ───────────────────────────────────────────────────────────────────── */
-.ical-band-group {
-  border-bottom: 0.5px solid var(--border-subtle);
+/* Performer list becomes a 2-col grid of band cards */
+#ical-performer-list.si-performer-list,
+#si-performer-list.si-performer-list {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr !important;
+  gap: 6px !important;
+  max-height: none !important;
+  overflow-y: visible !important;
+  padding: 8px !important;
 }
-.ical-band-group:last-child { border-bottom: none; }
 
+.ical-band-group {
+  border: 0.5px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  transition: opacity 150ms;
+  background: var(--bg-surface);
+}
+
+.ical-band-group.ical-band-disabled {
+  opacity: 0.38;
+}
+
+/* Header = checkbox + toggle area side by side */
 .ical-band-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
+  gap: 0;
+  padding: 0;
+}
+
+.ical-band-check {
+  flex-shrink: 0;
+  margin: 0 8px 0 10px;
+  width: 14px;
+  height: 14px;
+  accent-color: var(--text-primary);
+  cursor: pointer;
+}
+
+/* The clickable expand area */
+.ical-band-toggle {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 10px 9px 0;
   cursor: pointer;
   user-select: none;
   transition: background 150ms;
 }
-.ical-band-header:hover { background: var(--bg-hover); }
+.ical-band-toggle:hover { background: var(--bg-hover); }
+.ical-band-group.ical-band-disabled .ical-band-toggle {
+  cursor: default;
+  pointer-events: none;
+}
 
 .ical-band-chevron {
   flex-shrink: 0;
@@ -1293,15 +1334,12 @@ select.intake-field-input ~ .intake-field-edit {
 .ical-band-name {
   flex: 1;
   font-family: var(--font-body);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--text-primary);
-}
-
-.ical-band-count {
-  font-family: var(--font-body);
-  font-size: 11px;
-  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .ical-band-members {
@@ -1311,7 +1349,63 @@ select.intake-field-input ~ .intake-field-edit {
 }
 
 .ical-band-members .si-performer-row {
-  padding-left: 36px;
+  padding-left: 10px;
 }
+
+/* Additional recipients */
+.ical-extra-emails-section {
+  border-top: 0.5px solid var(--border-subtle);
+  padding: 10px 14px 6px;
+}
+
+.ical-extra-emails-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.ical-extra-email-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 5px;
+}
+
+.ical-extra-email-input {
+  flex: 1;
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--text-primary);
+  background: var(--bg-page);
+  border: 0.5px solid var(--border-medium);
+  border-radius: var(--radius-sm);
+  padding: 5px 8px;
+  outline: none;
+}
+.ical-extra-email-input:focus { border-color: var(--text-primary); }
+
+.ical-extra-email-remove {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  color: var(--text-tertiary);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ical-extra-email-remove:hover { background: var(--bg-hover); color: var(--text-primary); }
 
 /* ── END ───────────────────────────────────────────────────────────────*/

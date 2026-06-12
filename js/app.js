@@ -7851,15 +7851,18 @@ window.closeIntakeCalendarPanel = closeIntakeCalendarPanel;
 
 function parseTimeToHHMM(str) {
     if (!str) return null;
-    str = str.trim();
-    const ampm = str.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+    // Strip range suffix (e.g. "6:30 – 7:00pm" or "6:30-7pm" → "6:30")
+    str = str.split(/\s*[–—\-]\s*\d/)[0].trim();
+    // Match H:MM AM/PM or H AM/PM (no minutes)
+    const ampm = str.match(/(\d{1,2})(?::(\d{2}))?\s*(AM|PM)/i);
     if (ampm) {
         let h = parseInt(ampm[1], 10);
-        const m = parseInt(ampm[2], 10);
+        const m = ampm[2] ? parseInt(ampm[2], 10) : 0;
         if (ampm[3].toUpperCase() === 'AM') { if (h === 12) h = 0; }
         else { if (h !== 12) h += 12; }
         return String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
     }
+    // 24h H:MM
     const plain = str.match(/^(\d{1,2}):(\d{2})$/);
     if (plain) {
         const h = parseInt(plain[1], 10), m = parseInt(plain[2], 10);
@@ -7871,8 +7874,34 @@ function parseTimeToHHMM(str) {
 
 function earliestPreShowTime(d) {
     const rows = (d && d.pre_show_rows) || [];
-    const times = rows.map(r => parseTimeToHHMM(r.time)).filter(Boolean);
-    return times.length ? times.sort()[0] : '';
+    // Prefer the first row whose label mentions "arrival"
+    const arrivalRow = rows.find(r => /arrival/i.test(r.label || ''));
+    if (arrivalRow) {
+        const t = parseTimeToHHMM(arrivalRow.time);
+        if (t) return t;
+    }
+    // Fall back to the first row with any parseable time
+    for (const r of rows) {
+        const t = parseTimeToHHMM(r.time);
+        if (t) return t;
+    }
+    return '';
+}
+
+function showEndTime(d) {
+    const rows = (d && d.run_of_show_rows) || [];
+    // Look for a row whose label mentions "end"
+    const endRow = rows.find(r => /\bend\b/i.test(r.label || ''));
+    if (endRow) {
+        const t = parseTimeToHHMM(endRow.time);
+        if (t) return t;
+    }
+    // Fall back to the last row with any parseable time
+    for (let i = rows.length - 1; i >= 0; i--) {
+        const t = parseTimeToHHMM(rows[i].time);
+        if (t) return t;
+    }
+    return '';
 }
 
 function populateIntakeCalendarPanel() {
@@ -7887,6 +7916,8 @@ function populateIntakeCalendarPanel() {
         if (dt && !dt.value) dt.value = d.event_date || ev.date || '';
         const startEl = document.getElementById('ical-start');
         if (startEl) startEl.value = earliestPreShowTime(d);
+        const endEl = document.getElementById('ical-end');
+        if (endEl) endEl.value = showEndTime(d);
         const notesEl = document.getElementById('ical-notes');
         if (notesEl && !notesEl.value) notesEl.value = buildCalendarDescription();
     }
@@ -7907,7 +7938,7 @@ function populateIntakeCalendarPanel() {
     });
 
     listEl.innerHTML = Object.entries(bands).map(([act, members], idx) => {
-        const key = 'band-' + idx;
+        const key = 'ical-band-' + idx;
         const membersHTML = members.map(p => {
             const hasEmail = p.email || (p.parents || []).some(par => par.email);
             return '<label class="si-performer-row' + (hasEmail ? '' : ' si-no-email') + '">' +
@@ -7918,28 +7949,46 @@ function populateIntakeCalendarPanel() {
         }).join('');
         return `
         <div class="ical-band-group" id="${key}">
-            <div class="ical-band-header" onclick="icalToggleBand('${key}')">
-                <svg class="ical-band-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 4.5 6 7.5 9 4.5"/></svg>
-                <span class="ical-band-name">${escapeHtml(act)}</span>
-                <span class="ical-band-count">${members.length} member${members.length !== 1 ? 's' : ''}</span>
+            <div class="ical-band-header">
+                <input type="checkbox" class="ical-band-check" checked onchange="icalBandCheckChange('${key}', this)">
+                <div class="ical-band-toggle" onclick="icalToggleBand('${key}')">
+                    <svg class="ical-band-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 4.5 6 7.5 9 4.5"/></svg>
+                    <span class="ical-band-name">${escapeHtml(act)}</span>
+                </div>
             </div>
             <div class="ical-band-members" id="${key}-members" style="display:none">${membersHTML}</div>
         </div>`;
     }).join('');
 }
 
+window.icalBandCheckChange = function(key, cb) {
+    const group   = document.getElementById(key);
+    const members = document.getElementById(key + '-members');
+    if (!group) return;
+    if (cb.checked) {
+        group.classList.remove('ical-band-disabled');
+    } else {
+        group.classList.add('ical-band-disabled');
+        if (members) { members.style.display = 'none'; }
+        group.classList.remove('ical-band-open');
+        group.querySelectorAll('.ical-check').forEach(c => { c.checked = false; });
+    }
+};
+
 window.icalToggleBand = function(key) {
     const group   = document.getElementById(key);
     const members = document.getElementById(key + '-members');
-    if (!group || !members) return;
+    if (!group || !members || group.classList.contains('ical-band-disabled')) return;
     const isOpen = members.style.display !== 'none';
     members.style.display = isOpen ? 'none' : '';
     group.classList.toggle('ical-band-open', !isOpen);
 };
 
 function icalSelectAll() {
-    // Expand all bands and check all
     document.querySelectorAll('.ical-band-group').forEach(g => {
+        const cb = g.querySelector('.ical-band-check');
+        if (cb) cb.checked = true;
+        g.classList.remove('ical-band-disabled');
         const m = document.getElementById(g.id + '-members');
         if (m) { m.style.display = ''; g.classList.add('ical-band-open'); }
     });
@@ -7947,8 +7996,29 @@ function icalSelectAll() {
 }
 window.icalSelectAll = icalSelectAll;
 
-function icalSelectNone() { document.querySelectorAll('.ical-check').forEach(cb => cb.checked = false); }
+function icalSelectNone() {
+    document.querySelectorAll('.ical-band-group').forEach(g => {
+        const cb = g.querySelector('.ical-band-check');
+        if (cb) cb.checked = false;
+        g.classList.add('ical-band-disabled');
+        const m = document.getElementById(g.id + '-members');
+        if (m) m.style.display = 'none';
+        g.classList.remove('ical-band-open');
+    });
+    document.querySelectorAll('.ical-check').forEach(cb => cb.checked = false);
+}
 window.icalSelectNone = icalSelectNone;
+
+window.icalAddExtraEmail = function() {
+    const list = document.getElementById('ical-extra-email-list');
+    if (!list) return;
+    const row = document.createElement('div');
+    row.className = 'ical-extra-email-row';
+    row.innerHTML = `<input type="email" class="ical-extra-email-input" placeholder="email@example.com">
+        <button class="ical-extra-email-remove" onclick="this.parentElement.remove()" title="Remove">&times;</button>`;
+    list.appendChild(row);
+    row.querySelector('input').focus();
+};
 
 async function sendIntakeCalendarInvites() {
     const title    = (document.getElementById('ical-title')?.value    || '').trim();
@@ -7962,9 +8032,11 @@ async function sendIntakeCalendarInvites() {
     if (!title || !date || !start || !end) { showToast('Title, date, start and end time are required', 'error'); return; }
 
     const selectedIds = Array.from(document.querySelectorAll('.ical-check:checked')).map(cb => cb.dataset.id);
-    if (!selectedIds.length) { showToast('Select at least one performer', 'error'); return; }
+    const extraEmails = Array.from(document.querySelectorAll('.ical-extra-email-input'))
+        .map(i => i.value.trim()).filter(Boolean);
+    if (!selectedIds.length && !extraEmails.length) { showToast('Select at least one performer or add an email', 'error'); return; }
 
-    const emails = new Set();
+    const emails = new Set(extraEmails);
     selectedIds.forEach(id => {
         const p = state.performerDirectory.find(p => p.id === id);
         if (!p) return;
@@ -8030,6 +8102,8 @@ function populateSendInvitesPanel() {
         if (dateEl && !dateEl.value) dateEl.value = d.event_date || ev.date || '';
         const siStartEl = document.getElementById('si-start');
         if (siStartEl) siStartEl.value = earliestPreShowTime(d);
+        const siEndEl = document.getElementById('si-end');
+        if (siEndEl) siEndEl.value = showEndTime(d);
         const notesEl = document.getElementById('si-notes');
         if (notesEl && !notesEl.value) notesEl.value = buildCalendarDescription();
     }
