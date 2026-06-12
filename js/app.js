@@ -7854,7 +7854,7 @@ function populateIntakeCalendarPanel() {
     const d  = state.intake || {};
     if (ev) {
         const t = document.getElementById('ical-title');
-        if (t && !t.value) t.value = (d.event_name || ev.name || '') + ' — Performer Call';
+        if (t) t.value = 'Show: ' + (d.event_name || ev.name || '');
         const l = document.getElementById('ical-location');
         if (l && !l.value) l.value = d.venue_name || ev.venue || ev.location || '';
         const dt = document.getElementById('ical-date');
@@ -7995,7 +7995,7 @@ function populateSendInvitesPanel() {
     const d  = state.intake || {};
     if (ev) {
         const titleEl = document.getElementById('si-title');
-        if (titleEl && !titleEl.value) titleEl.value = (d.event_name || ev.name || '') + ' — Performer Call';
+        if (titleEl) titleEl.value = 'Show: ' + (d.event_name || ev.name || '');
         const locEl = document.getElementById('si-location');
         if (locEl && !locEl.value) locEl.value = d.venue_name || ev.venue || ev.location || '';
         const dateEl = document.getElementById('si-date');
