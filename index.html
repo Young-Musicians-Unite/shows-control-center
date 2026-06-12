@@ -235,10 +235,16 @@
         <div id="intake" class="page">
             <div class="page-header intake-page-header">
                 <h1>Show Intake</h1>
-                <button class="btn btn-secondary btn-sm intake-cal-btn" onclick="openIntakeCalendarPanel()">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                    Send Performer Invites
-                </button>
+                <div style="display:flex;flex-direction:column;gap:6px;align-items:stretch">
+                    <button class="btn btn-secondary btn-sm intake-cal-btn" onclick="openIntakeCalendarPanel()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                        Send Performer Invites
+                    </button>
+                    <button class="btn btn-secondary btn-sm intake-cal-btn" onclick="openCrewCalendarPanel()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                        Send Crew Invites
+                    </button>
+                </div>
             </div>
             <div class="intake-progress-row">
                 <div class="intake-progress-label">Completion</div>
@@ -2509,6 +2515,73 @@
                             Send Invitations
                         </button>
                         <button class="btn btn-secondary" onclick="closeIntakeCalendarPanel()">Cancel</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Intake: Send Crew Invites Modal -->
+    <div id="crew-cal-modal" class="modal" onclick="if(event.target===this)closeCrewCalendarPanel()">
+        <div class="modal-content modal-lg">
+            <div class="modal-header">
+                <h2>Send Crew Invitations</h2>
+                <button class="modal-close" onclick="closeCrewCalendarPanel()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="send-invites-inner" style="border:none;padding:0;background:none">
+                    <div class="send-invites-fields">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Event Title</label>
+                                <input type="text" id="crew-title" placeholder="e.g. YMU Gala 2026 — Crew Call">
+                            </div>
+                            <div class="form-group">
+                                <label>Location / Venue</label>
+                                <input type="text" id="crew-location" placeholder="e.g. The Beverly Hilton">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Date</label>
+                                <input type="date" id="crew-date">
+                            </div>
+                            <div class="form-row" style="margin:0;padding:0;gap:8px">
+                                <div class="form-group">
+                                    <label>Start Time</label>
+                                    <input type="time" id="crew-start">
+                                </div>
+                                <div class="form-group">
+                                    <label>End Time</label>
+                                    <input type="time" id="crew-end">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Notes / Description</label>
+                            <textarea id="crew-notes" rows="12" placeholder="e.g. Load-in at 8am. Staging area on level 1."></textarea>
+                        </div>
+                    </div>
+                    <div class="send-invites-select-hdr">
+                        <span>Select Crew</span>
+                        <button class="btn btn-sm btn-secondary" onclick="crewSelectAll()">Select All</button>
+                        <button class="btn btn-sm btn-secondary" onclick="crewSelectNone()">None</button>
+                    </div>
+                    <div id="crew-list" class="si-performer-list"></div>
+                    <div class="ical-extra-emails-section">
+                        <div class="ical-extra-emails-header">
+                            <span>Additional Recipients</span>
+                            <button class="btn btn-sm btn-secondary" onclick="crewAddExtraEmail()">+ Add Email</button>
+                        </div>
+                        <div id="crew-extra-email-list"></div>
+                    </div>
+                    <div id="crew-auth-status" class="si-auth-status" style="display:none"></div>
+                    <div class="send-invites-actions">
+                        <button class="btn btn-primary-gold" onclick="sendCrewCalendarInvites()">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.39 2 2 0 0 1 3.58 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.54a16 16 0 0 0 6 6l.92-.92a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21.72 16h.2z"/></svg>
+                            Send Invitations
+                        </button>
+                        <button class="btn btn-secondary" onclick="closeCrewCalendarPanel()">Cancel</button>
                     </div>
                 </div>
             </div>

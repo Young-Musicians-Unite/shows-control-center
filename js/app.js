@@ -8079,6 +8079,190 @@ async function sendIntakeCalendarInvites() {
 }
 window.sendIntakeCalendarInvites = sendIntakeCalendarInvites;
 
+// ─── Send Crew Invites ────────────────────────────────────────────────────────
+
+function openCrewCalendarPanel() {
+    const modal = document.getElementById('crew-cal-modal');
+    if (modal) { modal.style.display = 'flex'; modal.classList.add('active'); }
+    populateCrewCalendarPanel();
+}
+window.openCrewCalendarPanel = openCrewCalendarPanel;
+
+function closeCrewCalendarPanel() {
+    const modal = document.getElementById('crew-cal-modal');
+    if (modal) { modal.style.display = ''; modal.classList.remove('active'); }
+}
+window.closeCrewCalendarPanel = closeCrewCalendarPanel;
+
+function populateCrewCalendarPanel() {
+    const ev = state.activeEvent;
+    const d  = state.intake || {};
+    if (ev) {
+        const t = document.getElementById('crew-title');
+        if (t) t.value = 'Show: ' + (d.event_name || ev.name || '');
+        const l = document.getElementById('crew-location');
+        if (l) l.value = d.venue_address || '';
+        const dt = document.getElementById('crew-date');
+        if (dt && !dt.value) dt.value = d.event_date || ev.date || '';
+        const startEl = document.getElementById('crew-start');
+        if (startEl) startEl.value = earliestPreShowTime(d);
+        const endEl = document.getElementById('crew-end');
+        if (endEl) endEl.value = showEndTime(d);
+        const notesEl = document.getElementById('crew-notes');
+        if (notesEl && !notesEl.value) notesEl.value = buildCalendarDescription();
+    }
+
+    const listEl = document.getElementById('crew-list');
+    if (!listEl) return;
+
+    const crew = state.staff.filter(s => !s.isPlaceholder && s.name);
+    if (!crew.length) { listEl.innerHTML = '<div class="si-empty">No crew assigned to this show yet.</div>'; return; }
+
+    // Group by role
+    const groups = {};
+    crew.forEach(s => {
+        const role = s.role || s.department || 'No Role';
+        if (!groups[role]) groups[role] = [];
+        groups[role].push(s);
+    });
+
+    listEl.innerHTML = Object.entries(groups).sort(([a],[b]) => a.localeCompare(b)).map(([role, members], idx) => {
+        const key = 'crew-grp-' + idx;
+        const membersHTML = members.map(s => {
+            const hasEmail = !!s.email;
+            return '<label class="si-performer-row' + (hasEmail ? '' : ' si-no-email') + '">' +
+                '<input type="checkbox" class="crew-check" data-id="' + s.id + '" ' + (hasEmail ? 'checked' : 'disabled') + '>' +
+                '<span class="si-performer-name">' + escapeHtml(s.name || '') + '</span>' +
+                (hasEmail ? '' : '<span class="si-no-email-tag">no email</span>') +
+            '</label>';
+        }).join('');
+        return `
+        <div class="ical-band-group" id="${key}">
+            <div class="ical-band-header">
+                <input type="checkbox" class="ical-band-check" checked onchange="crewGroupCheckChange('${key}', this)">
+                <div class="ical-band-toggle" onclick="crewToggleGroup('${key}')">
+                    <svg class="ical-band-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 4.5 6 7.5 9 4.5"/></svg>
+                    <span class="ical-band-name">${escapeHtml(role)}</span>
+                </div>
+            </div>
+            <div class="ical-band-members" id="${key}-members" style="display:none">${membersHTML}</div>
+        </div>`;
+    }).join('');
+}
+
+window.crewGroupCheckChange = function(key, cb) {
+    const group = document.getElementById(key);
+    const members = document.getElementById(key + '-members');
+    if (!group) return;
+    if (cb.checked) {
+        group.classList.remove('ical-band-disabled');
+    } else {
+        group.classList.add('ical-band-disabled');
+        if (members) members.style.display = 'none';
+        group.classList.remove('ical-band-open');
+        group.querySelectorAll('.crew-check').forEach(c => { c.checked = false; });
+    }
+};
+
+window.crewToggleGroup = function(key) {
+    const group = document.getElementById(key);
+    const members = document.getElementById(key + '-members');
+    if (!group || !members || group.classList.contains('ical-band-disabled')) return;
+    const isOpen = members.style.display !== 'none';
+    members.style.display = isOpen ? 'none' : '';
+    group.classList.toggle('ical-band-open', !isOpen);
+};
+
+function crewSelectAll() {
+    document.querySelectorAll('#crew-list .ical-band-group').forEach(g => {
+        const cb = g.querySelector('.ical-band-check');
+        if (cb) cb.checked = true;
+        g.classList.remove('ical-band-disabled');
+        const m = document.getElementById(g.id + '-members');
+        if (m) { m.style.display = ''; g.classList.add('ical-band-open'); }
+    });
+    document.querySelectorAll('#crew-list .crew-check:not(:disabled)').forEach(cb => cb.checked = true);
+}
+window.crewSelectAll = crewSelectAll;
+
+function crewSelectNone() {
+    document.querySelectorAll('#crew-list .ical-band-group').forEach(g => {
+        const cb = g.querySelector('.ical-band-check');
+        if (cb) cb.checked = false;
+        g.classList.add('ical-band-disabled');
+        const m = document.getElementById(g.id + '-members');
+        if (m) m.style.display = 'none';
+        g.classList.remove('ical-band-open');
+    });
+    document.querySelectorAll('#crew-list .crew-check').forEach(cb => cb.checked = false);
+}
+window.crewSelectNone = crewSelectNone;
+
+window.crewAddExtraEmail = function() {
+    const list = document.getElementById('crew-extra-email-list');
+    if (!list) return;
+    const row = document.createElement('div');
+    row.className = 'ical-extra-email-row';
+    row.innerHTML = `<input type="email" class="ical-extra-email-input" placeholder="email@example.com">
+        <button class="ical-extra-email-remove" onclick="this.parentElement.remove()" title="Remove">&times;</button>`;
+    list.appendChild(row);
+    row.querySelector('input').focus();
+};
+
+async function sendCrewCalendarInvites() {
+    const title    = (document.getElementById('crew-title')?.value    || '').trim();
+    const location = (document.getElementById('crew-location')?.value || '').trim();
+    const date     = (document.getElementById('crew-date')?.value     || '').trim();
+    const start    = (document.getElementById('crew-start')?.value    || '').trim();
+    const end      = (document.getElementById('crew-end')?.value      || '').trim();
+    const notes    = (document.getElementById('crew-notes')?.value    || '').trim();
+
+    if (!title || !date || !start || !end) { showToast('Title, date, start and end time are required', 'error'); return; }
+
+    const selectedIds = Array.from(document.querySelectorAll('#crew-list .crew-check:checked')).map(cb => cb.dataset.id);
+    const extraEmails = Array.from(document.querySelectorAll('#crew-extra-email-list .ical-extra-email-input'))
+        .map(i => i.value.trim()).filter(Boolean);
+    if (!selectedIds.length && !extraEmails.length) { showToast('Select at least one crew member or add an email', 'error'); return; }
+
+    const emails = new Set(extraEmails);
+    selectedIds.forEach(id => {
+        const s = state.staff.find(s => s.id === id);
+        if (s && s.email) emails.add(s.email);
+    });
+    if (!emails.size) { showToast('No email addresses found for selected crew', 'error'); return; }
+
+    const statusEl = document.getElementById('crew-auth-status');
+    if (statusEl) { statusEl.style.display = ''; statusEl.textContent = 'Authorizing with Google…'; statusEl.className = 'si-auth-status si-auth-pending'; }
+
+    initGoogleTokenClient(async (accessToken) => {
+        try {
+            if (statusEl) statusEl.textContent = 'Creating calendar event…';
+            const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            const event = {
+                summary: title,
+                location,
+                description: notes,
+                start: { dateTime: date + 'T' + start + ':00', timeZone: tz },
+                end:   { dateTime: date + 'T' + end   + ':00', timeZone: tz },
+                attendees: Array.from(emails).map(email => ({ email })),
+                guestsCanSeeOtherGuests: false,
+            };
+            const res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events?sendUpdates=all', {
+                method: 'POST',
+                headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' },
+                body: JSON.stringify(event),
+            });
+            if (!res.ok) throw new Error((await res.json()).error?.message || 'Unknown error');
+            if (statusEl) { statusEl.textContent = '✓ Invitations sent to ' + emails.size + ' crew member' + (emails.size !== 1 ? 's' : '') + '!'; statusEl.className = 'si-auth-status si-auth-ok'; }
+            setTimeout(() => closeCrewCalendarPanel(), 2500);
+        } catch (err) {
+            console.error('Crew invite error:', err);
+            if (statusEl) { statusEl.textContent = 'Error: ' + err.message; statusEl.className = 'si-auth-status si-auth-error'; }
+        }
+    });
+}
+window.sendCrewCalendarInvites = sendCrewCalendarInvites;
+
 function toggleSendInvitesPanel() {
     const panel = document.getElementById('send-invites-panel');
     const addForm = document.getElementById('performer-add-form');
