@@ -497,9 +497,11 @@ function initializeApp() {
     document.querySelector('.nav-menu').classList.add('hub-mode');
     loadSeasons();
     loadEvents();
-    loadStaffDirectory();
-    loadPerformerDirectory();
-    loadRoleCategoryMap();
+    migrateGlobalDirectories().then(() => {
+        loadStaffDirectory();
+        loadPerformerDirectory();
+        loadRoleCategoryMap();
+    });
 
     if (savedEventId) {
         // Show overlay immediately so the hub never flashes
@@ -930,23 +932,71 @@ function renderSeasonNav() {
     });
 }
 
-window.switchSeason = function(season) {
+window.switchSeason = async function(season) {
+    const previousSeason = state.currentSeason;
     state.currentSeason = season;
+    // If this season's staff directory is empty, copy from the previous season
+    if (previousSeason && previousSeason !== season) {
+        const check = await db.collection('seasons').doc(season).collection('staffDirectory').limit(1).get();
+        if (check.empty) await copySeasonData(previousSeason, season);
+    }
+    loadStaffDirectory();
+    loadPerformerDirectory();
+    loadRoleCategoryMap();
     renderSeasonNav();
     renderHub();
     closeHamburgerMenu();
 };
+
+// One-time migration: move old global flat collections into the current season's subcollections.
+// Runs silently on startup; skips if the season subcollection already has data.
+async function migrateGlobalDirectories() {
+    if (!state.currentSeason) return;
+    const legacyMap = {
+        staffDirectory:      db.collection('staffDirectory'),
+        jobTemplates:        db.collection('jobTemplates'),
+        performerDirectory:  db.collection('performerDirectory'),
+    };
+    for (const [col, legacyRef] of Object.entries(legacyMap)) {
+        const destRef  = db.collection('seasons').doc(state.currentSeason).collection(col);
+        const destSnap = await destRef.limit(1).get();
+        if (!destSnap.empty) continue; // already migrated
+        const srcSnap  = await legacyRef.get();
+        if (srcSnap.empty) continue;   // nothing to migrate
+        const batch = db.batch();
+        srcSnap.docs.forEach(doc => batch.set(destRef.doc(doc.id), doc.data()));
+        await batch.commit();
+    }
+}
+
+async function copySeasonData(fromSeason, toSeason) {
+    const colNames = ['staffDirectory', 'jobTemplates', 'performerDirectory'];
+    for (const col of colNames) {
+        const fromRef = db.collection('seasons').doc(fromSeason).collection(col);
+        const toRef   = db.collection('seasons').doc(toSeason).collection(col);
+        const snap = await fromRef.get();
+        if (snap.empty) continue;
+        const batch = db.batch();
+        snap.docs.forEach(doc => batch.set(toRef.doc(doc.id), doc.data()));
+        await batch.commit();
+    }
+}
 
 window.promptAddSeason = async function() {
     const label = prompt('Enter season label (e.g. 2026-2027):');
     if (!label || !label.trim()) return;
     const trimmed = label.trim();
     if (state.seasons.includes(trimmed)) { showToast('Season already exists', 'error'); return; }
+    const previousSeason = state.currentSeason;
     state.seasons.push(trimmed);
     try {
         await db.collection('config').doc('seasons').set({ list: state.seasons });
+        if (previousSeason) await copySeasonData(previousSeason, trimmed);
     } catch (e) { showToast('Error saving season', 'error'); return; }
     state.currentSeason = trimmed;
+    loadStaffDirectory();
+    loadPerformerDirectory();
+    loadRoleCategoryMap();
     renderSeasonNav();
     renderHub();
     closeHamburgerMenu();
@@ -6694,11 +6744,16 @@ window.deleteStaffFromModal = deleteStaffFromModal;
 // STAFF DIRECTORY
 // ==========================================
 
-const staffDirectoryCollection = db.collection('staffDirectory');
-const jobTemplatesCollection = db.collection('jobTemplates');
+// Season-scoped collection helpers
+function staffDirectoryCol()    { return db.collection('seasons').doc(state.currentSeason).collection('staffDirectory'); }
+function jobTemplatesCol()      { return db.collection('seasons').doc(state.currentSeason).collection('jobTemplates'); }
+function performerDirectoryCol(){ return db.collection('seasons').doc(state.currentSeason).collection('performerDirectory'); }
+
+let _unsubStaff = null, _unsubJobTemplates = null, _unsubPerformers = null;
 
 function loadRoleCategoryMap() {
-    jobTemplatesCollection.onSnapshot(snap => {
+    if (_unsubJobTemplates) { _unsubJobTemplates(); _unsubJobTemplates = null; }
+    _unsubJobTemplates = jobTemplatesCol().onSnapshot(snap => {
         state.roleCategoryMap = {};
         state.jobTemplates = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         state.jobTemplates.forEach(t => {
@@ -6714,7 +6769,7 @@ async function addJobTemplate(name, category) {
     const exists = state.jobTemplates.some(t => t.name.trim().toLowerCase() === name.toLowerCase());
     if (exists) { showToast('A template for "' + name + '" already exists', 'error'); return; }
     try {
-        await jobTemplatesCollection.add({ name, category, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+        await jobTemplatesCol().add({ name, category, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
         showToast('Job template saved');
     } catch (e) {
         console.error('addJobTemplate error:', e);
@@ -6728,7 +6783,7 @@ async function deleteJobTemplate(id) {
     state.jobTemplates = state.jobTemplates.filter(t => t.id !== id);
     renderJobTemplates();
     try {
-        await jobTemplatesCollection.doc(id).delete();
+        await jobTemplatesCol().doc(id).delete();
     } catch (e) {
         console.error('deleteJobTemplate error:', e);
         showToast('Error deleting template', 'error');
@@ -6749,7 +6804,8 @@ function getCategoryForRole(role) {
 }
 
 function loadStaffDirectory() {
-    staffDirectoryCollection.onSnapshot(snap => {
+    if (_unsubStaff) { _unsubStaff(); _unsubStaff = null; }
+    _unsubStaff = staffDirectoryCol().onSnapshot(snap => {
         state.staffDirectory = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         // Refresh the table if the modal is open — renderStaffIndex preserves any active edit rows
         const modal = document.getElementById('staff-index-modal');
@@ -6840,13 +6896,13 @@ async function upsertStaffContact(name, phone, email, role) {
             if (!roles.map(normalizeRole).includes(normalRole)) {
                 roles.push(role.trim());
             }
-            await staffDirectoryCollection.doc(existing.id).update({
+            await staffDirectoryCol().doc(existing.id).update({
                 phone: phone || existing.phone || null,
                 email: email || existing.email || null,
                 roles
             });
         } else {
-            await staffDirectoryCollection.add({
+            await staffDirectoryCol().add({
                 name: name.trim(),
                 phone: phone || null,
                 email: email || null,
@@ -7067,7 +7123,7 @@ async function saveDirContactEdit(contactId) {
     renderStaffIndex();
 
     try {
-        await staffDirectoryCollection.doc(contactId).update({ name, roles, phone: phone || null, email: email || null });
+        await staffDirectoryCol().doc(contactId).update({ name, roles, phone: phone || null, email: email || null });
         showToast('Contact updated');
     } catch (e) {
         console.error('saveDirContactEdit error:', e);
@@ -7083,7 +7139,7 @@ async function deleteDirectoryContact(id) {
     state.staffDirectory = state.staffDirectory.filter(c => c.id !== id);
     renderStaffIndex();
     try {
-        await staffDirectoryCollection.doc(id).delete();
+        await staffDirectoryCol().doc(id).delete();
         showToast('Contact removed from directory');
     } catch (e) {
         console.error('deleteDirectoryContact error:', e);
@@ -7259,10 +7315,9 @@ document.addEventListener('click', () => {
 // PERFORMER DIRECTORY
 // ==========================================
 
-const performerDirectoryCollection = db.collection('performerDirectory');
-
 function loadPerformerDirectory() {
-    performerDirectoryCollection.onSnapshot(snap => {
+    if (_unsubPerformers) { _unsubPerformers(); _unsubPerformers = null; }
+    _unsubPerformers = performerDirectoryCol().onSnapshot(snap => {
         state.performerDirectory = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const modal = document.getElementById('performer-index-modal');
         if (modal && modal.classList.contains('active')) renderPerformerIndex();
@@ -7352,7 +7407,7 @@ async function saveNewPerformer() {
     if (!name || !act) { showToast('Name and Act are required', 'error'); return; }
     const parents = collectParents('pa-parents-list');
     try {
-        await performerDirectoryCollection.add({
+        await performerDirectoryCol().add({
             name, act, phone: phone || null, email: email || null, parents,
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
         });
@@ -7390,7 +7445,7 @@ async function savePerformerEdit(performerId) {
     renderPerformerIndex();
 
     try {
-        await performerDirectoryCollection.doc(performerId).update({ name, act, phone: phone || null, email: email || null, parents });
+        await performerDirectoryCol().doc(performerId).update({ name, act, phone: phone || null, email: email || null, parents });
         showToast('Performer updated');
     } catch (e) {
         console.error('savePerformerEdit error:', e);
@@ -7406,7 +7461,7 @@ async function deletePerformer(id) {
     state.performerDirectory = state.performerDirectory.filter(p => p.id !== id);
     renderPerformerIndex();
     try {
-        await performerDirectoryCollection.doc(id).delete();
+        await performerDirectoryCol().doc(id).delete();
         showToast('Performer removed');
     } catch (e) {
         console.error('deletePerformer error:', e);
