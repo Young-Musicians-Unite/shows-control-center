@@ -349,6 +349,7 @@ const INTAKE_SCHEMA = [
     { field: 'stage_provider',       label: 'Who Provides the Stage?',       inputType: 'text'     },
     { field: 'sound_provider',       label: 'Who Provides the Sound?',       inputType: 'text'     },
     { field: 'lights_provider',      label: 'Who Provides the Lights?',      inputType: 'text'     },
+    { field: 'power_situation',      label: 'What is the Power Situation?',  inputType: 'textarea' },
     { field: 'sound_setup',          label: 'Sound Setup Needed',            inputType: 'textarea' },
     { field: 'photographer',         label: 'Who Provides the Photographer?',inputType: 'text'     },
     { field: 'photographer_contact', label: 'Photographer Contact Info',     inputType: 'text'     },
@@ -1428,15 +1429,73 @@ function setupIntakeListener() {
     _activeListeners.push(unsub);
 }
 
+let _dynDragRow = null;
+
 function buildDynamicSectionRows(sectionId, rows) {
     const closeIcon = `<svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="1" y1="1" x2="11" y2="11"/><line x1="11" y1="1" x2="1" y2="11"/></svg>`;
+    const dragHandle = `<span class="intake-dyn-handle" title="Drag to reorder"><svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><circle cx="4" cy="2.5" r="1.1"/><circle cx="8" cy="2.5" r="1.1"/><circle cx="4" cy="6" r="1.1"/><circle cx="8" cy="6" r="1.1"/><circle cx="4" cy="9.5" r="1.1"/><circle cx="8" cy="9.5" r="1.1"/></svg></span>`;
     return rows.map((row, i) => `
-        <div class="intake-dyn-row" data-idx="${i}">
+        <div class="intake-dyn-row" data-idx="${i}" data-section="${sectionId}" draggable="true"
+             ondragstart="intakeDynDragStart(event)"
+             ondragover="intakeDynDragOver(event)"
+             ondragleave="intakeDynDragLeave(event)"
+             ondrop="intakeDynDrop(event)"
+             ondragend="intakeDynDragEnd(event)">
+            ${dragHandle}
             <input type="text" class="intake-input intake-dyn-label" value="${escapeHtml(row.label || '')}" placeholder="Label…" onblur="saveIntakeDynamicRows('${sectionId}')">
             <input type="text" class="intake-input intake-dyn-time" value="${escapeHtml(row.time || '')}" placeholder="e.g. 6:30 – 7:00pm" onblur="saveIntakeDynamicRows('${sectionId}')">
             <button class="intake-remove-row-btn" onclick="removeIntakeRow('${sectionId}', ${i})" type="button" title="Remove row">${closeIcon}</button>
         </div>`).join('');
 }
+
+window.intakeDynDragStart = function(e) {
+    // Cancel if drag initiated from an input (let the input handle its own selection)
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON') { e.preventDefault(); return; }
+    _dynDragRow = e.currentTarget;
+    e.currentTarget.classList.add('intake-dyn-dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', '');
+};
+
+window.intakeDynDragOver = function(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const row = e.currentTarget;
+    if (row !== _dynDragRow) row.classList.add('intake-dyn-drag-over');
+};
+
+window.intakeDynDragLeave = function(e) {
+    e.currentTarget.classList.remove('intake-dyn-drag-over');
+};
+
+window.intakeDynDrop = function(e) {
+    e.preventDefault();
+    const tgt = e.currentTarget;
+    tgt.classList.remove('intake-dyn-drag-over');
+    if (!_dynDragRow || _dynDragRow === tgt) return;
+    // Only allow drops within the same section
+    if (_dynDragRow.dataset.section !== tgt.dataset.section) return;
+    const sectionId = tgt.dataset.section;
+    const container = document.getElementById(`intake-dyn-${sectionId}`);
+    if (!container) return;
+    const rows = Array.from(container.querySelectorAll('.intake-dyn-row'));
+    const srcIdx = rows.indexOf(_dynDragRow);
+    const tgtIdx = rows.indexOf(tgt);
+    if (srcIdx < tgtIdx) { tgt.after(_dynDragRow); } else { tgt.before(_dynDragRow); }
+    // Re-index rows and update remove button references
+    Array.from(container.querySelectorAll('.intake-dyn-row')).forEach((r, i) => {
+        r.dataset.idx = i;
+        const btn = r.querySelector('.intake-remove-row-btn');
+        if (btn) btn.setAttribute('onclick', `removeIntakeRow('${sectionId}', ${i})`);
+    });
+    saveIntakeDynamicRows(sectionId);
+};
+
+window.intakeDynDragEnd = function(e) {
+    e.currentTarget.classList.remove('intake-dyn-dragging');
+    document.querySelectorAll('.intake-dyn-drag-over').forEach(el => el.classList.remove('intake-dyn-drag-over'));
+    _dynDragRow = null;
+};
 
 function buildDynamicSectionHTML(id, label) {
     const defaults = DYNAMIC_DEFAULTS[id] || [];
@@ -7805,25 +7864,61 @@ function populateIntakeCalendarPanel() {
     }
     const listEl = document.getElementById('ical-performer-list');
     if (!listEl) return;
+
     const dir = [...state.performerDirectory].sort((a, b) =>
         (a.act || '').localeCompare(b.act || '') || (a.name || '').localeCompare(b.name || '')
     );
     if (!dir.length) { listEl.innerHTML = '<div class="si-empty">No performers in directory yet.</div>'; return; }
-    let lastAct = null;
-    listEl.innerHTML = dir.map(p => {
-        let header = '';
-        if (p.act !== lastAct) { lastAct = p.act; header = '<div class="si-act-header">' + escapeHtml(p.act || 'No Act') + '</div>'; }
-        const hasEmail = p.email || (p.parents || []).some(par => par.email);
-        return header + '<label class="si-performer-row' + (hasEmail ? '' : ' si-no-email') + '">' +
-            '<input type="checkbox" class="ical-check" data-id="' + p.id + '" ' + (hasEmail ? 'checked' : 'disabled') + '>' +
-            '<span class="si-performer-name">' + escapeHtml(p.name || '') + '</span>' +
-            (hasEmail ? '' : '<span class="si-no-email-tag">no email</span>') +
-        '</label>';
+
+    // Group by act/band
+    const bands = {};
+    dir.forEach(p => {
+        const act = p.act || 'No Act';
+        if (!bands[act]) bands[act] = [];
+        bands[act].push(p);
+    });
+
+    listEl.innerHTML = Object.entries(bands).map(([act, members], idx) => {
+        const key = 'band-' + idx;
+        const membersHTML = members.map(p => {
+            const hasEmail = p.email || (p.parents || []).some(par => par.email);
+            return '<label class="si-performer-row' + (hasEmail ? '' : ' si-no-email') + '">' +
+                '<input type="checkbox" class="ical-check" data-id="' + p.id + '" ' + (hasEmail ? 'checked' : 'disabled') + '>' +
+                '<span class="si-performer-name">' + escapeHtml(p.name || '') + '</span>' +
+                (hasEmail ? '' : '<span class="si-no-email-tag">no email</span>') +
+            '</label>';
+        }).join('');
+        return `
+        <div class="ical-band-group" id="${key}">
+            <div class="ical-band-header" onclick="icalToggleBand('${key}')">
+                <svg class="ical-band-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 4.5 6 7.5 9 4.5"/></svg>
+                <span class="ical-band-name">${escapeHtml(act)}</span>
+                <span class="ical-band-count">${members.length} member${members.length !== 1 ? 's' : ''}</span>
+            </div>
+            <div class="ical-band-members" id="${key}-members" style="display:none">${membersHTML}</div>
+        </div>`;
     }).join('');
 }
 
-function icalSelectAll() { document.querySelectorAll('.ical-check:not(:disabled)').forEach(cb => cb.checked = true); }
+window.icalToggleBand = function(key) {
+    const group   = document.getElementById(key);
+    const members = document.getElementById(key + '-members');
+    if (!group || !members) return;
+    const isOpen = members.style.display !== 'none';
+    members.style.display = isOpen ? 'none' : '';
+    group.classList.toggle('ical-band-open', !isOpen);
+};
+
+function icalSelectAll() {
+    // Expand all bands and check all
+    document.querySelectorAll('.ical-band-group').forEach(g => {
+        const m = document.getElementById(g.id + '-members');
+        if (m) { m.style.display = ''; g.classList.add('ical-band-open'); }
+    });
+    document.querySelectorAll('.ical-check:not(:disabled)').forEach(cb => cb.checked = true);
+}
 window.icalSelectAll = icalSelectAll;
+
 function icalSelectNone() { document.querySelectorAll('.ical-check').forEach(cb => cb.checked = false); }
 window.icalSelectNone = icalSelectNone;
 

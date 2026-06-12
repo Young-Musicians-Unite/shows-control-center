@@ -1147,6 +1147,24 @@ body:has(.nav-menu.hub-mode) {
   text-transform: none !important;
   letter-spacing: normal !important;
 }
+select.intake-field-input {
+  flex: 1;
+  cursor: pointer;
+  width: 100%;
+  height: auto !important;
+  min-height: 26px;
+  background: transparent !important;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  padding: 2px 4px;
+  -webkit-appearance: auto;
+  appearance: auto;
+}
+/* Selects already have a native dropdown arrow — hide the pencil icon */
+select.intake-field-input ~ .intake-field-edit {
+  display: none;
+}
 .intake-field-input {
   height: 26px;
 }
@@ -1170,6 +1188,31 @@ body:has(.nav-menu.hub-mode) {
 .intake-field:hover .intake-field-edit,
 .intake-field:focus-within .intake-field-edit {
   color: var(--text-tertiary);
+}
+
+/* Dynamic row drag handle */
+.intake-dyn-handle {
+  flex-shrink: 0;
+  width: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--border-medium);
+  cursor: grab;
+  user-select: none;
+  transition: color 0.12s;
+}
+.intake-dyn-row:hover .intake-dyn-handle {
+  color: var(--text-tertiary);
+}
+.intake-dyn-handle:active { cursor: grabbing; }
+
+/* Drag state styles */
+.intake-dyn-row.intake-dyn-dragging {
+  opacity: 0.35;
+}
+.intake-dyn-row.intake-dyn-drag-over {
+  border-top: 2px solid var(--text-primary) !important;
 }
 
 /* Dynamic row column sizing — give time column more breathing room */
@@ -1217,6 +1260,58 @@ body:has(.nav-menu.hub-mode) {
 .intake-page-header .page-title {
   color: var(--text-primary) !important;
   font-family: var(--font-display) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   18. Send Performer Invites — band-collapsible list
+   ───────────────────────────────────────────────────────────────────── */
+.ical-band-group {
+  border-bottom: 0.5px solid var(--border-subtle);
+}
+.ical-band-group:last-child { border-bottom: none; }
+
+.ical-band-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 150ms;
+}
+.ical-band-header:hover { background: var(--bg-hover); }
+
+.ical-band-chevron {
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  transition: transform 200ms ease;
+}
+.ical-band-group.ical-band-open .ical-band-chevron {
+  transform: rotate(180deg);
+}
+
+.ical-band-name {
+  flex: 1;
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.ical-band-count {
+  font-family: var(--font-body);
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.ical-band-members {
+  background: var(--bg-page);
+  border-top: 0.5px solid var(--border-subtle);
+  padding: 4px 0;
+}
+
+.ical-band-members .si-performer-row {
+  padding-left: 36px;
 }
 
 /* ── END ───────────────────────────────────────────────────────────────*/
