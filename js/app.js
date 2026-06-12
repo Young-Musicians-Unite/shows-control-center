@@ -149,7 +149,7 @@ const state = {
     seatingCanvas: null,
     seatingBgImage: null,
     seatingMarkers: new Map(),
-    seatingCanvasInitialized: false
+    seatingCanvasInitialized: false,
 };
 
 // --- Staff-Budget linking helpers ---
@@ -298,6 +298,19 @@ const ALL_PAGES = [
     { id: 'venue-map',           label: 'Venue Map' },
     { id: 'guests',              label: 'Guests' },
 ];
+
+const INTAKE_SECTION_ICONS = {
+    'Venue — Day of Contact':      'ti-map-pin',
+    'Preliminary Info':            'ti-info-circle',
+    'Event Info':                  'ti-calendar-event',
+    'Pre-Show':                    'ti-clock',
+    'Run of Show':                 'ti-list',
+    'Logistics':                   'ti-truck',
+    'Production Responsibilities': 'ti-tool',
+    'Marketing':                   'ti-speakerphone',
+    'Insurance':                   'ti-shield-check',
+    'Financial Information':       'ti-currency-dollar',
+};
 
 const INTAKE_SCHEMA = [
     { type: 'section', label: 'Venue — Day of Contact' },
@@ -1405,6 +1418,8 @@ window.openEventSettings = openEventSettings;
 
 function setupIntakeListener() {
     if (!state.currentEventId) return;
+    const container = document.getElementById('intake-form-body');
+    if (container) container.innerHTML = '';
     const ref = db.collection('events').doc(state.currentEventId).collection('intake').doc('main');
     const unsub = ref.onSnapshot(snap => {
         state.intake = snap.exists ? snap.data() : {};
@@ -1425,61 +1440,91 @@ function buildDynamicSectionRows(sectionId, rows) {
 
 function buildDynamicSectionHTML(id, label) {
     const defaults = DYNAMIC_DEFAULTS[id] || [];
+    const icon = INTAKE_SECTION_ICONS[label] || 'ti-list';
     return `
-        <div class="intake-section-header">${escapeHtml(label)}</div>
-        <div class="intake-dyn-col-headers">
-            <span>Item</span><span>Time</span>
-        </div>
-        <div id="intake-dyn-${id}" class="intake-dyn-body">
-            ${buildDynamicSectionRows(id, defaults)}
-        </div>
-        <div class="intake-dyn-footer">
-            <button class="intake-add-row-btn" onclick="addIntakeRow('${id}')" type="button">+ Add Row</button>
+        <div class="intake-section">
+            <div class="intake-sec-head">
+                <div class="intake-sec-icon"><i class="ti ${icon}"></i></div>
+                <div class="intake-sec-title">${escapeHtml(label)}</div>
+            </div>
+            <div class="intake-dyn-col-headers">
+                <span>Item</span><span>Time</span>
+            </div>
+            <div id="intake-dyn-${id}" class="intake-dyn-body">
+                ${buildDynamicSectionRows(id, defaults)}
+            </div>
+            <div class="intake-dyn-footer">
+                <button class="intake-add-row-btn" onclick="addIntakeRow('${id}')" type="button">+ Add Row</button>
+            </div>
+        </div>`;
+}
+
+function buildIntakeFieldHTML(item) {
+    const isTextarea = item.inputType === 'textarea';
+    let inputHTML;
+    if (isTextarea) {
+        inputHTML = `<textarea id="intake-${item.field}" class="intake-field-textarea" placeholder="${escapeHtml(item.label)}…" oninput="updateIntakeProgress()" onblur="saveIntakeField('${item.field}', this.value)" rows="3"></textarea>`;
+    } else if (item.inputType === 'yesno') {
+        inputHTML = `<select id="intake-${item.field}" class="intake-field-input" onchange="saveIntakeField('${item.field}', this.value); updateIntakeProgress()">
+            <option value="">—</option>
+            <option value="yes">Yes</option>
+            <option value="no">No</option>
+        </select>`;
+    } else if (item.inputType === 'select') {
+        const opts = item.options.map(o => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join('');
+        inputHTML = `<select id="intake-${item.field}" class="intake-field-input" onchange="saveIntakeField('${item.field}', this.value); updateIntakeProgress()">
+            <option value="">—</option>
+            ${opts}
+        </select>`;
+    } else {
+        inputHTML = `<input type="${item.inputType}" id="intake-${item.field}" class="intake-field-input" placeholder="${escapeHtml(item.label)}" oninput="updateIntakeProgress()" onblur="saveIntakeField('${item.field}', this.value)">`;
+    }
+    return `
+        <div class="intake-field">
+            <div class="intake-field-label">${escapeHtml(item.label)}</div>
+            <div class="intake-field-input-wrap${isTextarea ? ' top' : ''}">
+                ${inputHTML}
+                <i class="ti ti-pencil intake-field-edit" aria-hidden="true"></i>
+            </div>
         </div>`;
 }
 
 function buildIntakeHTML() {
-    return INTAKE_SCHEMA.map(item => {
+    // Group INTAKE_SCHEMA into sections, each starting at a 'section' or 'dynamic-section' entry
+    const sections = [];
+    let current = null;
+    INTAKE_SCHEMA.forEach(item => {
         if (item.type === 'section') {
-            return `<div class="intake-section-header">${escapeHtml(item.label)}</div>`;
+            current = { label: item.label, items: [] };
+            sections.push(current);
+        } else if (item.type === 'dynamic-section') {
+            sections.push({ label: item.label, isDynamic: true, id: item.id });
+            current = null;
+        } else if (current) {
+            current.items.push(item);
         }
-        if (item.type === 'subsection') {
-            return `<div class="intake-subsection-header">${escapeHtml(item.label)}</div>`;
+    });
+
+    return sections.map(section => {
+        if (section.isDynamic) {
+            return buildDynamicSectionHTML(section.id, section.label);
         }
-        if (item.type === 'dynamic-section') {
-            return buildDynamicSectionHTML(item.id, item.label);
-        }
-        let inputHTML;
-        if (item.inputType === 'textarea') {
-            inputHTML = `<textarea id="intake-${item.field}" class="intake-input intake-textarea" placeholder=" " onblur="saveIntakeField('${item.field}', this.value)" rows="2"></textarea>`;
-        } else if (item.inputType === 'yesno') {
-            inputHTML = `<select id="intake-${item.field}" class="intake-input intake-select" onchange="saveIntakeField('${item.field}', this.value)">
-                <option value="">—</option>
-                <option value="yes">Yes</option>
-                <option value="no">No</option>
-            </select>`;
-        } else if (item.inputType === 'select') {
-            const opts = item.options.map(o => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join('');
-            inputHTML = `<select id="intake-${item.field}" class="intake-input intake-select" onchange="saveIntakeField('${item.field}', this.value)">
-                <option value="">—</option>
-                ${opts}
-            </select>`;
-        } else {
-            inputHTML = `<input type="${item.inputType}" id="intake-${item.field}" class="intake-input" placeholder=" " onblur="saveIntakeField('${item.field}', this.value)">`;
-        }
+        const fieldCount = section.items.filter(i => !i.type).length;
+        const icon = INTAKE_SECTION_ICONS[section.label] || 'ti-file';
+        const itemsHTML = section.items.map(item => {
+            if (item.type === 'subsection') {
+                return `<div class="intake-sub-head">${escapeHtml(item.label)}</div>`;
+            }
+            return buildIntakeFieldHTML(item);
+        }).join('');
         return `
-            <div class="intake-row">
-                <label class="intake-label" for="intake-${item.field}">${escapeHtml(item.label)}</label>
-                <div class="intake-field-col">${inputHTML}</div>
-                <button class="intake-note-btn" onclick="toggleIntakeNote('${item.field}')" title="Add note" type="button">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                </button>
+        <div class="intake-section">
+            <div class="intake-sec-head">
+                <div class="intake-sec-icon"><i class="ti ${icon}"></i></div>
+                <div class="intake-sec-title">${escapeHtml(section.label)}</div>
             </div>
-            <div class="intake-note-row" id="note-row-${item.field}">
-                <div class="intake-note-inner">
-                    <textarea id="intake-note_${item.field}" class="intake-note-textarea" placeholder="Notes…" onblur="saveIntakeField('note_${item.field}', this.value)" rows="2"></textarea>
-                </div>
-            </div>`;
+            ${itemsHTML}
+        </div>`;
     }).join('');
 }
 
@@ -1492,44 +1537,45 @@ function renderIntake() {
         container.innerHTML = buildIntakeHTML();
     }
 
-    // Populate static fields
+    // Populate static fields (skip focused element to not interrupt typing)
     const focused = document.activeElement;
     INTAKE_SCHEMA.forEach(item => {
         if (item.type) return;
         const el = document.getElementById(`intake-${item.field}`);
         if (el && el !== focused) el.value = data[item.field] != null ? data[item.field] : '';
-
-        const noteEl = document.getElementById(`intake-note_${item.field}`);
-        if (noteEl && noteEl !== focused) noteEl.value = data[`note_${item.field}`] || '';
-
-        const noteRow = document.getElementById(`note-row-${item.field}`);
-        if (noteRow && data[`note_${item.field}`] && !noteRow.classList.contains('intake-note-visible')) {
-            noteRow.classList.add('intake-note-visible');
-        }
     });
 
-    // Populate dynamic sections
+    // Dynamic sections sync from Firestore (auto-save on blur)
     ['pre_show_rows', 'run_of_show_rows'].forEach(sectionId => {
         const dynContainer = document.getElementById(`intake-dyn-${sectionId}`);
         if (!dynContainer || dynContainer.contains(focused)) return;
         const rows = data[sectionId] || DYNAMIC_DEFAULTS[sectionId];
         dynContainer.innerHTML = buildDynamicSectionRows(sectionId, rows);
     });
+
+    updateIntakeProgress();
+}
+
+function updateIntakeProgress() {
+    const fields = INTAKE_SCHEMA.filter(i => !i.type);
+    const total = fields.length;
+    let filled = 0;
+    fields.forEach(item => {
+        const el = document.getElementById(`intake-${item.field}`);
+        if (el && el.value.trim()) filled++;
+    });
+    const pct = total ? Math.round((filled / total) * 100) : 0;
+    const fill = document.getElementById('intake-progress-fill');
+    const pctEl = document.getElementById('intake-progress-pct');
+    if (fill) fill.style.width = pct + '%';
+    if (pctEl) pctEl.textContent = pct + '%';
 }
 
 window.saveIntakeField = function(field, value) {
     if (!state.currentEventId) return;
     const ref = db.collection('events').doc(state.currentEventId).collection('intake').doc('main');
-    ref.set({ [field]: value }, { merge: true }).then(() => {
-        const status = document.getElementById('intake-save-status');
-        if (!status) return;
-        status.textContent = 'Saved';
-        status.classList.add('intake-saved--visible');
-        clearTimeout(status._hideTimer);
-        status._hideTimer = setTimeout(() => {
-            status.classList.remove('intake-saved--visible');
-        }, 1500);
-    }).catch(e => console.error('Intake save error:', e));
+    ref.set({ [field]: value }, { merge: true })
+        .catch(e => console.error('Intake save error:', e));
 };
 
 window.toggleIntakeNote = function(field) {

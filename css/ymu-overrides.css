@@ -991,4 +991,232 @@ body:has(.nav-menu.hub-mode) {
   text-decoration: line-through;
 }
 
+/* ── 17. INTAKE FORM ───────────────────────────────────────────────────
+   Full redesign: card sections, progress bar, explicit save bar         */
+
+/* Progress bar */
+.intake-progress-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.intake-progress-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  white-space: nowrap;
+}
+.intake-progress-bar {
+  flex: 1;
+  height: 2px;
+  background: var(--border-subtle);
+  border-radius: 1px;
+}
+.intake-progress-fill {
+  height: 100%;
+  width: 0%;
+  background: #854F0B;
+  border-radius: 1px;
+  transition: width 0.3s ease;
+}
+.intake-progress-pct {
+  font-size: 11px;
+  color: #854F0B;
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  min-width: 30px;
+  text-align: right;
+}
+[data-theme="dark"] .intake-progress-fill { background: #FAC775; }
+[data-theme="dark"] .intake-progress-pct  { color: #FAC775; }
+
+/* Section card */
+.intake-section {
+  background: var(--bg-surface);
+  border: 0.5px solid var(--border-subtle);
+  border-radius: 10px;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+/* Section header */
+.intake-sec-head {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 11px 16px;
+  border-bottom: 0.5px solid var(--border-subtle);
+}
+.intake-sec-icon {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  background: var(--bg-page);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.intake-sec-title {
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  color: var(--text-primary) !important;
+  font-family: var(--font-body) !important;
+  text-transform: none !important;
+  letter-spacing: normal !important;
+}
+.intake-sec-count {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+}
+
+/* Subsection within a card */
+.intake-sub-head {
+  padding: 9px 16px;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  color: var(--text-secondary) !important;
+  font-family: var(--font-body) !important;
+  text-transform: none !important;
+  letter-spacing: normal !important;
+  background: var(--bg-page);
+  border-bottom: 0.5px solid var(--border-subtle);
+  border-top: 0.5px solid var(--border-subtle);
+}
+
+/* Field row */
+.intake-field {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  align-items: center;
+  border-bottom: 0.5px solid var(--border-subtle);
+  transition: background 0.12s;
+}
+.intake-field:last-child {
+  border-bottom: none;
+}
+.intake-field:hover {
+  background: var(--bg-hover);
+}
+.intake-field:focus-within {
+  background: var(--bg-hover);
+}
+.intake-field-label {
+  padding: 11px 16px;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  color: var(--text-primary) !important;
+  font-family: var(--font-body) !important;
+  text-transform: none !important;
+  letter-spacing: normal !important;
+  border-right: 0.5px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 46px;
+}
+.intake-required {
+  color: #854F0B;
+  font-size: 10px;
+}
+[data-theme="dark"] .intake-required { color: #FAC775; }
+.intake-field-input-wrap {
+  padding: 7px 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.intake-field-input-wrap.top {
+  align-items: flex-start;
+  padding-top: 10px;
+}
+.intake-field-input,
+.intake-field-textarea {
+  width: 100%;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: 14px !important;
+  color: var(--text-primary) !important;
+  font-family: var(--font-body) !important;
+  text-transform: none !important;
+  letter-spacing: normal !important;
+}
+.intake-field-input {
+  height: 26px;
+}
+.intake-field-textarea {
+  resize: none;
+  height: 56px;
+  padding-top: 2px;
+  line-height: 1.5;
+}
+.intake-field-input::placeholder,
+.intake-field-textarea::placeholder {
+  color: var(--text-tertiary);
+}
+.intake-field-edit {
+  color: var(--border-subtle);
+  font-size: 13px;
+  flex-shrink: 0;
+  transition: color 0.12s;
+  pointer-events: none;
+}
+.intake-field:hover .intake-field-edit,
+.intake-field:focus-within .intake-field-edit {
+  color: var(--text-tertiary);
+}
+
+/* Dynamic row column sizing — give time column more breathing room */
+.intake-dyn-time,
+.intake-section .intake-dyn-time {
+  flex: 0 0 220px !important;
+}
+.intake-dyn-col-headers span:last-child {
+  flex: 0 0 220px !important;
+}
+
+/* Dynamic sections inside cards */
+.intake-section .intake-dyn-col-headers {
+  background: var(--bg-page) !important;
+  border-bottom-color: var(--border-subtle) !important;
+}
+.intake-section .intake-dyn-body {
+  background: transparent !important;
+}
+.intake-section .intake-dyn-row {
+  border-bottom-color: var(--border-subtle) !important;
+}
+.intake-section .intake-dyn-footer {
+  background: var(--bg-page) !important;
+  border-top: 0.5px solid var(--border-subtle) !important;
+  border-bottom: none !important;
+}
+
+/* Dynamic row inputs inside cards */
+.intake-section .intake-dyn-label,
+.intake-section .intake-dyn-time {
+  background: transparent !important;
+  border-color: var(--border-subtle) !important;
+  color: var(--text-primary) !important;
+  font-family: var(--font-body) !important;
+  font-size: 13px !important;
+}
+.intake-section .intake-dyn-label::placeholder,
+.intake-section .intake-dyn-time::placeholder {
+  color: var(--text-tertiary) !important;
+}
+
+/* Page header */
+.intake-page-header h1,
+.intake-page-header .page-title {
+  color: var(--text-primary) !important;
+  font-family: var(--font-display) !important;
+}
+
 /* ── END ───────────────────────────────────────────────────────────────*/
