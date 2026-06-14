@@ -7808,6 +7808,79 @@ function buildCalendarDescription() {
     return desc.trim();
 }
 
+function buildCrewCalendarDescription() {
+    const d  = state.intake || {};
+    const ev = state.activeEvent || {};
+
+    const fmt = (rows) => rows
+        .filter(r => r.label || r.time)
+        .map(r => [r.time, r.label].filter(Boolean).join(' — '))
+        .join('\n');
+
+    const fmtDate = (raw) => {
+        if (!raw) return '';
+        try { return new Date(raw + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }); }
+        catch(e) { return raw; }
+    };
+
+    const line = (label, val) => val ? `${label}: ${val}\n` : '';
+
+    let desc = '';
+
+    // Header
+    const eventName = d.event_name || ev.name || '';
+    if (eventName) desc += eventName.toUpperCase() + '\n\n';
+    desc += 'CREW CALL\n\n';
+
+    // ── Event Info ────────────────────────────────────────────────
+    desc += '📍 EVENT INFO\n\n';
+    if (d.venue_name)       desc += line('Venue', d.venue_name);
+    if (d.venue_address)    desc += line('Address', d.venue_address);
+    if (d.staff_entrance)   desc += line('Staff / Vendor Entrance', d.staff_entrance);
+    if (d.event_date)       desc += line('Date', fmtDate(d.event_date));
+    if (d.performing_bands) desc += line('Performing Bands', d.performing_bands);
+
+    // ── Pre-Show (crew-relevant rows only) ────────────────────────
+    const preRows = (d.pre_show_rows || []).filter(r =>
+        /crew|arrival|sound.?check|break|dark|load.?in/i.test(r.label || '')
+    );
+    if (preRows.length) {
+        desc += '\n⏰ PRE-SHOW\n\n';
+        desc += fmt(preRows) + '\n';
+    }
+
+    // ── Run of Show (full) ────────────────────────────────────────
+    const rosRows = d.run_of_show_rows || [];
+    if (rosRows.length) {
+        desc += '\n🎶 RUN OF SHOW\n\n';
+        desc += fmt(rosRows) + '\n';
+    }
+
+    // ── Logistics (public/private → truck parking) ────────────────
+    const hasLogistics = d.event_access || d.dress_code || d.parking_info || d.truck_parking;
+    if (hasLogistics) {
+        desc += '\n🚗 LOGISTICS\n\n';
+        if (d.event_access)  desc += line('Event Type', d.event_access);
+        if (d.dress_code)    desc += line('Dress Code', d.dress_code);
+        if (d.parking_info)  desc += line('Parking', d.parking_info);
+        if (d.truck_parking) desc += line('Truck Parking (20ft box)', d.truck_parking);
+    }
+
+    // ── Production (stage → power) ────────────────────────────────
+    const hasProd = d.stage_provider || d.sound_provider || d.lights_provider || d.power_situation;
+    if (hasProd) {
+        desc += '\n🔧 PRODUCTION\n\n';
+        if (d.stage_provider)  desc += line('Stage', d.stage_provider);
+        if (d.sound_provider)  desc += line('Sound', d.sound_provider);
+        if (d.lights_provider) desc += line('Lights', d.lights_provider);
+        if (d.power_situation) desc += line('Power', d.power_situation);
+    }
+
+    desc += '\nPlease arrive on time. Schedule is subject to small adjustments as we get closer to the event.';
+
+    return desc.trim();
+}
+
 function initGoogleTokenClient(callback) {
     if (!window.google || !window.google.accounts) {
         showToast('Google Sign-In library not loaded yet — try again in a moment', 'error');
@@ -7870,6 +7943,30 @@ function parseTimeToHHMM(str) {
             return String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
     }
     return null;
+}
+
+function addHoursToHHMM(hhmmStr, hours) {
+    if (!hhmmStr) return '';
+    const [h, m] = hhmmStr.split(':').map(Number);
+    const total = h * 60 + m + hours * 60;
+    return String(Math.floor(total / 60) % 24).padStart(2, '0') + ':' + String(total % 60).padStart(2, '0');
+}
+
+function crewArrivalTime(d) {
+    const rows = (d && d.pre_show_rows) || [];
+    // Look for a row that mentions both "crew" and "arrival"
+    const crewRow = rows.find(r => /crew/i.test(r.label || '') && /arrival/i.test(r.label || ''));
+    if (crewRow) {
+        const t = parseTimeToHHMM(crewRow.time);
+        if (t) return t;
+    }
+    // Fall back to any row mentioning "crew"
+    const anyCrewRow = rows.find(r => /crew/i.test(r.label || ''));
+    if (anyCrewRow) {
+        const t = parseTimeToHHMM(anyCrewRow.time);
+        if (t) return t;
+    }
+    return '';
 }
 
 function earliestPreShowTime(d) {
@@ -8105,11 +8202,11 @@ function populateCrewCalendarPanel() {
         const dt = document.getElementById('crew-date');
         if (dt && !dt.value) dt.value = d.event_date || ev.date || '';
         const startEl = document.getElementById('crew-start');
-        if (startEl) startEl.value = earliestPreShowTime(d);
+        if (startEl) startEl.value = crewArrivalTime(d);
         const endEl = document.getElementById('crew-end');
-        if (endEl) endEl.value = showEndTime(d);
+        if (endEl) endEl.value = addHoursToHHMM(showEndTime(d), 2);
         const notesEl = document.getElementById('crew-notes');
-        if (notesEl && !notesEl.value) notesEl.value = buildCalendarDescription();
+        if (notesEl && !notesEl.value) notesEl.value = buildCrewCalendarDescription();
     }
 
     const listEl = document.getElementById('crew-list');
