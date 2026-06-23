@@ -1240,9 +1240,17 @@ async function enterEvent(eventId) {
     // Update nav branding
     const brand = document.querySelector('.nav-brand');
     brand.innerHTML = `
-        <button class="nav-back-btn" onclick="backToHub()">&#8592; Events</button>
-        <span class="nav-event-title">${escapeHtml(event.name || 'Event')}</span>
-    `;
+        <div class="sb-eyebrow">YMU Shows</div>
+        <div class="sb-brand-title">${escapeHtml(event.name || 'Event')}</div>
+        <div class="sb-prog">
+            <div class="sb-track"><div class="sb-fill" id="sec-progress-fill" style="width:0%"></div></div>
+            <span class="sb-pct" id="sec-progress-pct">0%</span>
+        </div>
+        <button class="nav-back-btn" onclick="backToHub()">&#8592; All Events</button>`;
+
+    // Hide legacy event card if present
+    const eventCard = document.getElementById('sidebar-event-card');
+    if (eventCard) eventCard.style.display = 'none';
 
     document.getElementById('nav-event-settings-btn').style.display = 'flex';
     document.querySelector('.nav-menu').classList.remove('hub-mode');
@@ -1282,10 +1290,15 @@ async function backToHub() {
     localStorage.removeItem('lastPage');
 
     const brand = document.querySelector('.nav-brand');
-    brand.textContent = 'YMU Events';
+    brand.innerHTML = `<div class="sb-eyebrow">YMU Shows</div><div class="sb-brand-title">Events</div>`;
     document.getElementById('nav-event-settings-btn').style.display = 'none';
     document.querySelector('.nav-menu').classList.add('hub-mode');
-    document.querySelectorAll('.nav-link[data-page]').forEach(l => l.classList.remove('nav-link--disabled'));
+    document.querySelectorAll('.nav-link[data-page]').forEach(l => {
+        l.classList.remove('nav-link--disabled', 'nav-link--locked');
+        l.querySelector('.nav-lock-icon')?.remove();
+    });
+    const ec = document.getElementById('sidebar-event-card');
+    if (ec) ec.style.display = 'none';
 
     switchPage('events-hub');
     loadEvents();
@@ -1293,21 +1306,36 @@ async function backToHub() {
 
 function updateNavForEvent(event) {
     const enabled = new Set(event.enabledPages || []);
+
+    // Show all nav links — locked ones get dimmed + lock icon instead of hidden
     document.querySelectorAll('.nav-link[data-page]').forEach(link => {
-        const page = link.dataset.page;
-        const isEnabled = enabled.has(page);
-        link.classList.toggle('nav-link--disabled', !isEnabled);
-        link.style.display = isEnabled ? '' : 'none';
+        const isEnabled = enabled.has(link.dataset.page);
+        link.classList.toggle('nav-link--locked', !isEnabled);
+        link.classList.remove('nav-link--disabled');
+        link.style.display = '';
+        // Add/remove lock icon
+        let lockEl = link.querySelector('.nav-lock-icon');
+        if (!isEnabled) {
+            if (!lockEl) {
+                lockEl = document.createElement('span');
+                lockEl.className = 'nav-lock-icon';
+                lockEl.innerHTML = '<svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="8" height="6" rx="1"/><path d="M4 5V3.5a2 2 0 0 1 4 0V5"/></svg>';
+                link.appendChild(lockEl);
+            }
+        } else if (lockEl) {
+            lockEl.remove();
+        }
     });
-    // Hide nav groups where every sub-link is disabled
-    document.querySelectorAll('.nav-group').forEach(group => {
-        const links = group.querySelectorAll('.nav-link[data-page]');
-        const anyVisible = [...links].some(l => enabled.has(l.dataset.page));
-        group.classList.toggle('nav-group--all-disabled', !anyVisible);
+
+    // Show all groups — never hide them
+    document.querySelectorAll('.nav-group').forEach(g => {
+        g.classList.remove('nav-group--all-disabled');
+        g.style.display = '';
     });
-    // Flat mode: ≤4 enabled pages → show as direct links, no groups
-    const navMenu = document.getElementById('nav-menu');
-    if (navMenu) navMenu.classList.toggle('nav-flat', enabled.size <= 4);
+
+    // Remove flat mode — always use grouped layout
+    document.getElementById('nav-menu')?.classList.remove('nav-flat');
+
     // Apply/remove locked overlay on each page
     ALL_PAGES.forEach(p => {
         const el = document.getElementById(p.id);
@@ -1628,6 +1656,11 @@ function updateIntakeProgress() {
     const pctEl = document.getElementById('intake-progress-pct');
     if (fill) fill.style.width = pct + '%';
     if (pctEl) pctEl.textContent = pct + '%';
+    // Mirror into sidebar event card
+    const sbFill = document.getElementById('sec-progress-fill');
+    const sbPct  = document.getElementById('sec-progress-pct');
+    if (sbFill) sbFill.style.width = pct + '%';
+    if (sbPct)  sbPct.textContent  = pct + '%';
 }
 
 window.saveIntakeField = function(field, value) {
