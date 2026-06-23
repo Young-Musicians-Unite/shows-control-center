@@ -1060,6 +1060,28 @@ body:has(.nav-menu.hub-mode) {
 }
 .db2-new-btn:hover { opacity: 0.85; }
 
+.db2-duplicate-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-md);
+  padding: 6px 13px;
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 150ms, color 150ms, border-color 150ms;
+}
+.db2-duplicate-btn i { font-size: 13px; }
+.db2-duplicate-btn:hover {
+  background: rgba(74,127,212,0.12);
+  color: #6BA3F0;
+  border-color: rgba(74,127,212,0.40);
+}
+
 /* Show rows — matches reference exactly */
 .show-row {
   display: grid;
