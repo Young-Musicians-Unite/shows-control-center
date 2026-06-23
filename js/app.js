@@ -2166,16 +2166,46 @@ window.goToIssue = goToIssue;
 // ─────────────────────────────────────────────────────────────────
 
 function updateBudgetStats() {
-    const totalBudget = state.budget.reduce((sum, item) => sum + (parseFloat(item.budgeted) || 0), 0);
-    const totalSpent = state.budget.reduce((sum, item) => sum + (parseFloat(item.actual) || 0), 0);
-    const remaining = totalBudget - totalSpent;
-    const percentage = totalBudget > 0 ? (totalSpent / totalBudget * 100).toFixed(1) : 0;
+    const totalBudgeted = state.budget.reduce((sum, item) => sum + (parseFloat(item.budgeted) || 0), 0);
+    const totalSpent    = state.budget.reduce((sum, item) => sum + (parseFloat(item.actual)   || 0), 0);
+    const budgetCap     = parseFloat(state.activeEvent?.budgetCap) || 0;
+    const remaining     = budgetCap > 0 ? budgetCap - totalSpent : totalBudgeted - totalSpent;
 
-    // Budget page stats
-    const _bt = document.getElementById('budget-total');     if (_bt) _bt.textContent = formatCurrency(totalBudget);
-    const _bs = document.getElementById('budget-spent');     if (_bs) _bs.textContent = formatCurrency(totalSpent);
-    const _br = document.getElementById('budget-remaining'); if (_br) _br.textContent = formatCurrency(remaining);
+    const _bt  = document.getElementById('budget-total');          if (_bt)  _bt.textContent  = formatCurrency(totalBudgeted);
+    const _bs  = document.getElementById('budget-spent');          if (_bs)  _bs.textContent  = formatCurrency(totalSpent);
+    const _br  = document.getElementById('budget-remaining');      if (_br)  _br.textContent  = formatCurrency(remaining);
+    const _bc  = document.getElementById('budget-cap');            if (_bc)  _bc.textContent  = budgetCap > 0 ? formatCurrency(budgetCap) : '—';
+    const _lbl = document.getElementById('budget-remaining-label');if (_lbl) _lbl.textContent = budgetCap > 0 ? 'Remaining (vs cap)' : 'Remaining';
 }
+
+window.openSetBudgetModal = function() {
+    const cap = parseFloat(state.activeEvent?.budgetCap) || '';
+    document.getElementById('budget-cap-input').value = cap;
+    document.getElementById('set-budget-modal').classList.add('is-open');
+    document.getElementById('budget-cap-input').focus();
+};
+
+window.closeSetBudgetModal = function() {
+    document.getElementById('set-budget-modal').classList.remove('is-open');
+};
+
+window.saveSetBudget = async function() {
+    const cap = parseFloat(document.getElementById('budget-cap-input').value) || 0;
+    closeSetBudgetModal();
+    if (!state.currentEventId) return;
+    try {
+        await eventsCollection.doc(state.currentEventId).update({
+            budgetCap: cap,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        });
+        if (state.activeEvent) state.activeEvent.budgetCap = cap;
+        updateBudgetStats();
+        showToast(cap > 0 ? `Budget set to ${formatCurrency(cap)}` : 'Budget cap cleared', 'success');
+    } catch (e) {
+        console.error('saveSetBudget error:', e);
+        showToast('Error saving budget', 'error');
+    }
+};
 
 function updateVendorStats() {
     const confirmed = state.budget.filter(b => b.confirmed).length;
@@ -3099,13 +3129,6 @@ function renderBudgetGrouped() {
         return;
     }
 
-    // Remember which sections are open
-    const openSections = {};
-    container.querySelectorAll('.category-section-content').forEach(el => {
-        if (el.style.display !== 'none') {
-            openSections[el.id] = true;
-        }
-    });
 
     // Update search result count
     const searchQuery = state.budgetSearch;
@@ -3164,141 +3187,117 @@ function renderBudgetGrouped() {
         const totals = categoryTotals[category];
         const categoryId = category.replace(/[^a-zA-Z0-9]/g, '_');
 
-        const percentage = totals.budgeted > 0 ? (totals.actual / totals.budgeted * 100) : 0;
+        const pct = totals.budgeted > 0 ? Math.min(totals.actual / totals.budgeted * 100, 100) : 0;
+        const remaining = totals.budgeted - totals.actual;
+        const isOver = remaining < 0;
+        const savedState = localStorage.getItem(`category-${categoryId}`);
+        const isOpen = isSearching || savedState === 'open';
 
         return `
-            <div class="card budget-category-section">
-                <div class="card-header category-section-header" onclick="toggleCategorySection('${categoryId}')">
-                    <div style="display: flex; align-items: center; gap: 0.75rem; flex: 1;">
-                        <span class="category-arrow" id="arrow-${categoryId}">${isSearching ? '▼' : '▶'}</span>
-                        <h3 style="margin: 0;">${escapeHtml(category)}</h3>
-                        <span class="category-count">${totals.count} items</span>
-                    </div>
-                    <div style="display: flex; gap: 1.5rem; font-size: 0.95rem;">
-                        <span><strong>Budgeted:</strong> ${formatCurrency(totals.budgeted)}</span>
-                        <span><strong>Spent:</strong> ${formatCurrency(totals.actual)}</span>
-                        <span><strong>Remaining:</strong> ${formatCurrency(totals.budgeted - totals.actual)}</span>
-                    </div>
-                    <div class="budget-category-progress" style="margin-top: 8px;">
-                        <div class="budget-category-progress-fill" style="width: ${Math.min(percentage, 100)}%"></div>
+            <div class="cat-card ${isOpen ? 'open' : ''}">
+                <div class="cat-main" onclick="toggleCategorySection('${categoryId}')">
+                    <div class="cat-toggle"><i class="ti ti-chevron-right" id="arrow-${categoryId}"></i></div>
+                    <span class="cat-name">${escapeHtml(category)}</span>
+                    <span class="cat-items">${totals.count} item${totals.count !== 1 ? 's' : ''}</span>
+                    <div class="cat-stats">
+                        <div><div class="cs-label">Budgeted</div><div class="cs-val">${formatCurrency(totals.budgeted)}</div></div>
+                        <div><div class="cs-label">Spent</div><div class="cs-val">${formatCurrency(totals.actual)}</div></div>
+                        <div><div class="cs-label">Remaining</div><div class="cs-val ${isOver ? 'over' : 'good'}">${isOver ? '−' : ''}${formatCurrency(Math.abs(remaining))}</div></div>
                     </div>
                 </div>
-                <div class="category-section-content" id="content-${categoryId}" style="display: ${isSearching ? 'block' : 'none'};">
-                    <div class="table-container">
-                        <table class="data-table budget-table">
-                            <thead>
-                                <tr>
-                                    <th class="sortable-th" onclick="sortBudgetBy('confirmed')">Confirmed${budgetSortIndicator('confirmed')}</th>
-                                    <th class="sortable-th" onclick="sortBudgetBy('vendor')">Vendor/Item${budgetSortIndicator('vendor')}</th>
-                                    <th class="sortable-th" onclick="sortBudgetBy('description')">Description/Role${budgetSortIndicator('description')}</th>
-                                    <th class="sortable-th" onclick="sortBudgetBy('owner')">Owner${budgetSortIndicator('owner')}</th>
-                                    <th class="sortable-th" onclick="sortBudgetBy('budgeted')">Budgeted${budgetSortIndicator('budgeted')}</th>
-                                    <th class="sortable-th" onclick="sortBudgetBy('actual')">Actual${budgetSortIndicator('actual')}</th>
-                                    <th class="sortable-th" onclick="sortBudgetBy('difference')">Difference${budgetSortIndicator('difference')}</th>
-                                    <th class="sortable-th" onclick="sortBudgetBy('paymentStatus')">Payment Status${budgetSortIndicator('paymentStatus')}</th>
-                                    <th class="sortable-th" onclick="sortBudgetBy('notes')">Notes${budgetSortIndicator('notes')}</th>
-                                    <th class="no-print">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${getSortedBudgetItems(items).map(item => {
-                                    const budgeted = parseFloat(item.budgeted) || 0;
-                                    const actual = parseFloat(item.actual) || 0;
-                                    const difference = budgeted - actual;
-                                    const diffClass = difference < 0 ? 'over-budget' : difference > 0 ? 'under-budget' : '';
-
-                                    return `
-                                        <tr data-id="${item.id}">
-                                            <td class="confirmed-cell">
-                                                <input type="checkbox" class="confirmed-checkbox" ${item.confirmed ? 'checked' : ''} onchange="toggleBudgetConfirmed('${item.id}', this.checked)">
-                                            </td>
-                                            <td data-field="vendor" data-original="${escapeHtml(item.vendor || '')}" onclick="editBudgetCell(this)">${escapeHtml(item.vendor || '')}</td>
-                                            <td data-field="description" data-original="${escapeHtml(item.description || '')}" onclick="editBudgetCell(this)">${escapeHtml(item.description || '')}</td>
-                                            <td data-field="owner" data-original="${escapeHtml(item.owner || '')}" onclick="editBudgetCell(this)">${escapeHtml(item.owner || '')}</td>
-                                            <td data-field="budgeted" data-original="${budgeted}" onclick="editBudgetCell(this)">${formatCurrency(budgeted)}</td>
-                                            <td data-field="actual" data-original="${actual}" onclick="editBudgetCell(this)">${formatCurrency(actual)}</td>
-                                            <td data-computed="difference" class="${diffClass}">${formatCurrency(Math.abs(difference))} ${difference < 0 ? 'over' : difference > 0 ? 'under' : ''}</td>
-                                            <td data-field="paymentStatus" data-original="${item.paymentStatus || 'not-paid'}" onclick="editBudgetCell(this)">
-                                                <span class="status-badge ${item.paymentStatus}">${formatPaymentStatus(item.paymentStatus)}</span>
-                                            </td>
-                                            <td data-field="notes" data-original="${escapeHtml(item.notes || '')}" onclick="editBudgetCell(this)">${escapeHtml(item.notes || '')}</td>
-                                            <td class="actions budget-actions-cell no-print">
-                                                <div class="actions-row">
-                                                    <button class="action-icon" onclick="editBudgetItem('${item.id}')" title="Edit">
-                                                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                                                    </button>
-                                                    <button class="action-icon" onclick="duplicateBudgetItem('${item.id}')" title="Duplicate">
-                                                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                                                    </button>
-                                                    <button class="action-icon action-icon-danger" onclick="deleteBudgetItem('${item.id}')" title="Delete">
-                                                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                                                    </button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    `;
-                                }).join('')}
-                                <tr class="budget-phantom-row" data-phantom="true" data-category="${escapeHtml(category)}">
-                                    <td class="confirmed-cell"></td>
-                                    <td data-field="vendor" onclick="editBudgetCell(this)"><span class="phantom-placeholder">+ vendor</span></td>
-                                    <td data-field="description" onclick="editBudgetCell(this)"><span class="phantom-placeholder">+ description</span></td>
-                                    <td data-field="owner" onclick="editBudgetCell(this)"><span class="phantom-placeholder">+ owner</span></td>
-                                    <td data-field="budgeted" onclick="editBudgetCell(this)"><span class="phantom-placeholder">+ budgeted</span></td>
-                                    <td data-field="actual" onclick="editBudgetCell(this)"><span class="phantom-placeholder">+ actual</span></td>
-                                    <td data-computed="difference"></td>
-                                    <td data-field="paymentStatus" onclick="editBudgetCell(this)"><span class="phantom-placeholder">+ status</span></td>
-                                    <td data-field="notes" onclick="editBudgetCell(this)"><span class="phantom-placeholder">+ notes</span></td>
-                                    <td class="actions budget-actions-cell no-print"></td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                    <div class="budget-mobile-cards">
+                <div class="cat-bar-wrap">
+                    <div class="cat-bar-track"><div class="cat-bar-fill ${isOver ? 'over' : ''}" style="width:${pct}%"></div></div>
+                </div>
+                <table class="line-table" id="content-${categoryId}">
+                    <colgroup>
+                        <col style="width:34px">
+                        <col style="width:20%">
+                        <col style="width:18%">
+                        <col style="width:7%">
+                        <col style="width:8%">
+                        <col style="width:8%">
+                        <col style="width:10%">
+                        <col style="width:9%">
+                        <col>
+                        <col style="width:70px">
+                    </colgroup>
+                    <thead>
+                        <tr>
+                            <th class="c sortable-th" onclick="sortBudgetBy('confirmed')">✓</th>
+                            <th class="sortable-th" onclick="sortBudgetBy('vendor')">Vendor / item${budgetSortIndicator('vendor')}</th>
+                            <th class="sortable-th" onclick="sortBudgetBy('description')">Description / role${budgetSortIndicator('description')}</th>
+                            <th class="sortable-th" onclick="sortBudgetBy('owner')">Owner${budgetSortIndicator('owner')}</th>
+                            <th class="r sortable-th" onclick="sortBudgetBy('budgeted')">Budgeted${budgetSortIndicator('budgeted')}</th>
+                            <th class="r sortable-th" onclick="sortBudgetBy('actual')">Actual${budgetSortIndicator('actual')}</th>
+                            <th class="r sortable-th" onclick="sortBudgetBy('difference')">Difference${budgetSortIndicator('difference')}</th>
+                            <th class="c sortable-th" onclick="sortBudgetBy('paymentStatus')">Payment${budgetSortIndicator('paymentStatus')}</th>
+                            <th class="sortable-th" onclick="sortBudgetBy('notes')">Notes${budgetSortIndicator('notes')}</th>
+                            <th class="no-print"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
                         ${getSortedBudgetItems(items).map(item => {
                             const budgeted = parseFloat(item.budgeted) || 0;
                             const actual = parseFloat(item.actual) || 0;
                             const difference = budgeted - actual;
-                            const pct = budgeted > 0 ? Math.min((actual / budgeted) * 100, 150) : 0;
-                            const isOver = difference < 0;
+                            const diffHtml = difference === 0
+                                ? '<span class="diff-zero">—</span>'
+                                : difference < 0
+                                    ? `<span class="diff-over">−${formatCurrency(Math.abs(difference))}</span>`
+                                    : `<span class="diff-under">${formatCurrency(difference)}</span>`;
 
                             return `
-                                <div class="mobile-card">
-                                    <div class="mobile-card-row">
-                                        <input type="checkbox" class="mobile-card-checkbox"
-                                               ${item.confirmed ? 'checked' : ''}
-                                               onchange="toggleBudgetConfirmed('${item.id}', this.checked)">
-                                        <span class="mobile-card-title">${escapeHtml(item.vendor || 'No vendor')}</span>
-                                        <span class="mobile-card-amount ${isOver ? 'over' : ''}">${formatCurrency(budgeted)}</span>
-                                    </div>
-                                    ${item.description ? `<div style="font-size: 0.8rem; color: #777; margin: 0.25rem 0 0.25rem 2rem;">${escapeHtml(item.description)}</div>` : ''}
-                                    ${item.owner ? `<div style="font-size: 0.8rem; color: #555; margin: 0.25rem 0 0.25rem 2rem;"><strong>Owner:</strong> ${escapeHtml(item.owner)}</div>` : ''}
-                                    <div class="mobile-card-details">
-                                        <span class="mobile-card-detail"><strong>Spent:</strong> ${formatCurrency(actual)}</span>
-                                        <span class="mobile-card-detail ${isOver ? 'mobile-card-amount over' : ''}"><strong>${isOver ? 'Over:' : 'Left:'}</strong> ${formatCurrency(Math.abs(difference))}</span>
-                                        <span class="status-badge ${item.paymentStatus || 'not-paid'}" style="font-size: 0.7rem;">${formatPaymentStatus(item.paymentStatus)}</span>
-                                    </div>
-                                    <div class="mobile-card-progress">
-                                        <div class="mobile-card-progress-bar ${isOver ? 'over-budget' : ''}" style="width: ${Math.min(pct, 100)}%"></div>
-                                    </div>
-                                </div>
+                                <tr data-id="${item.id}">
+                                    <td class="c confirmed-cell" onclick="toggleBudgetConfirmed('${item.id}', ${!item.confirmed})">
+                                        <div class="cb-box ${item.confirmed ? 'cb-checked' : ''}">
+                                            ${item.confirmed ? '<i class="ti ti-check"></i>' : ''}
+                                        </div>
+                                    </td>
+                                    <td data-field="vendor" data-original="${escapeHtml(item.vendor || '')}" onclick="editBudgetCell(this)">
+                                        <span class="td-vendor">${escapeHtml(item.vendor || '')}</span>
+                                    </td>
+                                    <td data-field="description" data-original="${escapeHtml(item.description || '')}" onclick="editBudgetCell(this)">
+                                        <span class="td-desc">${escapeHtml(item.description || '')}</span>
+                                    </td>
+                                    <td data-field="owner" data-original="${escapeHtml(item.owner || '')}" onclick="editBudgetCell(this)">${escapeHtml(item.owner || '')}</td>
+                                    <td class="r" data-field="budgeted" data-original="${budgeted}" onclick="editBudgetCell(this)">${formatCurrency(budgeted)}</td>
+                                    <td class="r" data-field="actual" data-original="${actual}" onclick="editBudgetCell(this)">${formatCurrency(actual)}</td>
+                                    <td class="r" data-computed="difference">${diffHtml}</td>
+                                    <td class="c" data-field="paymentStatus" data-original="${item.paymentStatus || 'not-paid'}" onclick="editBudgetCell(this)">
+                                        ${paymentBadgeHtml(item.paymentStatus)}
+                                    </td>
+                                    <td data-field="notes" data-original="${escapeHtml(item.notes || '')}" onclick="editBudgetCell(this)">
+                                        ${item.notes ? `<span class="td-notes">${escapeHtml(item.notes)}</span>` : ''}
+                                    </td>
+                                    <td class="no-print">
+                                        <div class="row-actions">
+                                            <div class="act" onclick="editBudgetItem('${item.id}')" title="Edit"><i class="ti ti-pencil"></i></div>
+                                            <div class="act" onclick="duplicateBudgetItem('${item.id}')" title="Duplicate"><i class="ti ti-copy"></i></div>
+                                            <div class="act del" onclick="deleteBudgetItem('${item.id}')" title="Delete"><i class="ti ti-trash"></i></div>
+                                        </div>
+                                    </td>
+                                </tr>
                             `;
                         }).join('')}
-                    </div>
-                </div>
+                        <tr class="budget-phantom-row" data-phantom="true" data-category="${escapeHtml(category)}">
+                            <td class="c confirmed-cell"></td>
+                            <td data-field="vendor" onclick="editBudgetCell(this)"><span class="phantom-placeholder">+ vendor</span></td>
+                            <td data-field="description" onclick="editBudgetCell(this)"><span class="phantom-placeholder">+ description</span></td>
+                            <td data-field="owner" onclick="editBudgetCell(this)"><span class="phantom-placeholder">+ owner</span></td>
+                            <td class="r" data-field="budgeted" onclick="editBudgetCell(this)"><span class="phantom-placeholder">+ budgeted</span></td>
+                            <td class="r" data-field="actual" onclick="editBudgetCell(this)"><span class="phantom-placeholder">+ actual</span></td>
+                            <td class="r" data-computed="difference"></td>
+                            <td class="c" data-field="paymentStatus" onclick="editBudgetCell(this)"><span class="phantom-placeholder">+ status</span></td>
+                            <td data-field="notes" onclick="editBudgetCell(this)"><span class="phantom-placeholder">+ notes</span></td>
+                            <td class="no-print"></td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
         `;
     }).join('');
 
-    // Restore open sections (only when not searching — search auto-expands all)
-    if (!isSearching) {
-        Object.keys(openSections).forEach(id => {
-            const content = document.getElementById(id);
-            const arrowId = id.replace('content-', 'arrow-');
-            const arrow = document.getElementById(arrowId);
-            if (content) content.style.display = 'block';
-            if (arrow) arrow.textContent = '▼';
-        });
-    }
+    // open/closed state is now set at render time from localStorage — no restore loop needed
 
     state.pendingNewBudgetRow = {};
 }
@@ -3657,10 +3656,13 @@ function setupModals() {
         const phantomRow = document.querySelector('.budget-phantom-row');
         if (phantomRow) {
             // Expand collapsed section if needed
-            const sectionContent = phantomRow.closest('.category-section-content');
-            if (sectionContent && sectionContent.style.display === 'none') {
-                const categoryId = sectionContent.id.replace('content-', '');
-                toggleCategorySection(categoryId);
+            const card = phantomRow.closest('.cat-card');
+            if (card && !card.classList.contains('open')) {
+                const table = card.querySelector('.line-table');
+                if (table) {
+                    const categoryId = table.id.replace('content-', '');
+                    toggleCategorySection(categoryId);
+                }
             }
             phantomRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
             setTimeout(() => {
@@ -4434,6 +4436,15 @@ function formatPaymentStatus(status) {
         'not-paid': 'Not Paid'
     };
     return map[status] || 'Not Paid';
+}
+
+function paymentBadgeHtml(status) {
+    const map = {
+        'paid':     '<span class="badge-paid">Paid</span>',
+        'partial':  '<span class="badge-pending">Partial</span>',
+        'not-paid': '<span class="badge-notpaid">Not Paid</span>',
+    };
+    return map[status] || map['not-paid'];
 }
 
 function formatStatus(status) {
@@ -5425,18 +5436,11 @@ function convertTo24Hour(raw) {
 // Budget Category Accordion Toggle
 // Toggle Category Section
 function toggleCategorySection(categoryId) {
-    const content = document.getElementById(`content-${categoryId}`);
-    const arrow = document.getElementById(`arrow-${categoryId}`);
-
-    if (content.style.display === 'none') {
-        content.style.display = 'block';
-        arrow.textContent = '▼';
-        localStorage.setItem(`category-${categoryId}`, 'open');
-    } else {
-        content.style.display = 'none';
-        arrow.textContent = '▶';
-        localStorage.setItem(`category-${categoryId}`, 'closed');
-    }
+    const table = document.getElementById(`content-${categoryId}`);
+    const card = table?.closest('.cat-card');
+    const isOpen = card?.classList.contains('open') ?? false;
+    card?.classList.toggle('open', !isOpen);
+    localStorage.setItem(`category-${categoryId}`, isOpen ? 'closed' : 'open');
 }
 
 // Inline Editing for Budget Items
@@ -5595,8 +5599,12 @@ function saveSingleBudgetCell(cell, row) {
         const difference = budgetedVal - actualVal;
         const diffCell = row.querySelector('td[data-computed="difference"]');
         if (diffCell) {
-            diffCell.className = difference < 0 ? 'over-budget' : difference > 0 ? 'under-budget' : '';
-            diffCell.textContent = `${formatCurrency(Math.abs(difference))} ${difference < 0 ? 'over' : difference > 0 ? 'under' : ''}`;
+            diffCell.className = 'r';
+            diffCell.innerHTML = difference === 0
+                ? '<span class="diff-zero">—</span>'
+                : difference < 0
+                    ? `<span class="diff-over">−${formatCurrency(Math.abs(difference))}</span>`
+                    : `<span class="diff-under">${formatCurrency(difference)}</span>`;
         }
     }
 
@@ -5627,7 +5635,13 @@ function restoreBudgetCellDisplay(cell, isPhantom) {
             if (field === 'budgeted' || field === 'actual') {
                 cell.textContent = formatCurrency(parseFloat(val) || 0);
             } else if (field === 'paymentStatus') {
-                cell.innerHTML = `<span class="status-badge ${val}">${formatPaymentStatus(val)}</span>`;
+                cell.innerHTML = paymentBadgeHtml(val);
+            } else if (field === 'vendor') {
+                cell.innerHTML = `<span class="td-vendor">${escapeHtml(val)}</span>`;
+            } else if (field === 'description') {
+                cell.innerHTML = `<span class="td-desc">${escapeHtml(val)}</span>`;
+            } else if (field === 'notes') {
+                cell.innerHTML = `<span class="td-notes">${escapeHtml(val)}</span>`;
             } else {
                 cell.textContent = val;
             }
@@ -5640,7 +5654,13 @@ function restoreBudgetCellDisplay(cell, isPhantom) {
         if (field === 'budgeted' || field === 'actual') {
             cell.textContent = formatCurrency(parseFloat(original) || 0);
         } else if (field === 'paymentStatus') {
-            cell.innerHTML = `<span class="status-badge ${original}">${formatPaymentStatus(original)}</span>`;
+            cell.innerHTML = paymentBadgeHtml(original);
+        } else if (field === 'vendor') {
+            cell.innerHTML = `<span class="td-vendor">${escapeHtml(original)}</span>`;
+        } else if (field === 'description') {
+            cell.innerHTML = `<span class="td-desc">${escapeHtml(original)}</span>`;
+        } else if (field === 'notes') {
+            cell.innerHTML = original ? `<span class="td-notes">${escapeHtml(original)}</span>` : '';
         } else {
             cell.textContent = original;
         }
