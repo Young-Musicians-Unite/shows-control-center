@@ -152,12 +152,27 @@
                     <button class="hub-season-add-btn" onclick="promptAddSeason()">+ New Season</button>
                 </div>
             </div>
+            <!-- Sidebar user menu popup -->
+            <div id="sb-user-menu" class="sb-user-menu" style="display:none">
+                <div class="sb-user-menu-item" onclick="openStaffIndex(); closeSbUserMenu()">
+                    <i class="ti ti-address-book"></i> Staff Directory
+                </div>
+                <div class="sb-user-menu-item" onclick="openJobTemplates(); closeSbUserMenu()">
+                    <i class="ti ti-briefcase"></i> Job Titles
+                </div>
+                <div class="sb-user-menu-divider"></div>
+                <div class="sb-user-menu-item" id="sb-menu-manage-pages" onclick="openEventSettings(); closeSbUserMenu()" style="display:none">
+                    <i class="ti ti-layout-grid"></i> Manage Pages
+                </div>
+            </div>
+
             <!-- Sidebar footer -->
             <div class="sb-foot">
                 <div class="sb-foot-row">
-                    <div class="sb-user" onclick="openStaffIndex()">
+                    <div class="sb-user" onclick="toggleSbUserMenu(event)">
                         <div class="sb-avatar" id="sb-avatar-initials">EP</div>
                         <span class="sb-uname" id="sb-user-display">Estelle</span>
+                        <i class="ti ti-chevron-up" id="sb-user-chevron" style="font-size:10px;color:rgba(255,255,255,0.25)"></i>
                     </div>
                     <button id="sb-event-settings-btn" class="sb-settings-btn" onclick="openEventSettings()" title="Event Settings" style="display:none">
                         <i class="ti ti-settings"></i>

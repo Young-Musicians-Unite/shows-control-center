@@ -7148,6 +7148,40 @@ function openJobTemplates() {
 window.openJobTemplates = openJobTemplates;
 window.openStaffIndex = openStaffIndex;
 
+window.toggleSbUserMenu = function(e) {
+    e.stopPropagation();
+    const menu = document.getElementById('sb-user-menu');
+    const isOpen = menu.style.display !== 'none';
+    if (isOpen) { closeSbUserMenu(); } else { openSbUserMenu(); }
+};
+
+function openSbUserMenu() {
+    const menu = document.getElementById('sb-user-menu');
+    const inEvent = !!state.activeEvent;
+    const managePages = document.getElementById('sb-menu-manage-pages');
+    if (managePages) managePages.style.display = inEvent ? '' : 'none';
+    const divider = menu.querySelector('.sb-user-menu-divider');
+    if (divider) divider.style.display = inEvent ? '' : 'none';
+    menu.style.display = 'block';
+    document.getElementById('sb-user-chevron').style.transform = 'rotate(180deg)';
+    setTimeout(() => document.addEventListener('click', sbUserMenuOutsideClick), 0);
+}
+
+function closeSbUserMenu() {
+    const menu = document.getElementById('sb-user-menu');
+    menu.style.display = 'none';
+    const chevron = document.getElementById('sb-user-chevron');
+    if (chevron) chevron.style.transform = '';
+    document.removeEventListener('click', sbUserMenuOutsideClick);
+}
+
+function sbUserMenuOutsideClick(e) {
+    const menu = document.getElementById('sb-user-menu');
+    if (!menu.contains(e.target)) closeSbUserMenu();
+}
+
+window.closeSbUserMenu = closeSbUserMenu;
+
 function closeStaffIndex() {
     const modal = document.getElementById('staff-index-modal');
     if (modal) modal.classList.remove('active');
