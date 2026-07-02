@@ -15,6 +15,7 @@ const CLIENT_ID = sessionStorage.getItem('clientId');
 const state = {
     // Multi-event hub
     events: [],
+    blockDates: [],
     activeEvent: null,
     currentEventId: null,
     seasons: ['2025-2026', '2026-2027'],
@@ -1048,6 +1049,11 @@ function loadEvents() {
         const el = document.getElementById('events-hub-content');
         if (el) el.innerHTML = '<p style="padding:2rem;color:#c0392b">Could not reach database: ' + e.message + '</p>';
     });
+
+    db.collection('blockDates').onSnapshot(snap => {
+        state.blockDates = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        renderHub();
+    });
 }
 
 function renderHub() {
@@ -1067,42 +1073,165 @@ function renderHub() {
             return a.date.localeCompare(b.date);
         });
 
-    if (seasonEvents.length === 0) {
+    const seasonBlocks = (state.blockDates || [])
+        .filter(b => (b.season || '2025-2026') === state.currentSeason);
+
+    if (seasonEvents.length === 0 && seasonBlocks.length === 0) {
         el.innerHTML = `<div class="hub-empty"><p>No events in ${escapeHtml(state.currentSeason)} yet.</p></div>`;
         return;
     }
 
-    const rows = seasonEvents.map(ev => {
+    const fmtDate = d => d ? new Date(d + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+
+    // Build event rows tagged with their sort key
+    const eventRows = seasonEvents.map(ev => {
         const phase = PHASES.find(p => p.id === ev.phase) || PHASES[0];
-        const dateStr = ev.date
-            ? new Date(ev.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-            : '—';
         const phaseOptions = PHASES.map(ph =>
             `<option value="${ph.id}" ${ph.id === ev.phase ? 'selected' : ''}>${ph.label}</option>`
         ).join('');
-        return `<tr>
-            <td class="hub-cell-date hub-cell-editable" onclick="editHubCell(this,'${ev.id}','date')" data-value="${escapeHtml(ev.date || '')}" title="Click to edit">${dateStr}</td>
-            <td class="hub-cell-name hub-cell-editable" onclick="editHubCell(this,'${ev.id}','name')" data-value="${escapeHtml(ev.name || '')}" title="Click to edit">${escapeHtml(ev.name || '—')}</td>
-            <td class="hub-cell-groups hub-cell-editable" onclick="editHubCell(this,'${ev.id}','performingGroups')" data-value="${escapeHtml(ev.performingGroups || '')}" title="Click to edit">${escapeHtml(ev.performingGroups || '—')}</td>
-            <td class="hub-cell-phase">
-                <select class="phase-select" style="background:${phase.color};color:${phase.text}"
-                    onchange="updateEventPhase('${ev.id}', this.value, this)">
-                    ${phaseOptions}
-                </select>
-            </td>
-            <td class="hub-cell-actions">
-                <button class="hub-enter-btn" onclick="enterEvent('${ev.id}')">Enter &rarr;</button>
-            </td>
-        </tr>`;
-    }).join('');
+        const rowAccent = ev.rowColor || '';
+        return {
+            sortKey: ev.date || '',
+            html: `<tr class="hub-event-row" style="${rowAccent ? 'box-shadow:inset 3px 0 0 ' + rowAccent : ''}">
+                <td class="hub-cell-date hub-cell-editable" onclick="editHubCell(this,'${ev.id}','date')" data-value="${escapeHtml(ev.date || '')}" title="Click to edit">${fmtDate(ev.date)}</td>
+                <td class="hub-cell-name hub-cell-editable" onclick="editHubCell(this,'${ev.id}','name')" data-value="${escapeHtml(ev.name || '')}" title="Click to edit">${escapeHtml(ev.name || '—')}</td>
+                <td class="hub-cell-groups hub-cell-editable" onclick="editHubCell(this,'${ev.id}','performingGroups')" data-value="${escapeHtml(ev.performingGroups || '')}" title="Click to edit">${escapeHtml(ev.performingGroups || '—')}</td>
+                <td class="hub-cell-phase">
+                    <select class="phase-select" style="background:${phase.color};color:${phase.text}"
+                        onchange="updateEventPhase('${ev.id}', this.value, this)">
+                        ${phaseOptions}
+                    </select>
+                </td>
+                <td class="hub-cell-actions">
+                    <button class="hub-row-color-btn" onclick="openRowColorPicker(event,'event','${ev.id}')" title="Row color">&#9681;</button>
+                    <button class="hub-enter-btn" onclick="enterEvent('${ev.id}')">Enter &rarr;</button>
+                </td>
+            </tr>`
+        };
+    });
+
+    // Build block date rows tagged with their sort key
+    const blockRows = seasonBlocks.map(b => {
+        const dateStr = b.endDate && b.endDate !== b.startDate
+            ? fmtDate(b.startDate) + ' – ' + fmtDate(b.endDate)
+            : fmtDate(b.startDate);
+        const isHold    = b.type === 'hold';
+        const badgeBg   = isHold ? 'rgba(180,130,0,0.18)' : 'rgba(60,100,180,0.18)';
+        const badgeText = isHold ? '#c9a330' : '#7aaae8';
+        const badgeLabel = isHold ? 'Hold' : 'Note';
+        const rowAccent = b.rowColor || '';
+        return {
+            sortKey: b.startDate || '',
+            html: `<tr class="hub-block-row" style="${rowAccent ? 'box-shadow:inset 3px 0 0 ' + rowAccent : ''}">
+                <td class="hub-cell-date">${dateStr}</td>
+                <td class="hub-cell-name hub-block-label">${escapeHtml(b.label || '—')}</td>
+                <td class="hub-cell-groups"></td>
+                <td class="hub-cell-phase">
+                    <span class="phase-badge" style="background:${badgeBg};color:${badgeText}">${badgeLabel}</span>
+                </td>
+                <td class="hub-cell-actions">
+                    <button class="hub-row-color-btn" onclick="openRowColorPicker(event,'block','${b.id}')" title="Row color">&#9681;</button>
+                    <button class="hub-block-delete-btn" onclick="deleteBlockDate('${b.id}')" title="Remove">&#x2715;</button>
+                </td>
+            </tr>`
+        };
+    });
+
+    // Merge and sort all rows by date
+    const allRows = [...eventRows, ...blockRows]
+        .sort((a, b) => {
+            if (!a.sortKey && !b.sortKey) return 0;
+            if (!a.sortKey) return 1;
+            if (!b.sortKey) return -1;
+            return a.sortKey.localeCompare(b.sortKey);
+        })
+        .map(r => r.html)
+        .join('');
 
     el.innerHTML = `<table class="hub-table">
         <thead><tr>
             <th>Date</th><th>Event Name</th><th>Performing Groups</th><th>Phase</th><th></th>
         </tr></thead>
-        <tbody>${rows}</tbody>
+        <tbody>${allRows}</tbody>
     </table>`;
 }
+
+// ── Block Dates ───────────────────────────────────────────────────
+window.deleteBlockDate = async function(id) {
+    if (!confirm('Delete this date marker?')) return;
+    try {
+        await db.collection('blockDates').doc(id).delete();
+    } catch(e) {
+        console.error('Failed to delete block date:', e);
+        showToast('Error removing block date', 'error');
+    }
+};
+
+// ── Row color picker ──────────────────────────────────────────────
+const ROW_COLORS = [
+    { label: 'None',   value: '' },
+    { label: 'Yellow', value: '#c8a330' },
+    { label: 'Green',  value: '#5bb567' },
+    { label: 'Blue',   value: '#4d8fd6' },
+    { label: 'Red',    value: '#d05555' },
+    { label: 'Purple', value: '#8b6fd4' },
+    { label: 'Orange', value: '#d4863a' },
+];
+
+let _colorPickerTarget = null;
+
+window.openRowColorPicker = function(e, type, id) {
+    e.stopPropagation();
+    const existing = document.getElementById('hub-row-color-picker');
+    if (existing) {
+        const isSame = existing.dataset.id === id;
+        existing.remove();
+        if (isSame) return;
+    }
+
+    _colorPickerTarget = { type, id };
+    const btn = e.currentTarget;
+    const rect = btn.getBoundingClientRect();
+
+    const picker = document.createElement('div');
+    picker.id = 'hub-row-color-picker';
+    picker.dataset.id = id;
+    picker.innerHTML = ROW_COLORS.map(c => `
+        <button class="hub-color-swatch${c.value === '' ? ' hub-color-clear' : ''}"
+            style="${c.value ? 'background:' + c.value + ';border-color:' + c.value.replace('0.13','0.5') : ''}"
+            onclick="applyRowColor('${type}','${id}','${c.value}')"
+            title="${c.label}">
+            ${c.value === '' ? '✕' : ''}
+        </button>`).join('');
+
+    picker.style.cssText = `position:fixed;top:${rect.bottom + 6}px;left:${rect.left - 140}px;z-index:9999`;
+    document.body.appendChild(picker);
+
+    setTimeout(() => document.addEventListener('click', _closePicker, { once: true }), 0);
+};
+
+function _closePicker() {
+    document.getElementById('hub-row-color-picker')?.remove();
+}
+
+window.applyRowColor = async function(type, id, color) {
+    document.getElementById('hub-row-color-picker')?.remove();
+    try {
+        if (type === 'event') {
+            const ev = state.events.find(e => e.id === id);
+            if (ev) ev.rowColor = color;
+            await eventsCollection.doc(id).update({ rowColor: color });
+        } else {
+            const b = state.blockDates.find(b => b.id === id);
+            if (b) b.rowColor = color;
+            await db.collection('blockDates').doc(id).update({ rowColor: color });
+        }
+        renderHub();
+    } catch(e) {
+        console.error('Failed to set row color:', e);
+    }
+};
+// ─────────────────────────────────────────────────────────────────
 
 window.editHubCell = function(cell, eventId, field) {
     const currentValue = cell.dataset.value || '';
@@ -1350,6 +1479,17 @@ function openNewEventModal() {
     document.getElementById('new-event-name').value = '';
     document.getElementById('new-event-date').value = '';
     document.getElementById('new-event-lead').value = '';
+    // Reset date marker mode
+    document.getElementById('new-event-is-marker').checked = false;
+    document.getElementById('new-event-marker-end').value = '';
+    document.getElementById('new-event-marker-type').value = 'blackout';
+    document.getElementById('new-event-marker-fields').style.display = 'none';
+    document.getElementById('new-event-event-fields').style.display = '';
+    document.getElementById('new-event-modal-title').textContent = 'New Event';
+    document.getElementById('new-event-submit-btn').textContent = 'Create Event';
+    document.getElementById('new-event-name-label').innerHTML = 'Event Name <span class="required">*</span>';
+    document.getElementById('new-event-date-label').textContent = 'Date';
+
     document.getElementById('new-event-modal').classList.add('is-open');
     requestAnimationFrame(() => {
         const body = document.querySelector('#new-event-modal .hub-modal-body');
@@ -1357,22 +1497,60 @@ function openNewEventModal() {
     });
 }
 
+window.toggleDateMarkerMode = function() {
+    const isMarker = document.getElementById('new-event-is-marker').checked;
+    document.getElementById('new-event-marker-fields').style.display = isMarker ? '' : 'none';
+    document.getElementById('new-event-event-fields').style.display = isMarker ? 'none' : '';
+    document.getElementById('new-event-modal-title').textContent = isMarker ? 'New Date Marker' : 'New Event';
+    document.getElementById('new-event-submit-btn').textContent = isMarker ? 'Add Marker' : 'Create Event';
+    document.getElementById('new-event-name-label').innerHTML = isMarker
+        ? 'Label <span class="required">*</span>'
+        : 'Event Name <span class="required">*</span>';
+    document.getElementById('new-event-date-label').textContent = isMarker ? 'Start Date *' : 'Date';
+    document.getElementById('new-event-name').placeholder = isMarker ? 'e.g. Last Day of School' : 'e.g. YMU Spring Gala 2027';
+};
+
 window.closeNewEventModal = function() {
     document.getElementById('new-event-modal').classList.remove('is-open');
 };
 
 window.createNewEvent = async function() {
+    const isMarker = document.getElementById('new-event-is-marker').checked;
     const name  = document.getElementById('new-event-name').value.trim();
     const date  = document.getElementById('new-event-date').value;
-    const lead  = document.getElementById('new-event-lead').value.trim();
-    const phase = document.getElementById('new-event-phase').value;
-    const enabledPages = [...document.querySelectorAll('#new-event-pages .page-toggle-cb:checked')].map(cb => cb.value);
 
     if (!name) {
-        showToast('Please enter an event name', 'error');
+        showToast(isMarker ? 'Please enter a label' : 'Please enter an event name', 'error');
         document.getElementById('new-event-name').focus();
         return;
     }
+
+    if (isMarker) {
+        if (!date) {
+            showToast('Please enter a start date', 'error');
+            document.getElementById('new-event-date').focus();
+            return;
+        }
+        const endDate = document.getElementById('new-event-marker-end').value;
+        const type    = document.getElementById('new-event-marker-type').value;
+        try {
+            await db.collection('blockDates').add({
+                label: name, startDate: date,
+                endDate: endDate || date,
+                type, season: state.currentSeason,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            });
+            closeNewEventModal();
+        } catch(e) {
+            console.error('Failed to save date marker:', e);
+            showToast('Error saving date marker', 'error');
+        }
+        return;
+    }
+
+    const lead  = document.getElementById('new-event-lead').value.trim();
+    const phase = document.getElementById('new-event-phase').value;
+    const enabledPages = [...document.querySelectorAll('#new-event-pages .page-toggle-cb:checked')].map(cb => cb.value);
 
     const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
     const id = `${slug}-${Date.now()}`;

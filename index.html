@@ -207,35 +207,66 @@
     <div id="new-event-modal" class="hub-modal-overlay">
         <div class="hub-modal">
             <div class="hub-modal-header">
-                <h2>New Event</h2>
+                <h2 id="new-event-modal-title">New Event</h2>
                 <button class="hub-modal-close" onclick="closeNewEventModal()">&times;</button>
             </div>
             <div class="hub-modal-body">
+                <!-- Date Marker toggle -->
+                <div class="hub-field hub-marker-toggle">
+                    <label class="hub-checkbox-label">
+                        <input type="checkbox" id="new-event-is-marker" onchange="toggleDateMarkerMode()">
+                        <span>This is a Date Marker</span>
+                    </label>
+                    <p class="hub-field-hint" style="margin-top:4px">Use this to mark notable dates — school schedules, holds, or other calendar notes — without creating a full event.</p>
+                </div>
+
+                <!-- Shared: name/label -->
                 <div class="hub-field">
-                    <label>Event Name <span class="required">*</span></label>
+                    <label id="new-event-name-label">Event Name <span class="required">*</span></label>
                     <input type="text" id="new-event-name" placeholder="e.g. YMU Spring Gala 2027">
                 </div>
+
+                <!-- Shared: start date -->
                 <div class="hub-field">
-                    <label>Date</label>
+                    <label id="new-event-date-label">Date</label>
                     <input type="date" id="new-event-date">
                 </div>
-                <div class="hub-field">
-                    <label>Event Lead</label>
-                    <input type="text" id="new-event-lead" placeholder="e.g. Zach">
+
+                <!-- Date Marker only: end date + type -->
+                <div id="new-event-marker-fields" style="display:none">
+                    <div class="hub-field">
+                        <label>End Date <span style="font-weight:400;opacity:0.6">(optional — for a range)</span></label>
+                        <input type="date" id="new-event-marker-end">
+                    </div>
+                    <div class="hub-field">
+                        <label>Marker Type</label>
+                        <select id="new-event-marker-type">
+                            <option value="note">Note</option>
+                            <option value="hold">Hold</option>
+                        </select>
+                    </div>
                 </div>
-                <div class="hub-field">
-                    <label>Phase</label>
-                    <select id="new-event-phase"></select>
-                </div>
-                <div class="hub-field">
-                    <label>Enable Pages</label>
-                    <p class="hub-field-hint">Select the modules you need for this event. You can enable or disable pages later from the Pages button in the nav.</p>
-                    <div id="new-event-pages" class="page-toggles-grid"></div>
+
+                <!-- Event only: Lead, Phase, Pages -->
+                <div id="new-event-event-fields">
+                    <div class="hub-field">
+                        <label>Event Lead</label>
+                        <input type="text" id="new-event-lead" placeholder="e.g. Zach">
+                    </div>
+                    <div class="hub-field">
+                        <label>Phase</label>
+                        <select id="new-event-phase"></select>
+                    </div>
+                    <div class="hub-field">
+                        <label>Enable Pages</label>
+                        <p class="hub-field-hint">Select the modules you need for this event. You can enable or disable pages later from the Pages button in the nav.</p>
+                        <div id="new-event-pages" class="page-toggles-grid"></div>
+                    </div>
                 </div>
             </div>
             <div class="hub-modal-footer">
                 <button class="btn-secondary" onclick="closeNewEventModal()">Cancel</button>
-                <button class="btn-primary" onclick="createNewEvent()">Create Event</button>
+                <button class="btn-primary" id="new-event-submit-btn" onclick="createNewEvent()">Create Event</button>
             </div>
         </div>
     </div>
