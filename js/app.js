@@ -3175,9 +3175,104 @@ async function toggleBudgetConfirmed(id, confirmed) {
 }
 
 // Budget
+function getBudgetCategories() {
+    const setup = state.activeEvent?.budgetSetup;
+    if (setup?.categorySet === 'a-b') {
+        return [
+            { value: '6697a - Personal',      label: 'A — Personal' },
+            { value: '6697b - Anything Else', label: 'B — Anything Else' },
+        ];
+    }
+    const code = setup?.code || '6811';
+    return [
+        { value: `${code}a - Talent/Performers & Hosts`,        label: 'A — Talent / Performers & Hosts' },
+        { value: `${code}b - A/V Production`,                   label: 'B — A/V Production' },
+        { value: `${code}c - Venue & Permits`,                  label: 'C — Venue & Permits' },
+        { value: `${code}d - Food & Beverage`,                  label: 'D — Food & Beverage' },
+        { value: `${code}e - Staff & Labor`,                    label: 'E — Staff & Labor' },
+        { value: `${code}f - Marketing, Promotion & Branding`,  label: 'F — Marketing, Promotion & Branding' },
+        { value: `${code}g - Decor & Miscellaneous Supplies`,   label: 'G — Decor & Miscellaneous Supplies' },
+    ];
+}
+
+function populateBudgetCategorySelect() {
+    const sel = document.getElementById('budget-category');
+    if (!sel) return;
+    const cats = getBudgetCategories();
+    const current = sel.value;
+    sel.innerHTML = '<option value="">Select a category</option>' +
+        cats.map(c => `<option value="${escapeHtml(c.value)}">${escapeHtml(c.label)}</option>`).join('');
+    if (current) sel.value = current;
+}
+
 function renderBudget() {
+    if (state.activeEvent && !state.activeEvent.budgetSetup) {
+        openBudgetSetupModal();
+        return;
+    }
     renderBudgetGrouped();
 }
+
+window.resetBudgetSetup = async function() {
+    if (!state.currentEventId) return;
+    try {
+        await eventsCollection.doc(state.currentEventId).update({
+            budgetSetup: firebase.firestore.FieldValue.delete()
+        });
+        state.activeEvent.budgetSetup = null;
+        switchPage('budget');
+    } catch(e) {
+        console.error('Failed to reset budget setup:', e);
+        showToast('Error resetting setup', 'error');
+    }
+};
+
+// ── Budget Setup Modal ────────────────────────────────────────────
+function openBudgetSetupModal() {
+    const modal = document.getElementById('budget-setup-modal');
+    if (!modal) return;
+    document.getElementById('bsm-code-wrap').style.display = 'none';
+    document.getElementById('bsm-code').value = '';
+    document.getElementById('bsm-budget-cap').value = '';
+    document.getElementById('bsm-selected-set').value = '';
+    document.querySelectorAll('.bsm-choice').forEach(b => b.classList.remove('active'));
+    modal.classList.add('is-open');
+}
+
+window.selectBudgetCategorySet = function(set) {
+    document.querySelectorAll('.bsm-choice').forEach(b =>
+        b.classList.toggle('active', b.dataset.set === set)
+    );
+    document.getElementById('bsm-code-wrap').style.display = set === 'a-g' ? '' : 'none';
+    document.getElementById('bsm-selected-set').value = set;
+};
+
+window.saveBudgetSetup = async function() {
+    const set  = document.getElementById('bsm-selected-set').value;
+    const code = document.getElementById('bsm-code').value.trim();
+    if (!set) { showToast('Please choose A – G or A & B', 'error'); return; }
+    if (set === 'a-g' && !code) {
+        showToast('Please enter the GL code', 'error');
+        document.getElementById('bsm-code').focus();
+        return;
+    }
+    const setup = { categorySet: set, code: set === 'a-g' ? code : '6697' };
+    const capRaw = document.getElementById('bsm-budget-cap').value;
+    const cap = capRaw ? parseFloat(capRaw) : null;
+    try {
+        const update = { budgetSetup: setup };
+        if (cap) update.budgetCap = cap;
+        await eventsCollection.doc(state.currentEventId).update(update);
+        state.activeEvent.budgetSetup = setup;
+        if (cap) state.activeEvent.budgetCap = cap;
+        document.getElementById('budget-setup-modal').classList.remove('is-open');
+        renderBudgetGrouped();
+    } catch(e) {
+        console.error('Failed to save budget setup:', e);
+        showToast('Error saving setup', 'error');
+    }
+};
+// ─────────────────────────────────────────────────────────────────
 
 // Sort budget items by a column
 function sortBudgetBy(field) {
@@ -3923,6 +4018,7 @@ function openModal(config) {
 }
 
 function openBudgetModal(itemId = null) {
+    populateBudgetCategorySelect();
     openModal({
         modalId: 'budget-modal',
         formId: 'budget-form',
@@ -7764,7 +7860,7 @@ function renderJobTemplates() {
     const container = document.getElementById('role-mappings-content');
     if (!container) return;
 
-    const catOpts = BUDGET_CATEGORIES.map(c =>
+    const catOpts = getBudgetCategories().map(c =>
         '<option value="' + escapeHtml(c.value) + '">' + escapeHtml(c.label) + '</option>'
     ).join('');
 
@@ -7778,7 +7874,7 @@ function renderJobTemplates() {
         ? state.jobTemplates
             .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
             .map(t => {
-                const catLabel = BUDGET_CATEGORIES.find(c => c.value === t.category);
+                const catLabel = getBudgetCategories().find(c => c.value === t.category);
                 return '<tr>' +
                     '<td class="role-map-role">' + escapeHtml(t.name || '') + '</td>' +
                     '<td class="role-map-cat-label">' + escapeHtml(catLabel ? catLabel.label : t.category || '') + '</td>' +
