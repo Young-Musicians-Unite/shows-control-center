@@ -2050,9 +2050,6 @@ function renderDashboard() {
                     <button class="db2-icon-btn" onclick="openEventSettings()" title="Settings">
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v3M12 20v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M1 12h3M20 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"/></svg>
                     </button>
-                    <button class="db2-duplicate-btn" onclick="duplicateCurrentEvent()">
-                        <i class="ti ti-copy"></i> Duplicate show
-                    </button>
                 </div>
             </div>
 

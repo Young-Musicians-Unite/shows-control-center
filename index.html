@@ -179,7 +179,10 @@
             </div>
             <div class="hub-modal-footer settings-modal-footer">
                 <button class="btn-danger" onclick="deleteCurrentEvent()">Delete Event</button>
-                <button class="btn-primary" onclick="closeEventSettings()">Done</button>
+                <div style="display:flex;gap:8px">
+                    <button class="btn-secondary" onclick="closeEventSettings(); duplicateCurrentEvent()">Duplicate Show</button>
+                    <button class="btn-primary" onclick="closeEventSettings()">Done</button>
+                </div>
             </div>
         </div>
     </div>
