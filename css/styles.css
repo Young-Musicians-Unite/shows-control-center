@@ -10450,10 +10450,14 @@ table th,
     background: rgba(224, 85, 85, 0.12);
 }
 
-/* Row color palette button — hidden until row hover */
-.hub-event-row .hub-row-color-btn,
-.hub-block-row .hub-row-color-btn {
-    display: none;
+/* Row color palette button — absolutely positioned, never affects row height */
+.hub-cell-actions { position: relative; }
+.hub-row-color-btn {
+    position: absolute;
+    right: calc(100% + 8px);
+    top: 50%;
+    transform: translateY(-50%);
+    visibility: hidden;
     background: transparent;
     border: none;
     color: var(--ym-text-dim, #888);
@@ -10461,12 +10465,12 @@ table th,
     font-size: 0.85rem;
     padding: 4px 6px;
     border-radius: 4px;
-    margin-right: 4px;
+    white-space: nowrap;
     transition: color 0.15s, background 0.15s;
 }
 .hub-event-row:hover .hub-row-color-btn,
 .hub-block-row:hover .hub-row-color-btn {
-    display: inline-block;
+    visibility: visible;
 }
 .hub-row-color-btn:hover {
     color: var(--ym-text-light, #e8e2d4);

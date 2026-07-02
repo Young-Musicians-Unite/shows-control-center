@@ -1092,7 +1092,7 @@ function renderHub() {
         const rowAccent = ev.rowColor || '';
         return {
             sortKey: ev.date || '',
-            html: `<tr class="hub-event-row" style="${rowAccent ? 'box-shadow:inset 3px 0 0 ' + rowAccent : ''}">
+            html: `<tr class="hub-event-row" style="${rowAccent ? 'box-shadow:inset 2px 0 0 ' + rowAccent : ''}">
                 <td class="hub-cell-date hub-cell-editable" onclick="editHubCell(this,'${ev.id}','date')" data-value="${escapeHtml(ev.date || '')}" title="Click to edit">${fmtDate(ev.date)}</td>
                 <td class="hub-cell-name hub-cell-editable" onclick="editHubCell(this,'${ev.id}','name')" data-value="${escapeHtml(ev.name || '')}" title="Click to edit">${escapeHtml(ev.name || '—')}</td>
                 <td class="hub-cell-groups hub-cell-editable" onclick="editHubCell(this,'${ev.id}','performingGroups')" data-value="${escapeHtml(ev.performingGroups || '')}" title="Click to edit">${escapeHtml(ev.performingGroups || '—')}</td>
@@ -1122,7 +1122,7 @@ function renderHub() {
         const rowAccent = b.rowColor || '';
         return {
             sortKey: b.startDate || '',
-            html: `<tr class="hub-block-row" style="${rowAccent ? 'box-shadow:inset 3px 0 0 ' + rowAccent : ''}">
+            html: `<tr class="hub-block-row" style="${rowAccent ? 'box-shadow:inset 2px 0 0 ' + rowAccent : ''}">
                 <td class="hub-cell-date">${dateStr}</td>
                 <td class="hub-cell-name hub-block-label">${escapeHtml(b.label || '—')}</td>
                 <td class="hub-cell-groups"></td>
@@ -1204,7 +1204,7 @@ window.openRowColorPicker = function(e, type, id) {
             ${c.value === '' ? '✕' : ''}
         </button>`).join('');
 
-    picker.style.cssText = `position:fixed;top:${rect.bottom + 6}px;left:${rect.left - 140}px;z-index:9999`;
+    picker.style.cssText = `position:fixed;top:${rect.top + rect.height / 2 - 19}px;right:${window.innerWidth - rect.left + 8}px;z-index:9999`;
     document.body.appendChild(picker);
 
     setTimeout(() => document.addEventListener('click', _closePicker, { once: true }), 0);
