@@ -231,6 +231,39 @@ function findStaffSuggestions(vendorName) {
     });
 }
 
+// ── App-level Undo ────────────────────────────────────────────────
+const _appUndoStack = [];
+const _MAX_UNDO = 30;
+
+function pushUndo(label, undoFn) {
+    _appUndoStack.push({ label, undo: undoFn });
+    if (_appUndoStack.length > _MAX_UNDO) _appUndoStack.shift();
+}
+
+async function performUndo() {
+    const action = _appUndoStack.pop();
+    if (!action) { showToast('Nothing to undo', 'info'); return; }
+    try {
+        await action.undo();
+        showToast(`Undid: ${action.label}`);
+    } catch(e) {
+        console.error('Undo failed:', e);
+        showToast('Undo failed', 'error');
+    }
+}
+
+async function undoableDelete(collRef, id, label) {
+    const snap = await collRef.doc(id).get();
+    if (!snap.exists) return false;
+    const data = snap.data();
+    await collRef.doc(id).delete();
+    pushUndo(`Delete ${label}`, async () => { await collRef.doc(id).set(data); });
+    return true;
+}
+
+// Cmd+Z is handled by the canvas keydown listener at init time (calls undoGlobalAction → performUndo)
+// ─────────────────────────────────────────────────────────────────
+
 // Toast notification system
 function showToast(message, type = 'success', duration = 3000) {
     const container = document.getElementById('toast-container');
@@ -1159,8 +1192,14 @@ function renderHub() {
 // ── Block Dates ───────────────────────────────────────────────────
 window.deleteBlockDate = async function(id) {
     if (!confirm('Delete this date marker?')) return;
+    const b = state.blockDates.find(b => b.id === id);
+    if (b) {
+        const { id: _id, ...data } = b;
+        pushUndo('Delete date marker', async () => { await db.collection('blockDates').doc(id).set(data); });
+    }
     try {
         await db.collection('blockDates').doc(id).delete();
+        showToast('Date marker deleted — Cmd+Z to undo');
     } catch(e) {
         console.error('Failed to delete block date:', e);
         showToast('Error removing block date', 'error');
@@ -1219,12 +1258,16 @@ window.applyRowColor = async function(type, id, color) {
     try {
         if (type === 'event') {
             const ev = state.events.find(e => e.id === id);
+            const prev = ev?.rowColor || '';
             if (ev) ev.rowColor = color;
             await eventsCollection.doc(id).update({ rowColor: color });
+            pushUndo('Row color', async () => { await eventsCollection.doc(id).update({ rowColor: prev }); });
         } else {
             const b = state.blockDates.find(b => b.id === id);
+            const prev = b?.rowColor || '';
             if (b) b.rowColor = color;
             await db.collection('blockDates').doc(id).update({ rowColor: color });
+            pushUndo('Row color', async () => { await db.collection('blockDates').doc(id).update({ rowColor: prev }); });
         }
         renderHub();
     } catch(e) {
@@ -1274,6 +1317,8 @@ window.editHubCell = function(cell, eventId, field) {
 };
 
 window.updateEventPhase = async function(eventId, phaseId, selectEl) {
+    const ev = state.events.find(e => e.id === eventId);
+    const prevPhaseId = ev?.phase || '';
     const phase = PHASES.find(p => p.id === phaseId);
     if (phase && selectEl) {
         selectEl.style.background = phase.color;
@@ -1284,8 +1329,12 @@ window.updateEventPhase = async function(eventId, phaseId, selectEl) {
             phase: phaseId,
             updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
         });
-        const ev = state.events.find(e => e.id === eventId);
         if (ev) ev.phase = phaseId;
+        pushUndo('Phase change', async () => {
+            await eventsCollection.doc(eventId).update({ phase: prevPhaseId });
+            if (ev) ev.phase = prevPhaseId;
+            renderHub();
+        });
     } catch (e) {
         console.error('Failed to update phase:', e);
     }
@@ -4238,12 +4287,23 @@ async function handleFormSubmit(e, config) {
     try {
         let result = { isNew: false, docId: id };
         if (id) {
+            const before = state[config.stateKey]?.find(item => item.id === id);
+            const snapshot = before ? { ...before } : null;
             await collections[config.collection].doc(id).update(data);
+            if (snapshot) {
+                const { id: _id, ...restSnapshot } = snapshot;
+                pushUndo(`Edit ${config.itemName}`, async () => {
+                    await collections[config.collection].doc(id).update(restSnapshot);
+                });
+            }
             showToast(`${config.itemName.charAt(0).toUpperCase() + config.itemName.slice(1)} updated`);
         } else {
             data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
             const docRef = await collections[config.collection].add(data);
             result = { isNew: true, docId: docRef.id };
+            pushUndo(`Add ${config.itemName}`, async () => {
+                await collections[config.collection].doc(docRef.id).delete();
+            });
             showToast(`${config.itemName.charAt(0).toUpperCase() + config.itemName.slice(1)} added`);
         }
         closeAllModals();
@@ -4452,10 +4512,13 @@ function createDeleteHandler(collectionKey, itemName) {
     return async (id) => {
         if (confirm(`Are you sure you want to delete this ${itemName}?`)) {
             const item = state[collectionKey]?.find(i => i.id === id);
+            const eventId = state.currentEventId;
             if (item) {
                 const { id: _id, ...data } = item;
-                state.globalUndoStack.push({ collection: collectionKey, id, data, eventId: state.currentEventId });
-                if (state.globalUndoStack.length > 20) state.globalUndoStack.shift();
+                pushUndo(`Delete ${itemName}`, async () => {
+                    if (eventId !== state.currentEventId) { showToast('Nothing to undo', 'info'); return; }
+                    await collections[collectionKey].doc(id).set(data);
+                });
             }
             try {
                 await collections[collectionKey].doc(id).delete();
@@ -4469,19 +4532,7 @@ function createDeleteHandler(collectionKey, itemName) {
 }
 
 async function undoGlobalAction() {
-    const action = state.globalUndoStack.pop();
-    if (!action) { showToast('Nothing to undo', 'info'); return; }
-    if (action.eventId && action.eventId !== state.currentEventId) {
-        showToast('Nothing to undo', 'info');
-        return;
-    }
-    try {
-        await collections[action.collection].doc(action.id).set(action.data);
-        showToast('Undone');
-    } catch (error) {
-        console.error('Error undoing:', error);
-        showToast('Error undoing action', 'error');
-    }
+    await performUndo();
 }
 
 const _baseDeleteBudgetItem = createDeleteHandler('budget', 'budget item');
@@ -4496,10 +4547,13 @@ window.toggleBudgetConfirmed = toggleBudgetConfirmed;
 window.deleteTimelineItem = async (id) => {
     if (!confirm('Are you sure you want to delete this task?')) return;
     const item = state.timeline.find(i => i.id === id);
+    const eventId = state.currentEventId;
     if (item) {
         const { id: _id, ...data } = item;
-        state.globalUndoStack.push({ collection: 'timeline', id, data, eventId: state.currentEventId });
-        if (state.globalUndoStack.length > 20) state.globalUndoStack.shift();
+        pushUndo('Delete task', async () => {
+            if (eventId !== state.currentEventId) { showToast('Nothing to undo', 'info'); return; }
+            await collections.timeline.doc(id).set(data);
+        });
     }
     try {
         await collections.timeline.doc(id).delete();
