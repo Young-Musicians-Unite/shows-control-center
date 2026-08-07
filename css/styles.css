@@ -7605,10 +7605,32 @@ body.menu-open::after {
 }
 
 .confirmed-checkbox {
-    width: 18px;
-    height: 18px;
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    border: 1.5px solid rgba(255,255,255,0.20);
+    background: transparent;
     cursor: pointer;
-    accent-color: #4CAF50;
+    vertical-align: middle;
+    position: relative;
+}
+.confirmed-checkbox:checked {
+    background: #4A7FD4;
+    border-color: #4A7FD4;
+}
+.confirmed-checkbox:checked::after {
+    content: '';
+    position: absolute;
+    left: 3px;
+    top: 0px;
+    width: 4px;
+    height: 8px;
+    border: 1.5px solid #fff;
+    border-top: none;
+    border-left: none;
+    transform: rotate(45deg);
 }
 
 .checkbox-group {
@@ -10388,6 +10410,104 @@ table th,
 /* Hub empty state */
 .hub-empty p { color: var(--ym-text-dim) !important; }
 .hub-empty .hub-new-btn { margin-top: 12px; }
+
+/* Date Marker toggle in new-event modal */
+.hub-marker-toggle {
+    padding-bottom: 12px;
+    border-bottom: 0.5px solid var(--ym-border, rgba(255,255,255,0.08));
+    margin-bottom: 4px;
+}
+.hub-checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    color: var(--ym-text-light, #e8e2d4);
+}
+.hub-checkbox-label input[type="checkbox"] {
+    width: 15px;
+    height: 15px;
+    accent-color: var(--ym-gold, #c8a356);
+    cursor: pointer;
+}
+
+/* Block date rows in hub table */
+.hub-block-row td { opacity: 0.82; }
+.hub-block-label { font-style: italic; }
+.hub-block-delete-btn {
+    background: transparent;
+    border: none;
+    color: var(--ym-text-dim, #888);
+    cursor: pointer;
+    font-size: 0.8rem;
+    padding: 4px 8px;
+    border-radius: 4px;
+    transition: color 0.15s, background 0.15s;
+}
+.hub-block-delete-btn:hover {
+    color: #e05555;
+    background: rgba(224, 85, 85, 0.12);
+}
+
+/* Row color palette button — absolutely positioned, never affects row height */
+.hub-cell-actions { position: relative; }
+.hub-row-color-btn {
+    position: absolute;
+    right: calc(100% + 8px);
+    top: 50%;
+    transform: translateY(-50%);
+    visibility: hidden;
+    background: transparent;
+    border: none;
+    color: var(--ym-text-dim, #888);
+    cursor: pointer;
+    font-size: 0.85rem;
+    padding: 4px 6px;
+    border-radius: 4px;
+    white-space: nowrap;
+    transition: color 0.15s, background 0.15s;
+}
+.hub-event-row:hover .hub-row-color-btn,
+.hub-block-row:hover .hub-row-color-btn {
+    visibility: visible;
+}
+.hub-row-color-btn:hover {
+    color: var(--ym-text-light, #e8e2d4);
+    background: rgba(255,255,255,0.07);
+}
+
+/* Row color picker popover */
+#hub-row-color-picker {
+    display: flex;
+    gap: 6px;
+    background: #1e1e1c;
+    border: 0.5px solid rgba(255,255,255,0.12);
+    border-radius: 8px;
+    padding: 8px 10px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+}
+.hub-color-swatch {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.2);
+    cursor: pointer;
+    transition: transform 0.12s, box-shadow 0.12s;
+}
+.hub-color-swatch:hover {
+    transform: scale(1.25);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+}
+.hub-color-clear {
+    background: rgba(255,255,255,0.06) !important;
+    color: #888;
+    font-size: 0.7rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-color: rgba(255,255,255,0.1) !important;
+}
 
 /* ── Phase select in hub ─────────────────────────────────────── */
 .phase-select,

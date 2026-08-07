@@ -405,7 +405,7 @@ h1, h2, h3 {
 .status-confirmed,
 .gi-status-confirmed,
 .gi-sb-confirmed,
-[class*="confirmed"] {
+[class*="confirmed"]:not(.confirmed-cell):not(.confirmed-checkbox):not(.cb-box) {
   background: var(--green-bg) !important;
   color: var(--green-text) !important;
 }
@@ -987,6 +987,239 @@ label {
   --tw-shadow: none !important;
 }
 
+/* ── Budget page ────────────────────────────────────────────────────── */
+.cat-card {
+  background: #1a1d22 !important;
+  border: 0.5px solid rgba(255,255,255,0.07) !important;
+  border-radius: 10px !important;
+  overflow: hidden !important;
+  margin-bottom: 8px !important;
+  transition: border-color 0.12s !important;
+}
+.cat-card:hover { border-color: rgba(255,255,255,0.13) !important; }
+.cat-main {
+  display: flex !important;
+  align-items: center !important;
+  padding: 13px 18px !important;
+  gap: 12px !important;
+  cursor: pointer !important;
+  user-select: none !important;
+}
+.cat-toggle i {
+  font-size: 11px !important;
+  color: rgba(255,255,255,0.25) !important;
+  transition: transform 0.15s !important;
+  flex-shrink: 0 !important;
+}
+.cat-card.open .cat-toggle i { transform: rotate(90deg) !important; }
+.cat-name {
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  color: rgba(255,255,255,0.80) !important;
+  flex: 1 !important;
+  font-family: 'Inter', sans-serif !important;
+}
+.cat-items {
+  font-size: 11px !important;
+  color: rgba(255,255,255,0.25) !important;
+  white-space: nowrap !important;
+  margin-right: 8px !important;
+  font-family: 'Inter', sans-serif !important;
+}
+.cat-stats {
+  display: flex !important;
+  align-items: center !important;
+  gap: 24px !important;
+  flex-shrink: 0 !important;
+}
+.cs-label {
+  font-size: 9px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.08em !important;
+  text-transform: uppercase !important;
+  color: rgba(255,255,255,0.22) !important;
+  margin-bottom: 2px !important;
+  font-family: 'IBM Plex Mono', monospace !important;
+}
+.cs-val {
+  font-size: 12.5px !important;
+  font-weight: 500 !important;
+  color: rgba(255,255,255,0.55) !important;
+  font-family: 'Inter', sans-serif !important;
+}
+.cs-val.over { color: #f87171 !important; }
+.cs-val.good { color: #4ade80 !important; }
+.cat-bar-wrap { padding: 0 18px 11px !important; }
+.cat-bar-track {
+  height: 2.5px !important;
+  background: rgba(255,255,255,0.07) !important;
+  border-radius: 2px !important;
+  overflow: hidden !important;
+}
+.cat-bar-fill {
+  height: 100% !important;
+  border-radius: 2px !important;
+  background: rgba(255,255,255,0.25) !important;
+  transition: width 0.4s ease !important;
+}
+.cat-bar-fill.over { background: #f87171 !important; }
+
+/* ── BUDGET CUSTOM CHECKBOX ─────────────────────────────────── */
+.cb-box {
+  width: 14px !important;
+  height: 14px !important;
+  border-radius: 3px !important;
+  border: 1.5px solid rgba(255,255,255,0.18) !important;
+  background: transparent !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  flex-shrink: 0 !important;
+}
+.cb-box.cb-checked {
+  background: #4A7FD4 !important;
+  border-color: #4A7FD4 !important;
+}
+.cb-box i { font-size: 9px !important; color: #fff !important; }
+
+/* ── LINE ITEMS TABLE ───────────────────────────────────────── */
+.line-table {
+  display: none !important;
+  border-top: 0.5px solid rgba(255,255,255,0.06) !important;
+  width: 100% !important;
+  border-collapse: collapse !important;
+  table-layout: fixed !important;
+}
+.cat-card.open .line-table { display: table !important; }
+
+.line-table thead tr {
+  border-bottom: 0.5px solid rgba(255,255,255,0.06) !important;
+  background: rgba(255,255,255,0.015) !important;
+}
+.line-table th {
+  font-size: 9px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.09em !important;
+  text-transform: uppercase !important;
+  color: rgba(255,255,255,0.22) !important;
+  padding: 7px 10px !important;
+  text-align: left !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  font-family: 'IBM Plex Mono', monospace !important;
+  cursor: pointer !important;
+}
+.line-table th.r { text-align: right !important; }
+.line-table th.c { text-align: center !important; }
+
+.line-table tbody tr {
+  border-bottom: 0.5px solid rgba(255,255,255,0.04) !important;
+  transition: background 0.10s !important;
+}
+.line-table tbody tr:last-child { border-bottom: none !important; }
+.line-table tbody tr:hover { background: rgba(255,255,255,0.025) !important; }
+
+.line-table td {
+  padding: 8px 10px !important;
+  font-size: 11.5px !important;
+  color: rgba(255,255,255,0.55) !important;
+  vertical-align: middle !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  font-family: 'Inter', sans-serif !important;
+  cursor: pointer !important;
+}
+.line-table td.r { text-align: right !important; font-variant-numeric: tabular-nums !important; }
+.line-table td.c { text-align: center !important; cursor: default !important; }
+
+
+.td-vendor {
+  font-weight: 500 !important;
+  color: rgba(255,255,255,0.80) !important;
+  display: block !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+.td-desc {
+  color: rgba(255,255,255,0.38) !important;
+  font-size: 11px !important;
+  display: block !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+.td-notes {
+  color: rgba(255,255,255,0.32) !important;
+  font-size: 10.5px !important;
+  white-space: normal !important;
+  line-height: 1.4 !important;
+  display: block !important;
+}
+
+/* Difference column — only this column gets color */
+.diff-over  { color: #f87171 !important; font-weight: 500 !important; }
+.diff-under { color: rgba(255,255,255,0.40) !important; }
+.diff-zero  { color: rgba(255,255,255,0.22) !important; }
+
+/* Payment status badges */
+.badge-paid {
+  display: inline-flex !important; padding: 2px 7px !important;
+  border-radius: 20px !important; font-size: 9px !important;
+  font-weight: 600 !important; white-space: nowrap !important;
+  background: rgba(74,222,128,0.10) !important; color: #4ade80 !important;
+  border: 0.5px solid rgba(74,222,128,0.16) !important;
+  font-family: 'IBM Plex Mono', monospace !important;
+}
+.badge-notpaid {
+  display: inline-flex !important; padding: 2px 7px !important;
+  border-radius: 20px !important; font-size: 9px !important;
+  font-weight: 600 !important; white-space: nowrap !important;
+  background: rgba(248,113,113,0.10) !important; color: #f87171 !important;
+  border: 0.5px solid rgba(248,113,113,0.16) !important;
+  font-family: 'IBM Plex Mono', monospace !important;
+}
+.badge-pending {
+  display: inline-flex !important; padding: 2px 7px !important;
+  border-radius: 20px !important; font-size: 9px !important;
+  font-weight: 600 !important; white-space: nowrap !important;
+  background: rgba(251,191,36,0.10) !important; color: #fbbf24 !important;
+  border: 0.5px solid rgba(251,191,36,0.16) !important;
+  font-family: 'IBM Plex Mono', monospace !important;
+}
+
+/* Row actions — hidden until row hover */
+.row-actions {
+  display: flex !important; align-items: center !important;
+  gap: 3px !important; justify-content: flex-end !important;
+  opacity: 0 !important; transition: opacity 0.10s !important;
+}
+.line-table tbody tr:hover .row-actions { opacity: 1 !important; }
+.act {
+  width: 22px !important; height: 22px !important; border-radius: 4px !important;
+  border: 0.5px solid rgba(255,255,255,0.08) !important;
+  background: transparent !important;
+  color: rgba(255,255,255,0.28) !important;
+  display: flex !important; align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important; transition: all 0.12s !important;
+}
+.act:hover { background: rgba(255,255,255,0.06) !important; color: rgba(255,255,255,0.70) !important; }
+.act.del:hover {
+  background: rgba(248,113,113,0.10) !important;
+  color: #f87171 !important;
+  border-color: rgba(248,113,113,0.20) !important;
+}
+.act i { font-size: 10px !important; }
+
+.stat-card--clickable {
+  cursor: pointer !important;
+}
+.stat-card--clickable:hover {
+  border-color: rgba(74,127,212,0.35) !important;
+  background: rgba(74,127,212,0.06) !important;
+}
 .stat-card:hover,
 .hub-event-card:hover,
 .card:hover,
