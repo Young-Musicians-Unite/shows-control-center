@@ -622,20 +622,91 @@ body {
 .hamburger       { display: none !important; }
 #nav-event-settings-btn { display: none !important; }
 
-/* Hub-mode was designed for the old horizontal nav — override it so
-   the sidebar always shows all nav items on every page             */
-.nav-menu.hub-mode .nav-group,
-.nav-menu.hub-mode a.nav-link[data-page] {
-  display: flex !important;
+/* ── Events hub: hide sidebar, show hamburger drawer ─────────────
+   On all other pages the sidebar stays fixed. On the events hub
+   (hub-mode) the sidebar slides off-screen and a hamburger appears
+   top-left. Clicking it slides the full nav back in as a drawer.  */
+
+body:has(.nav-menu.hub-mode) {
+  padding-left: 0 !important;
 }
+.navbar {
+  transition: left 220ms ease !important;
+}
+.navbar:has(.nav-menu.hub-mode) {
+  left: -210px !important;
+}
+.navbar:has(.nav-menu.hub-mode.active) {
+  left: 0 !important;
+}
+
+/* Hamburger fixed top-left on events hub only */
 .nav-container:has(.nav-menu.hub-mode) .hamburger {
+  display: flex !important;
+  position: fixed !important;
+  top: 14px !important;
+  left: 16px !important;
+  z-index: 300 !important;
+  background: transparent !important;
+  border: none !important;
+  padding: 6px !important;
+  cursor: pointer !important;
+  color: var(--text-secondary) !important;
+}
+.nav-container:has(.nav-menu.hub-mode) .hamburger:hover {
+  color: var(--text-primary) !important;
+}
+
+/* No backdrop — keep events page fully visible behind the drawer */
+
+/* Our sidebar forces .nav-link { display:flex !important } which beats the original
+   hub-mode display:none. Re-hide them explicitly with higher specificity + !important */
+.nav-menu.hub-mode .nav-group,
+.nav-menu.hub-mode a.nav-link[data-page],
+.nav-menu.hub-mode .nav-group-toggle,
+.nav-menu.hub-mode .nav-dropdown {
   display: none !important;
 }
 
-/* Seasons nav — always visible in sidebar */
-#hub-seasons-nav,
-.hub-seasons-nav {
-  display: block !important;
+/* Brighten drawer text to match the rest of the UI */
+.app-settings-btn {
+  color: var(--text-primary) !important;
+  font-family: var(--font-body) !important;
+  font-size: 13px !important;
+  padding: 9px 16px !important;
+  border-radius: var(--radius-sm) !important;
+}
+.app-settings-btn:hover {
+  background: var(--bg-hover) !important;
+  color: var(--text-primary) !important;
+}
+.hub-seasons-label {
+  color: var(--text-tertiary) !important;
+  font-family: var(--font-mono) !important;
+  font-size: 10px !important;
+  letter-spacing: 0.08em !important;
+}
+.hub-season-link {
+  color: var(--text-primary) !important;
+  font-family: var(--font-body) !important;
+  font-size: 13px !important;
+  padding: 9px 16px !important;
+  border-radius: var(--radius-sm) !important;
+}
+.hub-season-link:hover {
+  background: var(--bg-hover) !important;
+  color: var(--text-primary) !important;
+}
+.hub-season-link.active {
+  background: var(--bg-hover) !important;
+  color: var(--text-primary) !important;
+  font-weight: 700 !important;
+}
+.hub-season-add-btn {
+  color: var(--text-secondary) !important;
+  font-family: var(--font-body) !important;
+  font-size: 12px !important;
+  padding: 7px 16px !important;
 }
 
 /* Nav menu becomes vertical column */
