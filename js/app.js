@@ -1253,6 +1253,7 @@ async function enterEvent(eventId) {
     if (eventCard) eventCard.style.display = 'none';
 
     document.getElementById('nav-event-settings-btn').style.display = 'flex';
+    document.getElementById('sb-event-settings-btn').style.display = 'flex';
     document.querySelector('.nav-menu').classList.remove('hub-mode');
 
     updateNavForEvent(event);
@@ -1292,11 +1293,13 @@ async function backToHub() {
     const brand = document.querySelector('.nav-brand');
     brand.innerHTML = `<div class="sb-eyebrow">YMU Shows</div><div class="sb-brand-title">Events</div>`;
     document.getElementById('nav-event-settings-btn').style.display = 'none';
+    document.getElementById('sb-event-settings-btn').style.display = 'none';
     document.querySelector('.nav-menu').classList.add('hub-mode');
     document.querySelectorAll('.nav-link[data-page]').forEach(l => {
-        l.classList.remove('nav-link--disabled', 'nav-link--locked');
+        l.classList.remove('nav-hidden', 'nav-link--disabled', 'nav-link--locked');
         l.querySelector('.nav-lock-icon')?.remove();
     });
+    document.querySelectorAll('.nav-group').forEach(g => g.classList.remove('nav-hidden'));
     const ec = document.getElementById('sidebar-event-card');
     if (ec) ec.style.display = 'none';
 
@@ -1307,40 +1310,27 @@ async function backToHub() {
 function updateNavForEvent(event) {
     const enabled = new Set(event.enabledPages || []);
 
-    // Show all nav links — locked ones get dimmed + lock icon instead of hidden
+    // Hide disabled pages, show enabled ones
     document.querySelectorAll('.nav-link[data-page]').forEach(link => {
         const isEnabled = enabled.has(link.dataset.page);
-        link.classList.toggle('nav-link--locked', !isEnabled);
-        link.classList.remove('nav-link--disabled');
-        link.style.display = '';
-        // Add/remove lock icon
-        let lockEl = link.querySelector('.nav-lock-icon');
-        if (!isEnabled) {
-            if (!lockEl) {
-                lockEl = document.createElement('span');
-                lockEl.className = 'nav-lock-icon';
-                lockEl.innerHTML = '<svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="8" height="6" rx="1"/><path d="M4 5V3.5a2 2 0 0 1 4 0V5"/></svg>';
-                link.appendChild(lockEl);
-            }
-        } else if (lockEl) {
-            lockEl.remove();
-        }
+        link.classList.toggle('nav-hidden', !isEnabled);
+        link.classList.remove('nav-link--locked', 'nav-link--disabled');
+        link.querySelector('.nav-lock-icon')?.remove();
     });
 
-    // Show all groups — never hide them
+    // Hide nav groups where every page link is hidden
     document.querySelectorAll('.nav-group').forEach(g => {
+        const links = g.querySelectorAll('.nav-link[data-page]');
+        const allHidden = links.length > 0 && [...links].every(l => l.classList.contains('nav-hidden'));
+        g.classList.toggle('nav-hidden', allHidden);
         g.classList.remove('nav-group--all-disabled');
-        g.style.display = '';
     });
 
-    // Remove flat mode — always use grouped layout
     document.getElementById('nav-menu')?.classList.remove('nav-flat');
 
-    // Apply/remove locked overlay on each page
+    // Remove locked overlay on all pages (no longer used)
     ALL_PAGES.forEach(p => {
-        const el = document.getElementById(p.id);
-        if (!el) return;
-        el.classList.toggle('page--locked', !enabled.has(p.id));
+        document.getElementById(p.id)?.classList.remove('page--locked');
     });
 }
 
