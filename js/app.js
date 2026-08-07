@@ -1650,141 +1650,182 @@ function renderDashboard() {
         } catch(e) { dateStr = event.date; }
     }
 
-    // ── Icons ────────────────────────────────────────────────────
-    const arrow = `<svg class="db-card-arrow" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>`;
+    // ── Phase → badge mapping (token-based) ──────────────────────
+    const phaseBadge = {
+        'phase-0':   { label: 'Planning',      bg: 'var(--gray-bg)',   text: 'var(--gray-text)'   },
+        'phase-1':   { label: 'In Talks',      bg: 'var(--purple-bg)', text: 'var(--purple-text)' },
+        'phase-2':   { label: 'Walk Thru',     bg: 'var(--blue-bg)',   text: 'var(--blue-text)'   },
+        'phase-3':   { label: 'Confirmed',     bg: 'var(--green-bg)',  text: 'var(--green-text)'  },
+        'phase-4':   { label: 'Invoiced',      bg: 'var(--amber-bg)',  text: 'var(--amber-text)'  },
+        'phase-5':   { label: 'In Production', bg: 'var(--blue-bg)',   text: 'var(--blue-text)'   },
+        'phase-6':   { label: 'Crew Ready',    bg: 'var(--blue-bg)',   text: 'var(--blue-text)'   },
+        'phase-7':   { label: 'Show Day',      bg: 'var(--amber-bg)',  text: 'var(--amber-text)'  },
+        'phase-8':   { label: 'Post Show',     bg: 'var(--amber-bg)',  text: 'var(--amber-text)'  },
+        'phase-9':   { label: 'Closing',       bg: 'var(--purple-bg)', text: 'var(--purple-text)' },
+        'completed': { label: 'Completed',     bg: 'var(--green-bg)',  text: 'var(--green-text)'  },
+    };
 
-    const budgetIcon = `<div class="db-card-icon" style="background:rgba(201,169,97,0.13);color:#c9a961">
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-    </div>`;
+    // ── Upcoming shows rows ───────────────────────────────────────
+    const today = new Date();
+    const allEvents = (state.events || []).slice().sort((a, b) => {
+        if (!a.date && !b.date) return 0;
+        if (!a.date) return 1;
+        if (!b.date) return -1;
+        return a.date.localeCompare(b.date);
+    });
 
-    const timelineIcon = `<div class="db-card-icon" style="background:rgba(99,179,237,0.13);color:#63b3ed">
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-    </div>`;
-
-    const staffIcon = `<div class="db-card-icon" style="background:rgba(72,187,120,0.13);color:#68d391">
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-    </div>`;
-
-    const panelClear = issues.length === 0;
-
-    // ── Resources ────────────────────────────────────────────────
-    const resources = state.activeEvent.resources || [];
-    const resourcesHtml = `
-        <div class="db-panel db-res-panel">
-            <div class="db-panel-hdr">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(201,169,97,0.65)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-                <span>Resources</span>
-                <button class="db-res-add-btn" onclick="toggleDashResourceForm()" title="Add resource">+</button>
+    const showRows = allEvents.map(ev => {
+        const phase   = PHASES.find(p => p.id === ev.phase) || PHASES[0];
+        const badge   = phaseBadge[ev.phase] || phaseBadge['phase-0'];
+        const evDate  = ev.date ? new Date(ev.date + 'T12:00:00') : null;
+        const daysOut = evDate ? Math.ceil((evDate - today) / 86400000) : null;
+        const evDateStr = evDate
+            ? evDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+            : 'TBD';
+        const evDateSub = daysOut === null ? '' : daysOut > 0
+            ? `${daysOut} day${daysOut !== 1 ? 's' : ''} out`
+            : daysOut === 0 ? 'Today' : 'Past';
+        const meta = [ev.performingGroups, ev.venue].filter(Boolean).join(' · ') || 'No details yet';
+        return `
+        <div class="show-row" onclick="enterEvent('${escapeHtml(ev.id)}')">
+            <div class="show-icon" style="background:${phase.color}"></div>
+            <div class="show-body">
+                <div class="show-name">${escapeHtml(ev.name || 'Untitled')}</div>
+                <div class="show-meta">${escapeHtml(meta)}</div>
             </div>
-            <div class="db-res-form" id="db-res-form">
-                <input class="db-res-input" id="db-res-name" placeholder="Name…" autocomplete="off" />
-                <input class="db-res-input" id="db-res-url" placeholder="https://…" autocomplete="off" onkeydown="if(event.key==='Enter')addDashboardResource()" />
-                <button class="db-res-submit" onclick="addDashboardResource()">Add Resource</button>
+            <span class="show-badge" style="background:${badge.bg};color:${badge.text}">${badge.label}</span>
+            <div class="show-date">
+                <div class="show-date-main">${evDateStr}</div>
+                ${evDateSub ? `<div class="show-date-sub">${evDateSub}</div>` : ''}
             </div>
-            ${resources.length > 0 ? `
-            <div class="db-issues-list">
-                ${resources.map((r, i) => `
-                <div class="db-resource">
-                    <a href="${escapeHtml(r.url)}" target="_blank" rel="noopener noreferrer" class="db-res-link" onclick="event.stopPropagation()">
-                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-                        ${escapeHtml(r.name)}
-                    </a>
-                    <button class="db-res-remove" onclick="removeDashboardResource(${i})" title="Remove">×</button>
-                </div>`).join('')}
-            </div>` : `
-            <div class="db-res-empty">No resources yet — add links, docs, or briefs</div>`}
         </div>`;
+    }).join('');
+
+    // ── Open tasks rows ───────────────────────────────────────────
+    const taskItems = [...state.timeline].sort((a, b) => {
+        const aDone = a.completed === true || a.status === 'complete';
+        const bDone = b.completed === true || b.status === 'complete';
+        return aDone - bDone;
+    }).slice(0, 8);
+
+    const taskRows = taskItems.length > 0
+        ? taskItems.map(t => {
+            const done  = t.completed === true || t.status === 'complete';
+            const label = (t.event || t.item || 'Untitled task').trim();
+            return `
+            <div class="task-row${done ? ' done' : ''}">
+                <div class="task-cb${done ? ' checked' : ''}">
+                    ${done ? `<svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="2 6 5 9 10 3"/></svg>` : ''}
+                </div>
+                <span class="task-label">${escapeHtml(label)}</span>
+            </div>`;
+          }).join('')
+        : `<div class="db2-empty">No timeline items yet</div>`;
+
+    // ── Crew rows ─────────────────────────────────────────────────
+    const avatarPalette = [
+        { bg: 'var(--green-bg)',  text: 'var(--green-text)'  },
+        { bg: 'var(--amber-bg)',  text: 'var(--amber-text)'  },
+        { bg: 'var(--blue-bg)',   text: 'var(--blue-text)'   },
+        { bg: 'var(--purple-bg)', text: 'var(--purple-text)' },
+        { bg: 'var(--pink-bg)',   text: 'var(--pink-text)'   },
+        { bg: 'var(--gray-bg)',   text: 'var(--gray-text)'   },
+    ];
+    const crewRows = state.staff.length > 0
+        ? state.staff.slice(0, 7).map((s, i) => {
+            const initials = (s.name || '?').split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
+            const av = avatarPalette[i % avatarPalette.length];
+            const filled = !s.isPlaceholder;
+            return `
+            <div class="db2-crew-item">
+                <div class="db2-avatar" style="background:${av.bg};color:${av.text}">${initials}</div>
+                <div class="db2-crew-body">
+                    <div class="db2-crew-name">${escapeHtml(s.name || 'Open Role')}</div>
+                    <div class="db2-crew-role">${escapeHtml(s.role || s.department || '—')}</div>
+                </div>
+                <span class="show-badge" style="${filled
+                    ? 'background:var(--green-bg);color:var(--green-text)'
+                    : 'background:var(--amber-bg);color:var(--amber-text)'}">${filled ? 'Confirmed' : 'Pending'}</span>
+            </div>`;
+          }).join('')
+        : `<div class="db2-empty">No crew added yet</div>`;
 
     // ── Render ───────────────────────────────────────────────────
     dash.innerHTML = `
-        <div class="db-header">
-            <div>
-                <div class="db-event-name">${escapeHtml(event.name || 'Event')}</div>
-                ${dateStr ? `<div class="db-event-date">${dateStr}</div>` : ''}
-            </div>
-            ${countdownHtml}
-        </div>
+        <div class="db2-wrap">
 
-        <div class="db-grid">
-
-            <!-- ── Left column ── -->
-            <div class="db-left">
-                <div class="db-panel${panelClear ? ' db-panel-clear' : ''}">
-                    <div class="db-panel-hdr">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="${panelClear ? '#68d391' : '#fc8181'}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                        <span>Needs Attention</span>
-                        <span class="db-badge ${panelClear ? 'ok' : ''}">${panelClear ? '✓' : issues.length}</span>
-                    </div>
-                    ${issues.length > 0 ? (() => {
-                        const PREVIEW = 3;
-                        const renderIssue = iss => `
-                        <div class="db-issue" onclick="goToIssue('${iss.page}','${iss.id || ''}','${iss.type}')">
-                            <span class="db-issue-dot ${iss.type}"></span>
-                            <div class="db-issue-body">
-                                <div class="db-issue-title">${escapeHtml(iss.title)}</div>
-                                <div class="db-issue-tag">${iss.type === 'staff' ? 'Staff' : iss.type === 'contact' ? 'Contact' : iss.type === 'budget' ? 'Budget' : 'Timeline'}</div>
-                            </div>
-                            <span class="db-issue-arrow">›</span>
-                        </div>`;
-                        const visible = issues.slice(0, PREVIEW).map(renderIssue).join('');
-                        const hidden  = issues.slice(PREVIEW).map(renderIssue).join('');
-                        const extra   = issues.length - PREVIEW;
-                        return `
-                    <div class="db-issues-list">
-                        ${visible}
-                        ${extra > 0 ? `
-                        <div class="db-issues-overflow" id="db-issues-overflow" style="display:none">${hidden}</div>
-                        <button class="db-issues-more" id="db-issues-more-btn" onclick="toggleDashIssues()">Show ${extra} more</button>
-                        ` : ''}
-                    </div>`;
-                    })() : `
-                    <div class="db-all-clear">
-                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                        All looking good
-                    </div>`}
+            <!-- Topbar -->
+            <div class="db2-topbar">
+                <h1 class="db2-topbar-title">Dashboard</h1>
+                <div class="db2-topbar-actions">
+                    <button class="db2-icon-btn" onclick="switchPage('events-hub')" title="All Events">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                    </button>
+                    <button class="db2-icon-btn" onclick="openEventSettings()" title="Settings">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v3M12 20v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M1 12h3M20 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"/></svg>
+                    </button>
+                    <button class="db2-new-btn" onclick="switchPage('events-hub')">+ New Show</button>
                 </div>
-                ${resourcesHtml}
             </div>
 
-            <!-- ── Right: Section cards ── -->
-            <div class="db-cards">
-
+            <!-- Stats row -->
+            <div class="db2-stats">
+                <div class="db2-stat" onclick="switchPage('events-hub')">
+                    <div class="db2-stat-label">Total Shows</div>
+                    <div class="db2-stat-num">${(state.events || []).length}</div>
+                    <div class="db2-stat-sub">${escapeHtml(state.currentSeason || '')}</div>
+                </div>
                 ${enabled.has('budget') ? `
-                <div class="db-card" style="--card-accent:#c9a961" onclick="switchPage('budget')">
-                    <div class="db-card-hdr">${budgetIcon}<span class="db-card-label">Budget</span>${arrow}</div>
-                    <div class="db-card-main">${formatCurrency(remaining)}</div>
-                    <span class="db-card-sub">remaining of ${formatCurrency(totalBudget)}</span>
-                    <div class="db-card-detail${overBudget ? ' db-card-warn' : ''}">${overBudget ? '⚠ Over budget' : formatCurrency(totalSpent) + ' spent'}</div>
-                    <div class="db-prog">
-                        <div class="db-prog-track"><div class="db-prog-fill${overBudget ? ' over' : ''}" style="width:${Math.min(budgetPct,100)}%"></div></div>
-                        <span class="db-prog-pct">${budgetPct}%</span>
-                    </div>
+                <div class="db2-stat" onclick="switchPage('budget')">
+                    <div class="db2-stat-label">Budget Remaining</div>
+                    <div class="db2-stat-num ${overBudget ? 'warn' : ''}">${formatCurrency(remaining)}</div>
+                    <div class="db2-stat-sub ${overBudget ? 'warn' : ''}">${overBudget ? '⚠ Over budget' : formatCurrency(totalSpent) + ' spent'}</div>
                 </div>` : ''}
-
                 ${enabled.has('timeline') ? `
-                <div class="db-card" style="--card-accent:#63b3ed" onclick="switchPage('timeline')">
-                    <div class="db-card-hdr">${timelineIcon}<span class="db-card-label">Timeline</span>${arrow}</div>
-                    <div class="db-card-main">${tlDone} <span style="font-size:1.3rem;opacity:0.35;font-weight:400">/ ${tlTotal}</span></div>
-                    <span class="db-card-sub">tasks complete</span>
-                    <div class="db-card-detail${tlIncomplete.length > 0 ? ' db-card-warn' : ''}">${tlIncomplete.length > 0 ? '⚠ ' + tlIncomplete.length + ' incomplete' : (tlTotal === 0 ? 'No items yet' : 'All filled in ✓')}</div>
-                    <div class="db-prog">
-                        <div class="db-prog-track"><div class="db-prog-fill" style="width:${tlPct}%;background:linear-gradient(90deg,#63b3ed,#90cdf4)"></div></div>
-                        <span class="db-prog-pct">${tlPct}%</span>
-                    </div>
+                <div class="db2-stat" onclick="switchPage('timeline')">
+                    <div class="db2-stat-label">Tasks Complete</div>
+                    <div class="db2-stat-num">${tlDone}<span class="db2-stat-denom"> / ${tlTotal}</span></div>
+                    <div class="db2-stat-sub ${tlPct === 100 && tlTotal > 0 ? 'ok' : ''}">${tlTotal === 0 ? 'No items yet' : tlPct + '% complete'}</div>
                 </div>` : ''}
-
                 ${enabled.has('staff') ? `
-                <div class="db-card db-card-full" style="--card-accent:#68d391" onclick="switchPage('staff')">
-                    <div class="db-card-hdr">${staffIcon}<span class="db-card-label">Staff &amp; Crew</span>${arrow}</div>
-                    <div class="db-card-main">${staffTotal}</div>
-                    <span class="db-card-sub">crew members</span>
-                    <div class="db-pills">
-                        <span class="db-pill neutral">${filledCount} filled</span>
-                        ${unfilledStaff.length > 0 ? `<span class="db-pill warn">${unfilledStaff.length} unfilled</span>` : `<span class="db-pill ok">All filled</span>`}
-                    </div>
+                <div class="db2-stat" onclick="switchPage('staff')">
+                    <div class="db2-stat-label">Crew Confirmed</div>
+                    <div class="db2-stat-num">${filledCount}</div>
+                    <div class="db2-stat-sub ${unfilledStaff.length > 0 ? 'warn' : 'ok'}">${unfilledStaff.length > 0 ? unfilledStaff.length + ' open roles' : 'Fully staffed'}</div>
                 </div>` : ''}
-
             </div>
+
+            <!-- Upcoming shows -->
+            <div class="db2-section">
+                <div class="db2-section-hdr">
+                    <span>Upcoming shows</span>
+                    <button class="db2-see-all-btn" onclick="switchPage('events-hub')">See all →</button>
+                </div>
+                <div class="db2-list">
+                    ${showRows || '<div class="db2-empty">No shows yet</div>'}
+                </div>
+            </div>
+
+            <!-- Bottom panels -->
+            <div class="db2-bottom">
+                ${enabled.has('timeline') ? `
+                <div class="db2-panel">
+                    <div class="db2-panel-hdr">
+                        <span>Open Tasks — ${escapeHtml(event.name || 'Event').toUpperCase()}</span>
+                        <button class="db2-see-all-btn" onclick="switchPage('timeline')">See all →</button>
+                    </div>
+                    <div class="task-list">${taskRows}</div>
+                </div>` : ''}
+                ${enabled.has('staff') ? `
+                <div class="db2-panel">
+                    <div class="db2-panel-hdr">
+                        <span>Crew — ${escapeHtml(event.name || 'Event').toUpperCase()}</span>
+                        <button class="db2-see-all-btn" onclick="switchPage('staff')">See all →</button>
+                    </div>
+                    ${crewRows}
+                </div>` : ''}
+            </div>
+
         </div>`;
 }
 

@@ -1,0 +1,874 @@
+/*
+ * YMU Shows — Design Override Layer
+ * ─────────────────────────────────
+ * HOW TO USE:
+ * Add this line AFTER your existing styles.css link in index.html:
+ *   <link rel="stylesheet" href="ymu-overrides.css">
+ *
+ * This file wins over styles.css without touching it.
+ * Make all future edits here, not in styles.css.
+ */
+
+/* ── 1. FONTS ──────────────────────────────────────────────────────────
+   Kill the 5-font soup. One display face, one UI face, one mono. */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+body {
+  font-family: 'Inter', sans-serif !important;
+  background-color: var(--bg-page) !important;
+  color: var(--text-primary) !important;
+}
+
+/* Wipe all the competing font overrides */
+.page-header h1,
+#dashboard .page-header h1,
+.countdown-content h2,
+.countdown-number,
+.stat-value,
+#dashboard .stat-value,
+.card-header h2,
+.hub-event-name,
+h1, h2, h3 {
+  font-family: 'Inter', sans-serif !important;
+  font-weight: 700 !important;
+  letter-spacing: normal !important;
+  text-transform: none !important;
+}
+
+.stat-label,
+#dashboard .stat-label,
+.section-label,
+[class*="-label"],
+.hub-seasons-label {
+  font-family: 'IBM Plex Mono', monospace !important;
+  font-size: 10px !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.06em !important;
+}
+
+/* ── 2. NAVBAR ─────────────────────────────────────────────────────────
+   Replace the dark green/gold gradient with the clean light sidebar feel */
+
+.navbar {
+  background: var(--bg-surface) !important;
+  box-shadow: none !important;
+  border-bottom: 0.5px solid var(--border-subtle) !important;
+  color: var(--text-primary) !important;
+}
+
+.nav-brand {
+  font-family: 'Inter', sans-serif !important;
+  font-size: 15px !important;
+  font-weight: 700 !important;
+  color: var(--text-primary) !important;
+  letter-spacing: normal !important;
+  text-transform: none !important;
+}
+
+.nav-link,
+.nav-group-toggle {
+  color: var(--text-secondary) !important;
+  font-family: 'Inter', sans-serif !important;
+  font-size: 13px !important;
+  font-weight: 400 !important;
+  letter-spacing: normal !important;
+  padding: 9px 14px !important;
+  border-radius: 0 !important;
+  transition: background 0.15s, color 0.15s !important;
+}
+
+.nav-link:hover,
+.nav-group-toggle:hover,
+.nav-group:hover .nav-group-toggle {
+  color: var(--text-primary) !important;
+  background-color: var(--bg-hover) !important;
+}
+
+.nav-link.active {
+  color: var(--text-primary) !important;
+  background-color: var(--bg-hover) !important;
+  font-weight: 500 !important;
+}
+
+/* Remove gold underline indicator — use background instead */
+.nav-menu > .nav-link.active::after,
+.nav-group.has-active .nav-group-toggle::after {
+  display: none !important;
+}
+
+.nav-group.has-active .nav-group-toggle {
+  color: var(--text-primary) !important;
+  background-color: var(--bg-hover) !important;
+}
+
+/* Dropdown */
+.nav-dropdown {
+  background: var(--bg-surface) !important;
+  border: 0.5px solid var(--border-subtle) !important;
+  border-top: none !important;
+  border-radius: 0 0 var(--radius-md) var(--radius-md) !important;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.08) !important;
+}
+
+.nav-dropdown .nav-link {
+  border-bottom: 0.5px solid var(--border-subtle) !important;
+  padding: 9px 16px !important;
+}
+
+.nav-dropdown .nav-link.active {
+  border-left: 2px solid var(--text-primary) !important;
+  padding-left: calc(16px - 2px) !important;
+  background: var(--bg-hover) !important;
+}
+
+/* ── 3. PAGE HEADERS ───────────────────────────────────────────────────*/
+
+.page-header h1 {
+  font-size: 22px !important;
+  color: var(--text-primary) !important;
+  font-weight: 700 !important;
+}
+
+#dashboard .page-header h1 {
+  font-size: 22px !important;
+  color: var(--text-primary) !important;
+}
+
+/* ── 4. BUTTONS ────────────────────────────────────────────────────────*/
+
+/* Primary — black bg, white text (replaces gradient green AND blue) */
+.btn-primary,
+#dashboard .btn-primary,
+.hub-new-btn,
+.btn-primary-gold {
+  background: var(--text-primary) !important;
+  color: var(--bg-surface) !important;
+  border: none !important;
+  border-radius: var(--radius-md) !important;
+  font-family: 'Inter', sans-serif !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  padding: 7px 14px !important;
+  letter-spacing: normal !important;
+  box-shadow: none !important;
+  transform: none !important;
+  transition: opacity 0.15s !important;
+}
+
+.btn-primary:hover,
+#dashboard .btn-primary:hover,
+.hub-new-btn:hover,
+.btn-primary-gold:hover {
+  opacity: 0.85 !important;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+/* Secondary */
+.btn-secondary {
+  background: transparent !important;
+  color: var(--text-primary) !important;
+  border: 0.5px solid var(--border-medium) !important;
+  border-radius: var(--radius-md) !important;
+  font-family: 'Inter', sans-serif !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  padding: 7px 14px !important;
+  box-shadow: none !important;
+}
+
+.btn-secondary:hover {
+  background: var(--bg-hover) !important;
+  border-color: var(--border-medium) !important;
+}
+
+/* Icon buttons */
+.btn-icon,
+.btn.btn-icon {
+  background: transparent !important;
+  border: 0.5px solid var(--border-medium) !important;
+  border-radius: var(--radius-md) !important;
+  color: var(--text-secondary) !important;
+  box-shadow: none !important;
+  padding: 7px !important;
+}
+
+.btn-icon:hover {
+  background: var(--bg-hover) !important;
+  color: var(--text-primary) !important;
+}
+
+/* ── 5. STAT CARDS ─────────────────────────────────────────────────────*/
+
+.stat-card,
+#dashboard .stat-card {
+  background: var(--bg-surface) !important;
+  border: 0.5px solid var(--border-subtle) !important;
+  border-left: 0.5px solid var(--border-subtle) !important;
+  border-radius: var(--radius-lg) !important;
+  box-shadow: none !important;
+  padding: 14px 16px !important;
+  gap: 0 !important;
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  transition: border-color 0.15s !important;
+}
+
+.stat-card:hover,
+#dashboard .stat-card:hover {
+  transform: none !important;
+  box-shadow: none !important;
+  border-color: var(--border-medium) !important;
+}
+
+.stat-label,
+#dashboard .stat-label {
+  color: var(--text-tertiary) !important;
+  font-size: 10px !important;
+  font-family: 'IBM Plex Mono', monospace !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.06em !important;
+  margin-bottom: 6px !important;
+}
+
+.stat-value,
+#dashboard .stat-value {
+  font-family: 'Inter', sans-serif !important;
+  font-size: 26px !important;
+  font-weight: 700 !important;
+  color: var(--text-primary) !important;
+  line-height: 1 !important;
+}
+
+.stat-icon { display: none !important; }
+
+/* ── 6. COUNTDOWN CARD ─────────────────────────────────────────────────
+   Replace the glowing gradient with a flat, refined hero card */
+
+.countdown-card {
+  background: var(--bg-surface) !important;
+  border: 0.5px solid var(--border-subtle) !important;
+  border-radius: var(--radius-lg) !important;
+  box-shadow: none !important;
+  padding: 28px 28px !important;
+}
+
+.countdown-card::before { display: none !important; }
+
+.countdown-content h2 {
+  color: var(--text-primary) !important;
+  font-family: 'Inter', sans-serif !important;
+  font-size: 18px !important;
+  font-weight: 700 !important;
+  letter-spacing: normal !important;
+  text-transform: none !important;
+  text-align: left !important;
+  margin-bottom: 20px !important;
+}
+
+.countdown-item {
+  background: var(--bg-page) !important;
+  border: 0.5px solid var(--border-subtle) !important;
+  border-radius: var(--radius-md) !important;
+  padding: 16px 20px !important;
+}
+
+.countdown-number {
+  color: var(--text-primary) !important;
+  font-family: 'Inter', sans-serif !important;
+  font-size: 36px !important;
+  font-weight: 700 !important;
+}
+
+.countdown-label {
+  color: var(--text-tertiary) !important;
+  font-family: 'IBM Plex Mono', monospace !important;
+  font-size: 10px !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.06em !important;
+  margin-top: 6px !important;
+}
+
+.event-date {
+  color: var(--text-secondary) !important;
+  font-style: normal !important;
+  font-size: 13px !important;
+  font-family: 'Inter', sans-serif !important;
+  letter-spacing: normal !important;
+}
+
+/* ── 7. CARDS & TABLES ─────────────────────────────────────────────────*/
+
+.card {
+  background: var(--bg-surface) !important;
+  border: 0.5px solid var(--border-subtle) !important;
+  border-radius: var(--radius-lg) !important;
+  box-shadow: none !important;
+}
+
+.card-header {
+  border-bottom: 0.5px solid var(--border-subtle) !important;
+  padding: 14px 16px !important;
+}
+
+.card-header h2 {
+  font-size: 15px !important;
+  font-weight: 500 !important;
+  color: var(--text-primary) !important;
+}
+
+/* Tables */
+.data-table thead th {
+  background: var(--bg-page) !important;
+  color: var(--text-tertiary) !important;
+  font-family: 'IBM Plex Mono', monospace !important;
+  font-size: 10px !important;
+  font-weight: 500 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.06em !important;
+  border-bottom: 0.5px solid var(--border-subtle) !important;
+  padding: 10px 12px !important;
+}
+
+.data-table tbody td {
+  color: var(--text-primary) !important;
+  font-size: 13px !important;
+  border-bottom: 0.5px solid var(--border-subtle) !important;
+  padding: 10px 12px !important;
+}
+
+.data-table tbody tr:hover {
+  background: var(--bg-hover) !important;
+}
+
+/* ── 8. STATUS BADGES ──────────────────────────────────────────────────
+   Replace glowing rgba colors with the muted pastel token pairs */
+
+[class*="status-"],
+[class*="-badge"],
+[class*="-chip"],
+.badge {
+  font-family: 'Inter', sans-serif !important;
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  padding: 3px 8px !important;
+  border-radius: var(--radius-pill) !important;
+  letter-spacing: 0 !important;
+  text-transform: uppercase !important;
+}
+
+.status-confirmed,
+.gi-status-confirmed,
+.gi-sb-confirmed,
+[class*="confirmed"] {
+  background: var(--green-bg) !important;
+  color: var(--green-text) !important;
+}
+
+.status-pending,
+.gi-status-pending,
+[class*="pending"] {
+  background: var(--amber-bg) !important;
+  color: var(--amber-text) !important;
+}
+
+.status-invited,
+.gi-status-invited,
+[class*="invited"] {
+  background: var(--blue-bg) !important;
+  color: var(--blue-text) !important;
+}
+
+.status-declined,
+.gi-status-declined,
+[class*="declined"] {
+  background: #FCEBEB !important;
+  color: #A32D2D !important;
+}
+
+/* ── 9. MODALS ─────────────────────────────────────────────────────────*/
+
+.hub-modal {
+  background: var(--bg-surface) !important;
+  border: 0.5px solid var(--border-subtle) !important;
+  border-radius: var(--radius-lg) !important;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.12) !important;
+}
+
+.hub-modal-header {
+  border-bottom: 0.5px solid var(--border-subtle) !important;
+  padding: 16px 20px !important;
+}
+
+.hub-modal-header h2 {
+  font-size: 15px !important;
+  font-weight: 600 !important;
+  color: var(--text-primary) !important;
+}
+
+.hub-modal-footer {
+  border-top: 0.5px solid var(--border-subtle) !important;
+}
+
+.hub-modal-close {
+  color: var(--text-tertiary) !important;
+  background: transparent !important;
+  border: none !important;
+  font-size: 20px !important;
+  cursor: pointer !important;
+}
+
+.hub-modal-overlay {
+  background: rgba(0, 0, 0, 0.4) !important;
+}
+
+/* ── 10. EVENTS HUB CARDS ──────────────────────────────────────────────*/
+
+.hub-event-card,
+[class*="event-card"] {
+  background: var(--bg-surface) !important;
+  border: 0.5px solid var(--border-subtle) !important;
+  border-radius: var(--radius-lg) !important;
+  box-shadow: none !important;
+  transition: border-color 0.15s !important;
+}
+
+.hub-event-card:hover,
+[class*="event-card"]:hover {
+  border-color: var(--border-medium) !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+.hub-event-name,
+[class*="event-name"] {
+  font-family: 'Inter', sans-serif !important;
+  font-size: 15px !important;
+  font-weight: 700 !important;
+  color: var(--text-primary) !important;
+}
+
+/* ── 11. FORMS & INPUTS ────────────────────────────────────────────────*/
+
+input[type="text"],
+input[type="date"],
+input[type="email"],
+input[type="number"],
+select:not(.phase-select),
+textarea {
+  background: var(--bg-surface) !important;
+  border: 0.5px solid var(--border-medium) !important;
+  border-radius: var(--radius-md) !important;
+  color: var(--text-primary) !important;
+  font-family: 'Inter', sans-serif !important;
+  font-size: 13px !important;
+  padding: 8px 12px !important;
+  box-shadow: none !important;
+  outline: none !important;
+  transition: border-color 0.15s !important;
+}
+
+/* Phase selects keep their per-phase inline colors */
+.phase-select {
+  font-family: 'Inter', sans-serif !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  border: none !important;
+  border-radius: var(--radius-pill) !important;
+  padding: 4px 10px !important;
+  cursor: pointer !important;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--text-primary) !important;
+  box-shadow: none !important;
+}
+
+label {
+  font-family: 'Inter', sans-serif !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  color: var(--text-secondary) !important;
+}
+
+/* ── 12. FILTER / TAB PILLS ────────────────────────────────────────────*/
+
+.filter-btn,
+.vendor-view-btn,
+.day-tab {
+  background: transparent !important;
+  border: 0.5px solid var(--border-medium) !important;
+  border-radius: var(--radius-md) !important;
+  color: var(--text-secondary) !important;
+  font-family: 'Inter', sans-serif !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  padding: 6px 12px !important;
+  cursor: pointer !important;
+  transition: background 0.15s, color 0.15s !important;
+}
+
+.filter-btn:hover,
+.vendor-view-btn:hover,
+.day-tab:hover {
+  background: var(--bg-hover) !important;
+  color: var(--text-primary) !important;
+}
+
+.filter-btn.active,
+.vendor-view-btn.active,
+.day-tab.active {
+  background: var(--text-primary) !important;
+  color: var(--bg-surface) !important;
+  border-color: var(--text-primary) !important;
+}
+
+/* ── 13. DARK MODE ─────────────────────────────────────────────────────
+   All token swaps happen automatically via :root / [data-theme=dark].
+   These rules fix any hardcoded colors that leak through in dark mode. */
+
+[data-theme="dark"] .navbar {
+  background: var(--bg-surface-2) !important;
+  border-bottom-color: var(--border-subtle) !important;
+}
+
+[data-theme="dark"] .nav-dropdown {
+  background: var(--bg-surface) !important;
+  border-color: var(--border-subtle) !important;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4) !important;
+}
+
+[data-theme="dark"] .card,
+[data-theme="dark"] .stat-card,
+[data-theme="dark"] .countdown-card,
+[data-theme="dark"] .hub-event-card,
+[data-theme="dark"] .hub-modal {
+  background: var(--bg-surface) !important;
+  border-color: var(--border-subtle) !important;
+}
+
+[data-theme="dark"] .data-table thead th {
+  background: var(--bg-page) !important;
+}
+
+[data-theme="dark"] input,
+[data-theme="dark"] select:not(.phase-select),
+[data-theme="dark"] textarea {
+  background: var(--bg-surface-2) !important;
+  border-color: var(--border-medium) !important;
+  color: var(--text-primary) !important;
+}
+
+/* ── 14. REMOVE DECORATIVE EFFECTS ────────────────────────────────────
+   No lift-on-hover transforms, no colored box-shadows */
+
+* {
+  --tw-shadow: none !important;
+}
+
+.stat-card:hover,
+.hub-event-card:hover,
+.card:hover,
+.btn:hover,
+.btn-primary:hover {
+  transform: none !important;
+}
+
+/* ── 15. SIDEBAR LAYOUT ────────────────────────────────────────────────
+   Convert horizontal navbar → fixed 210px left sidebar               */
+
+body {
+  padding-left: 210px !important;
+}
+
+.navbar {
+  position: fixed !important;
+  left: 0 !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  width: 210px !important;
+  height: 100vh !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  border-bottom: none !important;
+  border-right: 0.5px solid var(--border-subtle) !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  background: var(--bg-surface-2) !important;
+  z-index: 100 !important;
+}
+
+.nav-container {
+  flex-direction: column !important;
+  align-items: stretch !important;
+  width: 100% !important;
+  max-width: none !important;
+  height: 100% !important;
+  padding: 0 !important;
+}
+
+/* Brand block at top of sidebar */
+.nav-brand {
+  display: block !important;
+  padding: 18px 16px 14px !important;
+  border-bottom: 0.5px solid var(--border-subtle) !important;
+  flex-shrink: 0 !important;
+  line-height: 1.3 !important;
+}
+
+.hamburger       { display: none !important; }
+#nav-event-settings-btn { display: none !important; }
+
+/* Hub-mode was designed for the old horizontal nav — override it so
+   the sidebar always shows all nav items on every page             */
+.nav-menu.hub-mode .nav-group,
+.nav-menu.hub-mode a.nav-link[data-page] {
+  display: flex !important;
+}
+.nav-container:has(.nav-menu.hub-mode) .hamburger {
+  display: none !important;
+}
+
+/* Seasons nav — always visible in sidebar */
+#hub-seasons-nav,
+.hub-seasons-nav {
+  display: block !important;
+}
+
+/* Nav menu becomes vertical column */
+.nav-menu,
+.nav-menu.active {
+  display: flex !important;
+  flex-direction: column !important;
+  padding: 8px 0 12px !important;
+  position: static !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  flex: 1 !important;
+  overflow-y: auto !important;
+  gap: 0 !important;
+  width: 100% !important;
+}
+
+/* Groups expand inline, no floating dropdown */
+.nav-group { position: static !important; }
+.nav-dropdown {
+  position: static !important;
+  display: block !important;
+  box-shadow: none !important;
+  border: none !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  padding: 0 !important;
+}
+.nav-chevron { display: none !important; }
+
+/* Nav items full-width */
+.nav-link,
+.nav-group-toggle {
+  width: 100% !important;
+  border-radius: 0 !important;
+  margin: 0 !important;
+  padding: 9px 16px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 9px !important;
+}
+
+/* Active pill inside sidebar */
+.nav-link.active,
+.nav-group.has-active .nav-group-toggle {
+  border-radius: var(--radius-sm) !important;
+  margin: 1px 6px !important;
+  width: calc(100% - 12px) !important;
+}
+
+/* Dropdown items slightly indented */
+.nav-dropdown .nav-link {
+  padding-left: 36px !important;
+  border-bottom: none !important;
+  border-left: none !important;
+  font-size: 12px !important;
+}
+.nav-dropdown .nav-link.active {
+  padding-left: 34px !important;
+  border-left: none !important;
+}
+
+/* Section labels inside sidebar */
+.hub-seasons-nav,
+.app-settings-nav {
+  padding: 12px 16px 4px !important;
+  border-top: 0.5px solid var(--border-subtle) !important;
+  margin-top: 4px !important;
+}
+.hub-seasons-label,
+.hub-seasons-label,
+.app-settings-nav .hub-seasons-label {
+  font-family: 'IBM Plex Mono', monospace !important;
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.08em !important;
+  color: var(--text-tertiary) !important;
+  margin-bottom: 4px !important;
+  display: block !important;
+}
+
+/* ── 16. DASHBOARD COMPONENTS ──────────────────────────────────────────*/
+
+/* Topbar row */
+.db2-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+.db2-topbar-title {
+  font-family: 'Inter', sans-serif !important;
+  font-size: 22px !important;
+  font-weight: 700 !important;
+  color: var(--text-primary) !important;
+  letter-spacing: -0.01em !important;
+}
+.db2-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.db2-icon-btn {
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 0.5px solid var(--border-medium);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 150ms, color 150ms;
+}
+.db2-icon-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+.db2-new-btn {
+  background: var(--text-primary);
+  color: var(--bg-surface);
+  border: none;
+  border-radius: var(--radius-md);
+  padding: 7px 14px;
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 150ms;
+}
+.db2-new-btn:hover { opacity: 0.85; }
+
+/* Show rows — matches reference exactly */
+.show-row {
+  display: grid;
+  grid-template-columns: 36px 1fr auto 80px;
+  align-items: center;
+  gap: 14px;
+  height: 58px;
+  padding: 0 16px;
+  cursor: pointer;
+  border-bottom: 0.5px solid var(--border-subtle);
+  transition: background 150ms, border-color 150ms;
+}
+.show-row:last-child { border-bottom: none; }
+.show-row:hover { background: var(--bg-hover); }
+.show-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  flex-shrink: 0;
+}
+.show-body { min-width: 0; }
+.show-name {
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.show-meta {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.show-badge {
+  font-family: 'Inter', sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.show-date { text-align: right; flex-shrink: 0; }
+.show-date-main {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+.show-date-sub {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+/* Task rows (Open Tasks panel) */
+.task-list { padding: 0; }
+.task-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 16px;
+  border-bottom: 0.5px solid var(--border-subtle);
+  transition: background 150ms;
+}
+.task-row:last-child { border-bottom: none; }
+.task-row:hover { background: var(--bg-hover); }
+.task-cb {
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--border-medium);
+  border-radius: 3px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 150ms, border-color 150ms;
+}
+.task-cb.checked {
+  background: var(--text-primary);
+  border-color: var(--text-primary);
+  color: var(--bg-surface);
+}
+.task-label {
+  font-family: var(--font-body) !important;
+  font-size: 13px !important;
+  font-weight: 400 !important;
+  letter-spacing: normal !important;
+  text-transform: none !important;
+  color: var(--text-primary) !important;
+  flex: 1;
+}
+.task-row.done .task-label {
+  color: var(--text-tertiary);
+  text-decoration: line-through;
+}
+
+/* ── END ───────────────────────────────────────────────────────────────*/
