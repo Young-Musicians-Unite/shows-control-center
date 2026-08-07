@@ -152,12 +152,27 @@
                     <button class="hub-season-add-btn" onclick="promptAddSeason()">+ New Season</button>
                 </div>
             </div>
+            <!-- Sidebar user menu popup -->
+            <div id="sb-user-menu" class="sb-user-menu" style="display:none">
+                <div class="sb-user-menu-item" onclick="openStaffIndex(); closeSbUserMenu()">
+                    <i class="ti ti-address-book"></i> Staff Directory
+                </div>
+                <div class="sb-user-menu-item" onclick="openJobTemplates(); closeSbUserMenu()">
+                    <i class="ti ti-briefcase"></i> Job Titles
+                </div>
+                <div class="sb-user-menu-divider"></div>
+                <div class="sb-user-menu-item" id="sb-menu-manage-pages" onclick="openEventSettings(); closeSbUserMenu()" style="display:none">
+                    <i class="ti ti-layout-grid"></i> Manage Pages
+                </div>
+            </div>
+
             <!-- Sidebar footer -->
             <div class="sb-foot">
                 <div class="sb-foot-row">
-                    <div class="sb-user" onclick="openStaffIndex()">
+                    <div class="sb-user" onclick="toggleSbUserMenu(event)">
                         <div class="sb-avatar" id="sb-avatar-initials">EP</div>
                         <span class="sb-uname" id="sb-user-display">Estelle</span>
+                        <i class="ti ti-chevron-up" id="sb-user-chevron" style="font-size:10px;color:rgba(255,255,255,0.25)"></i>
                     </div>
                     <button id="sb-event-settings-btn" class="sb-settings-btn" onclick="openEventSettings()" title="Event Settings" style="display:none">
                         <i class="ti ti-settings"></i>
@@ -2435,58 +2450,49 @@
     </div>
 
     <!-- Staff Index Modal -->
-    <div id="staff-index-modal" class="modal" onclick="if(event.target===this)closeStaffIndex()">
-        <div class="modal-content modal-lg">
-            <div class="modal-header">
-                <h2>Staff Directory</h2>
-                <button class="modal-close" onclick="closeStaffIndex()">&times;</button>
+    <div id="staff-index-modal" class="si-overlay" onclick="if(event.target===this)closeStaffIndex()">
+        <div class="ymu-staff-modal">
+            <!-- Header -->
+            <div class="sm-head">
+                <div class="sm-title-row">
+                    <span class="sm-title">Staff directory</span>
+                    <button class="sm-close" onclick="closeStaffIndex()"><i class="ti ti-x"></i></button>
+                </div>
+                <div class="sm-controls">
+                    <div class="sm-search-wrap">
+                        <i class="ti ti-search"></i>
+                        <input type="text" id="staff-index-search" class="sm-search" placeholder="Search by name or role…" oninput="renderStaffIndex()">
+                    </div>
+                    <button class="btn-ctrl" onclick="toggleRoleMappings()"><i class="ti ti-template"></i> Job templates</button>
+                    <button class="btn-ctrl" onclick="syncStaffToDirectory()"><i class="ti ti-refresh"></i> Sync from event</button>
+                    <button class="btn-add-contact" onclick="toggleAddDirectoryContact()"><i class="ti ti-plus"></i> Add contact</button>
+                </div>
             </div>
-            <div class="modal-body">
-                <div class="staff-index-toolbar">
-                    <div class="staff-index-toolbar-row">
-                        <input type="text" id="staff-index-search" class="search-input" placeholder="Search by name or role…" oninput="renderStaffIndex()" style="flex:1">
-                        <button class="btn btn-secondary btn-sm" onclick="toggleRoleMappings()">Job Templates</button>
-                        <button class="btn btn-secondary btn-sm" onclick="syncStaffToDirectory()">Sync from Event</button>
-                        <button class="btn btn-primary-gold btn-sm" onclick="toggleAddDirectoryContact()">+ Add Contact</button>
-                    </div>
-                </div>
-                <!-- Inline add-contact form (hidden by default) -->
+            <!-- Scrollable body -->
+            <div class="sm-body">
+                <!-- Inline add-contact form -->
                 <div id="staff-dir-add-form" style="display:none">
-                    <div class="staff-dir-add-inner">
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>Name *</label>
-                                <input type="text" id="dir-add-name" placeholder="Full name">
-                            </div>
-                            <div class="form-group">
-                                <label>Role *</label>
-                                <input type="text" id="dir-add-role" placeholder="e.g. Audio Engineer">
-                            </div>
+                    <div class="sm-add-form">
+                        <div class="sm-add-fields">
+                            <div class="sm-add-field"><label>Name *</label><input type="text" id="dir-add-name" placeholder="Full name"></div>
+                            <div class="sm-add-field"><label>Role *</label><input type="text" id="dir-add-role" placeholder="e.g. Audio Engineer"></div>
+                            <div class="sm-add-field"><label>Phone</label><input type="tel" id="dir-add-phone" placeholder="Phone number"></div>
+                            <div class="sm-add-field"><label>Email</label><input type="email" id="dir-add-email" placeholder="Email address"></div>
                         </div>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>Phone</label>
-                                <input type="tel" id="dir-add-phone" placeholder="Phone number">
-                            </div>
-                            <div class="form-group">
-                                <label>Email</label>
-                                <input type="email" id="dir-add-email" placeholder="Email address">
-                            </div>
-                        </div>
-                        <div class="staff-dir-add-actions">
-                            <button class="btn btn-primary-gold btn-sm" onclick="saveDirectoryContact()">Save Contact</button>
-                            <button class="btn btn-secondary btn-sm" onclick="toggleAddDirectoryContact()">Cancel</button>
+                        <div class="sm-add-actions">
+                            <button class="btn-add-contact" onclick="saveDirectoryContact()">Save Contact</button>
+                            <button class="btn-ctrl" onclick="toggleAddDirectoryContact()">Cancel</button>
                         </div>
                     </div>
                 </div>
-                <!-- Role → Budget category mapping panel -->
+                <!-- Job templates panel -->
                 <div id="role-mappings-panel" style="display:none">
-                    <div class="role-map-header">
-                        <strong>Job Templates</strong> — generic roles used across all events. Each maps to a budget category and auto-fills when you click + Budget. Add event-specific detail in the Staff or Budget page.
+                    <div class="sm-role-map-header">
+                        <strong>Job Templates</strong> — generic roles used across all events. Each maps to a budget category and auto-fills when you click + Budget.
                     </div>
                     <div id="role-mappings-content"></div>
                 </div>
-
+                <!-- Directory rows -->
                 <div id="staff-index-content"></div>
             </div>
         </div>
