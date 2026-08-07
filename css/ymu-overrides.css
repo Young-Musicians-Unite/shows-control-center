@@ -554,6 +554,55 @@ label {
   background: var(--bg-page) !important;
 }
 
+/* Staff Directory modal */
+[data-theme="dark"] .modal-content {
+  background: var(--bg-surface) !important;
+  border-color: var(--border-subtle) !important;
+  color: var(--text-primary) !important;
+}
+[data-theme="dark"] .modal-header {
+  border-color: var(--border-subtle) !important;
+}
+[data-theme="dark"] .modal-header h2,
+[data-theme="dark"] .modal-header h3 {
+  color: var(--text-primary) !important;
+}
+[data-theme="dark"] .staff-index-table {
+  color: var(--text-primary) !important;
+}
+[data-theme="dark"] .staff-index-table th {
+  color: var(--text-tertiary) !important;
+  border-color: var(--border-subtle) !important;
+  font-family: var(--font-mono) !important;
+}
+[data-theme="dark"] .staff-index-table td {
+  border-color: var(--border-subtle) !important;
+  color: var(--text-primary) !important;
+}
+[data-theme="dark"] .dir-group-header td {
+  background: var(--bg-hover) !important;
+  color: var(--text-tertiary) !important;
+  font-family: var(--font-mono) !important;
+}
+[data-theme="dark"] .staff-index-row:hover {
+  background: var(--bg-hover) !important;
+}
+[data-theme="dark"] .staff-dir-add-inner,
+[data-theme="dark"] .dir-edit-form {
+  background: var(--bg-surface-2) !important;
+  border-color: var(--border-subtle) !important;
+}
+[data-theme="dark"] .staff-index-hint,
+[data-theme="dark"] .staff-index-empty {
+  color: var(--text-tertiary) !important;
+}
+[data-theme="dark"] .dir-edit-fields label {
+  color: var(--text-tertiary) !important;
+}
+[data-theme="dark"] .dir-edit-fields input {
+  border-color: var(--border-medium) !important;
+}
+
 [data-theme="dark"] input,
 [data-theme="dark"] select:not(.phase-select),
 [data-theme="dark"] textarea {
