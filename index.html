@@ -195,6 +195,10 @@
                     <p class="hub-field-hint">Toggle modules on or off. Disabled pages appear blacked out in the navigation.</p>
                     <div id="event-settings-pages" class="page-toggles-grid"></div>
                 </div>
+                <div class="hub-field" style="margin-top:8px">
+                    <label>Budget</label>
+                    <button class="btn-secondary" style="margin-top:6px" onclick="closeEventSettings(); resetBudgetSetup()">Reconfigure Budget Setup</button>
+                </div>
             </div>
             <div class="hub-modal-footer settings-modal-footer">
                 <button class="btn-danger" onclick="deleteCurrentEvent()">Delete Event</button>
@@ -271,6 +275,43 @@
         </div>
     </div>
 
+
+    <!-- Budget Setup Modal -->
+    <div id="budget-setup-modal" class="hub-modal-overlay">
+        <div class="hub-modal" style="max-width:420px">
+            <div class="hub-modal-header">
+                <h2>Budget Setup</h2>
+            </div>
+            <div class="hub-modal-body">
+                <div class="hub-field">
+                    <label>Choose your category structure</label>
+                    <div class="bsm-choices">
+                        <button class="bsm-choice" data-set="a-g" onclick="selectBudgetCategorySet('a-g')">
+                            <span class="bsm-choice-title">A – G</span>
+                            <span class="bsm-choice-sub">Full breakdown across 7 categories</span>
+                        </button>
+                        <button class="bsm-choice" data-set="a-b" onclick="selectBudgetCategorySet('a-b')">
+                            <span class="bsm-choice-title">A &amp; B</span>
+                            <span class="bsm-choice-sub">Personal (6697a) + Anything Else (6697b)</span>
+                        </button>
+                    </div>
+                </div>
+                <div id="bsm-code-wrap" class="hub-field" style="display:none">
+                    <label>GL Code <span class="required">*</span></label>
+                    <input type="text" id="bsm-code" placeholder="e.g. 6811" maxlength="20">
+                    <p class="hub-field-hint">This will prefix each category (e.g. 6811a, 6811b…)</p>
+                </div>
+                <div class="hub-field">
+                    <label>Total Budget <span style="font-weight:400;opacity:0.55">(optional)</span></label>
+                    <input type="number" id="bsm-budget-cap" placeholder="e.g. 50000" min="0" step="100">
+                </div>
+                <input type="hidden" id="bsm-selected-set" value="">
+            </div>
+            <div class="hub-modal-footer">
+                <button class="btn-primary" onclick="saveBudgetSetup()">Set Up Budget</button>
+            </div>
+        </div>
+    </div>
 
     <div id="set-budget-modal" class="hub-modal-overlay">
         <div class="hub-modal" style="max-width:360px">
@@ -2203,13 +2244,6 @@
                         <label for="budget-category">Category *</label>
                         <select id="budget-category" required>
                             <option value="">Select a category</option>
-                            <option value="6811a - Talent/Performers & Hosts">A - Talent/Performers & Hosts</option>
-                            <option value="6811b - A/V Production">B - A/V Production</option>
-                            <option value="6811c - Venue & Permits">C - Venue & Permits</option>
-                            <option value="6811d - Food & Beverage">D - Food & Beverage</option>
-                            <option value="6811e - Staff & Labor">E - Staff & Labor</option>
-                            <option value="6811f - Marketing, Promotion & Branding">F - Marketing, Promotion & Branding</option>
-                            <option value="6811g - Decor & Miscellaneous Supplies">G - Decor & Miscellaneous Supplies</option>
                         </select>
                     </div>
                     <div class="form-group">
