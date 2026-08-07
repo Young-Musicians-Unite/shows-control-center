@@ -149,7 +149,7 @@ const state = {
     seatingCanvas: null,
     seatingBgImage: null,
     seatingMarkers: new Map(),
-    seatingCanvasInitialized: false
+    seatingCanvasInitialized: false,
 };
 
 // --- Staff-Budget linking helpers ---
@@ -299,6 +299,19 @@ const ALL_PAGES = [
     { id: 'guests',              label: 'Guests' },
 ];
 
+const INTAKE_SECTION_ICONS = {
+    'Venue — Day of Contact':      'ti-map-pin',
+    'Preliminary Info':            'ti-info-circle',
+    'Event Info':                  'ti-calendar-event',
+    'Pre-Show':                    'ti-clock',
+    'Run of Show':                 'ti-list',
+    'Logistics':                   'ti-truck',
+    'Production Responsibilities': 'ti-tool',
+    'Marketing':                   'ti-speakerphone',
+    'Insurance':                   'ti-shield-check',
+    'Financial Information':       'ti-currency-dollar',
+};
+
 const INTAKE_SCHEMA = [
     { type: 'section', label: 'Venue — Day of Contact' },
     { field: 'venue_contact_name', label: 'Name',         inputType: 'text'  },
@@ -336,6 +349,7 @@ const INTAKE_SCHEMA = [
     { field: 'stage_provider',       label: 'Who Provides the Stage?',       inputType: 'text'     },
     { field: 'sound_provider',       label: 'Who Provides the Sound?',       inputType: 'text'     },
     { field: 'lights_provider',      label: 'Who Provides the Lights?',      inputType: 'text'     },
+    { field: 'power_situation',      label: 'What is the Power Situation?',  inputType: 'textarea' },
     { field: 'sound_setup',          label: 'Sound Setup Needed',            inputType: 'textarea' },
     { field: 'photographer',         label: 'Who Provides the Photographer?',inputType: 'text'     },
     { field: 'photographer_contact', label: 'Photographer Contact Info',     inputType: 'text'     },
@@ -1226,9 +1240,17 @@ async function enterEvent(eventId) {
     // Update nav branding
     const brand = document.querySelector('.nav-brand');
     brand.innerHTML = `
-        <button class="nav-back-btn" onclick="backToHub()">&#8592; Events</button>
-        <span class="nav-event-title">${escapeHtml(event.name || 'Event')}</span>
-    `;
+        <div class="sb-eyebrow">YMU Shows</div>
+        <div class="sb-brand-title">${escapeHtml(event.name || 'Event')}</div>
+        <div class="sb-prog">
+            <div class="sb-track"><div class="sb-fill" id="sec-progress-fill" style="width:0%"></div></div>
+            <span class="sb-pct" id="sec-progress-pct">0%</span>
+        </div>
+        <button class="nav-back-btn" onclick="backToHub()">&#8592; All Events</button>`;
+
+    // Hide legacy event card if present
+    const eventCard = document.getElementById('sidebar-event-card');
+    if (eventCard) eventCard.style.display = 'none';
 
     document.getElementById('nav-event-settings-btn').style.display = 'flex';
     document.querySelector('.nav-menu').classList.remove('hub-mode');
@@ -1268,10 +1290,15 @@ async function backToHub() {
     localStorage.removeItem('lastPage');
 
     const brand = document.querySelector('.nav-brand');
-    brand.textContent = 'YMU Events';
+    brand.innerHTML = `<div class="sb-eyebrow">YMU Shows</div><div class="sb-brand-title">Events</div>`;
     document.getElementById('nav-event-settings-btn').style.display = 'none';
     document.querySelector('.nav-menu').classList.add('hub-mode');
-    document.querySelectorAll('.nav-link[data-page]').forEach(l => l.classList.remove('nav-link--disabled'));
+    document.querySelectorAll('.nav-link[data-page]').forEach(l => {
+        l.classList.remove('nav-link--disabled', 'nav-link--locked');
+        l.querySelector('.nav-lock-icon')?.remove();
+    });
+    const ec = document.getElementById('sidebar-event-card');
+    if (ec) ec.style.display = 'none';
 
     switchPage('events-hub');
     loadEvents();
@@ -1279,21 +1306,36 @@ async function backToHub() {
 
 function updateNavForEvent(event) {
     const enabled = new Set(event.enabledPages || []);
+
+    // Show all nav links — locked ones get dimmed + lock icon instead of hidden
     document.querySelectorAll('.nav-link[data-page]').forEach(link => {
-        const page = link.dataset.page;
-        const isEnabled = enabled.has(page);
-        link.classList.toggle('nav-link--disabled', !isEnabled);
-        link.style.display = isEnabled ? '' : 'none';
+        const isEnabled = enabled.has(link.dataset.page);
+        link.classList.toggle('nav-link--locked', !isEnabled);
+        link.classList.remove('nav-link--disabled');
+        link.style.display = '';
+        // Add/remove lock icon
+        let lockEl = link.querySelector('.nav-lock-icon');
+        if (!isEnabled) {
+            if (!lockEl) {
+                lockEl = document.createElement('span');
+                lockEl.className = 'nav-lock-icon';
+                lockEl.innerHTML = '<svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="8" height="6" rx="1"/><path d="M4 5V3.5a2 2 0 0 1 4 0V5"/></svg>';
+                link.appendChild(lockEl);
+            }
+        } else if (lockEl) {
+            lockEl.remove();
+        }
     });
-    // Hide nav groups where every sub-link is disabled
-    document.querySelectorAll('.nav-group').forEach(group => {
-        const links = group.querySelectorAll('.nav-link[data-page]');
-        const anyVisible = [...links].some(l => enabled.has(l.dataset.page));
-        group.classList.toggle('nav-group--all-disabled', !anyVisible);
+
+    // Show all groups — never hide them
+    document.querySelectorAll('.nav-group').forEach(g => {
+        g.classList.remove('nav-group--all-disabled');
+        g.style.display = '';
     });
-    // Flat mode: ≤4 enabled pages → show as direct links, no groups
-    const navMenu = document.getElementById('nav-menu');
-    if (navMenu) navMenu.classList.toggle('nav-flat', enabled.size <= 4);
+
+    // Remove flat mode — always use grouped layout
+    document.getElementById('nav-menu')?.classList.remove('nav-flat');
+
     // Apply/remove locked overlay on each page
     ALL_PAGES.forEach(p => {
         const el = document.getElementById(p.id);
@@ -1405,6 +1447,8 @@ window.openEventSettings = openEventSettings;
 
 function setupIntakeListener() {
     if (!state.currentEventId) return;
+    const container = document.getElementById('intake-form-body');
+    if (container) container.innerHTML = '';
     const ref = db.collection('events').doc(state.currentEventId).collection('intake').doc('main');
     const unsub = ref.onSnapshot(snap => {
         state.intake = snap.exists ? snap.data() : {};
@@ -1413,73 +1457,161 @@ function setupIntakeListener() {
     _activeListeners.push(unsub);
 }
 
+let _dynDragRow = null;
+
 function buildDynamicSectionRows(sectionId, rows) {
     const closeIcon = `<svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="1" y1="1" x2="11" y2="11"/><line x1="11" y1="1" x2="1" y2="11"/></svg>`;
+    const dragHandle = `<span class="intake-dyn-handle" title="Drag to reorder"><svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><circle cx="4" cy="2.5" r="1.1"/><circle cx="8" cy="2.5" r="1.1"/><circle cx="4" cy="6" r="1.1"/><circle cx="8" cy="6" r="1.1"/><circle cx="4" cy="9.5" r="1.1"/><circle cx="8" cy="9.5" r="1.1"/></svg></span>`;
     return rows.map((row, i) => `
-        <div class="intake-dyn-row" data-idx="${i}">
+        <div class="intake-dyn-row" data-idx="${i}" data-section="${sectionId}" draggable="true"
+             ondragstart="intakeDynDragStart(event)"
+             ondragover="intakeDynDragOver(event)"
+             ondragleave="intakeDynDragLeave(event)"
+             ondrop="intakeDynDrop(event)"
+             ondragend="intakeDynDragEnd(event)">
+            ${dragHandle}
             <input type="text" class="intake-input intake-dyn-label" value="${escapeHtml(row.label || '')}" placeholder="Label…" onblur="saveIntakeDynamicRows('${sectionId}')">
             <input type="text" class="intake-input intake-dyn-time" value="${escapeHtml(row.time || '')}" placeholder="e.g. 6:30 – 7:00pm" onblur="saveIntakeDynamicRows('${sectionId}')">
             <button class="intake-remove-row-btn" onclick="removeIntakeRow('${sectionId}', ${i})" type="button" title="Remove row">${closeIcon}</button>
         </div>`).join('');
 }
 
+window.intakeDynDragStart = function(e) {
+    // Cancel if drag initiated from an input (let the input handle its own selection)
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON') { e.preventDefault(); return; }
+    _dynDragRow = e.currentTarget;
+    e.currentTarget.classList.add('intake-dyn-dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', '');
+};
+
+window.intakeDynDragOver = function(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const row = e.currentTarget;
+    if (row !== _dynDragRow) row.classList.add('intake-dyn-drag-over');
+};
+
+window.intakeDynDragLeave = function(e) {
+    e.currentTarget.classList.remove('intake-dyn-drag-over');
+};
+
+window.intakeDynDrop = function(e) {
+    e.preventDefault();
+    const tgt = e.currentTarget;
+    tgt.classList.remove('intake-dyn-drag-over');
+    if (!_dynDragRow || _dynDragRow === tgt) return;
+    // Only allow drops within the same section
+    if (_dynDragRow.dataset.section !== tgt.dataset.section) return;
+    const sectionId = tgt.dataset.section;
+    const container = document.getElementById(`intake-dyn-${sectionId}`);
+    if (!container) return;
+    const rows = Array.from(container.querySelectorAll('.intake-dyn-row'));
+    const srcIdx = rows.indexOf(_dynDragRow);
+    const tgtIdx = rows.indexOf(tgt);
+    if (srcIdx < tgtIdx) { tgt.after(_dynDragRow); } else { tgt.before(_dynDragRow); }
+    // Re-index rows and update remove button references
+    Array.from(container.querySelectorAll('.intake-dyn-row')).forEach((r, i) => {
+        r.dataset.idx = i;
+        const btn = r.querySelector('.intake-remove-row-btn');
+        if (btn) btn.setAttribute('onclick', `removeIntakeRow('${sectionId}', ${i})`);
+    });
+    saveIntakeDynamicRows(sectionId);
+};
+
+window.intakeDynDragEnd = function(e) {
+    e.currentTarget.classList.remove('intake-dyn-dragging');
+    document.querySelectorAll('.intake-dyn-drag-over').forEach(el => el.classList.remove('intake-dyn-drag-over'));
+    _dynDragRow = null;
+};
+
 function buildDynamicSectionHTML(id, label) {
     const defaults = DYNAMIC_DEFAULTS[id] || [];
+    const icon = INTAKE_SECTION_ICONS[label] || 'ti-list';
     return `
-        <div class="intake-section-header">${escapeHtml(label)}</div>
-        <div class="intake-dyn-col-headers">
-            <span>Item</span><span>Time</span>
-        </div>
-        <div id="intake-dyn-${id}" class="intake-dyn-body">
-            ${buildDynamicSectionRows(id, defaults)}
-        </div>
-        <div class="intake-dyn-footer">
-            <button class="intake-add-row-btn" onclick="addIntakeRow('${id}')" type="button">+ Add Row</button>
+        <div class="intake-section">
+            <div class="intake-sec-head">
+                <div class="intake-sec-icon"><i class="ti ${icon}"></i></div>
+                <div class="intake-sec-title">${escapeHtml(label)}</div>
+            </div>
+            <div class="intake-dyn-col-headers">
+                <span>Item</span><span>Time</span>
+            </div>
+            <div id="intake-dyn-${id}" class="intake-dyn-body">
+                ${buildDynamicSectionRows(id, defaults)}
+            </div>
+            <div class="intake-dyn-footer">
+                <button class="intake-add-row-btn" onclick="addIntakeRow('${id}')" type="button">+ Add Row</button>
+            </div>
+        </div>`;
+}
+
+function buildIntakeFieldHTML(item) {
+    const isTextarea = item.inputType === 'textarea';
+    let inputHTML;
+    if (isTextarea) {
+        inputHTML = `<textarea id="intake-${item.field}" class="intake-field-textarea" placeholder="${escapeHtml(item.label)}…" oninput="updateIntakeProgress()" onblur="saveIntakeField('${item.field}', this.value)" rows="3"></textarea>`;
+    } else if (item.inputType === 'yesno') {
+        inputHTML = `<select id="intake-${item.field}" class="intake-field-input" onchange="saveIntakeField('${item.field}', this.value); updateIntakeProgress()">
+            <option value="">—</option>
+            <option value="yes">Yes</option>
+            <option value="no">No</option>
+        </select>`;
+    } else if (item.inputType === 'select') {
+        const opts = item.options.map(o => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join('');
+        inputHTML = `<select id="intake-${item.field}" class="intake-field-input" onchange="saveIntakeField('${item.field}', this.value); updateIntakeProgress()">
+            <option value="">—</option>
+            ${opts}
+        </select>`;
+    } else {
+        inputHTML = `<input type="${item.inputType}" id="intake-${item.field}" class="intake-field-input" placeholder="${escapeHtml(item.label)}" oninput="updateIntakeProgress()" onblur="saveIntakeField('${item.field}', this.value)">`;
+    }
+    return `
+        <div class="intake-field">
+            <div class="intake-field-label">${escapeHtml(item.label)}</div>
+            <div class="intake-field-input-wrap${isTextarea ? ' top' : ''}">
+                ${inputHTML}
+                <i class="ti ti-pencil intake-field-edit" aria-hidden="true"></i>
+            </div>
         </div>`;
 }
 
 function buildIntakeHTML() {
-    return INTAKE_SCHEMA.map(item => {
+    // Group INTAKE_SCHEMA into sections, each starting at a 'section' or 'dynamic-section' entry
+    const sections = [];
+    let current = null;
+    INTAKE_SCHEMA.forEach(item => {
         if (item.type === 'section') {
-            return `<div class="intake-section-header">${escapeHtml(item.label)}</div>`;
+            current = { label: item.label, items: [] };
+            sections.push(current);
+        } else if (item.type === 'dynamic-section') {
+            sections.push({ label: item.label, isDynamic: true, id: item.id });
+            current = null;
+        } else if (current) {
+            current.items.push(item);
         }
-        if (item.type === 'subsection') {
-            return `<div class="intake-subsection-header">${escapeHtml(item.label)}</div>`;
+    });
+
+    return sections.map(section => {
+        if (section.isDynamic) {
+            return buildDynamicSectionHTML(section.id, section.label);
         }
-        if (item.type === 'dynamic-section') {
-            return buildDynamicSectionHTML(item.id, item.label);
-        }
-        let inputHTML;
-        if (item.inputType === 'textarea') {
-            inputHTML = `<textarea id="intake-${item.field}" class="intake-input intake-textarea" placeholder=" " onblur="saveIntakeField('${item.field}', this.value)" rows="2"></textarea>`;
-        } else if (item.inputType === 'yesno') {
-            inputHTML = `<select id="intake-${item.field}" class="intake-input intake-select" onchange="saveIntakeField('${item.field}', this.value)">
-                <option value="">—</option>
-                <option value="yes">Yes</option>
-                <option value="no">No</option>
-            </select>`;
-        } else if (item.inputType === 'select') {
-            const opts = item.options.map(o => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join('');
-            inputHTML = `<select id="intake-${item.field}" class="intake-input intake-select" onchange="saveIntakeField('${item.field}', this.value)">
-                <option value="">—</option>
-                ${opts}
-            </select>`;
-        } else {
-            inputHTML = `<input type="${item.inputType}" id="intake-${item.field}" class="intake-input" placeholder=" " onblur="saveIntakeField('${item.field}', this.value)">`;
-        }
+        const fieldCount = section.items.filter(i => !i.type).length;
+        const icon = INTAKE_SECTION_ICONS[section.label] || 'ti-file';
+        const itemsHTML = section.items.map(item => {
+            if (item.type === 'subsection') {
+                return `<div class="intake-sub-head">${escapeHtml(item.label)}</div>`;
+            }
+            return buildIntakeFieldHTML(item);
+        }).join('');
         return `
-            <div class="intake-row">
-                <label class="intake-label" for="intake-${item.field}">${escapeHtml(item.label)}</label>
-                <div class="intake-field-col">${inputHTML}</div>
-                <button class="intake-note-btn" onclick="toggleIntakeNote('${item.field}')" title="Add note" type="button">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                </button>
+        <div class="intake-section">
+            <div class="intake-sec-head">
+                <div class="intake-sec-icon"><i class="ti ${icon}"></i></div>
+                <div class="intake-sec-title">${escapeHtml(section.label)}</div>
             </div>
-            <div class="intake-note-row" id="note-row-${item.field}">
-                <div class="intake-note-inner">
-                    <textarea id="intake-note_${item.field}" class="intake-note-textarea" placeholder="Notes…" onblur="saveIntakeField('note_${item.field}', this.value)" rows="2"></textarea>
-                </div>
-            </div>`;
+            ${itemsHTML}
+        </div>`;
     }).join('');
 }
 
@@ -1492,44 +1624,50 @@ function renderIntake() {
         container.innerHTML = buildIntakeHTML();
     }
 
-    // Populate static fields
+    // Populate static fields (skip focused element to not interrupt typing)
     const focused = document.activeElement;
     INTAKE_SCHEMA.forEach(item => {
         if (item.type) return;
         const el = document.getElementById(`intake-${item.field}`);
         if (el && el !== focused) el.value = data[item.field] != null ? data[item.field] : '';
-
-        const noteEl = document.getElementById(`intake-note_${item.field}`);
-        if (noteEl && noteEl !== focused) noteEl.value = data[`note_${item.field}`] || '';
-
-        const noteRow = document.getElementById(`note-row-${item.field}`);
-        if (noteRow && data[`note_${item.field}`] && !noteRow.classList.contains('intake-note-visible')) {
-            noteRow.classList.add('intake-note-visible');
-        }
     });
 
-    // Populate dynamic sections
+    // Dynamic sections sync from Firestore (auto-save on blur)
     ['pre_show_rows', 'run_of_show_rows'].forEach(sectionId => {
         const dynContainer = document.getElementById(`intake-dyn-${sectionId}`);
         if (!dynContainer || dynContainer.contains(focused)) return;
         const rows = data[sectionId] || DYNAMIC_DEFAULTS[sectionId];
         dynContainer.innerHTML = buildDynamicSectionRows(sectionId, rows);
     });
+
+    updateIntakeProgress();
+}
+
+function updateIntakeProgress() {
+    const fields = INTAKE_SCHEMA.filter(i => !i.type);
+    const total = fields.length;
+    let filled = 0;
+    fields.forEach(item => {
+        const el = document.getElementById(`intake-${item.field}`);
+        if (el && el.value.trim()) filled++;
+    });
+    const pct = total ? Math.round((filled / total) * 100) : 0;
+    const fill = document.getElementById('intake-progress-fill');
+    const pctEl = document.getElementById('intake-progress-pct');
+    if (fill) fill.style.width = pct + '%';
+    if (pctEl) pctEl.textContent = pct + '%';
+    // Mirror into sidebar event card
+    const sbFill = document.getElementById('sec-progress-fill');
+    const sbPct  = document.getElementById('sec-progress-pct');
+    if (sbFill) sbFill.style.width = pct + '%';
+    if (sbPct)  sbPct.textContent  = pct + '%';
 }
 
 window.saveIntakeField = function(field, value) {
     if (!state.currentEventId) return;
     const ref = db.collection('events').doc(state.currentEventId).collection('intake').doc('main');
-    ref.set({ [field]: value }, { merge: true }).then(() => {
-        const status = document.getElementById('intake-save-status');
-        if (!status) return;
-        status.textContent = 'Saved';
-        status.classList.add('intake-saved--visible');
-        clearTimeout(status._hideTimer);
-        status._hideTimer = setTimeout(() => {
-            status.classList.remove('intake-saved--visible');
-        }, 1500);
-    }).catch(e => console.error('Intake save error:', e));
+    ref.set({ [field]: value }, { merge: true })
+        .catch(e => console.error('Intake save error:', e));
 };
 
 window.toggleIntakeNote = function(field) {
@@ -7703,6 +7841,79 @@ function buildCalendarDescription() {
     return desc.trim();
 }
 
+function buildCrewCalendarDescription() {
+    const d  = state.intake || {};
+    const ev = state.activeEvent || {};
+
+    const fmt = (rows) => rows
+        .filter(r => r.label || r.time)
+        .map(r => [r.time, r.label].filter(Boolean).join(' — '))
+        .join('\n');
+
+    const fmtDate = (raw) => {
+        if (!raw) return '';
+        try { return new Date(raw + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }); }
+        catch(e) { return raw; }
+    };
+
+    const line = (label, val) => val ? `${label}: ${val}\n` : '';
+
+    let desc = '';
+
+    // Header
+    const eventName = d.event_name || ev.name || '';
+    if (eventName) desc += eventName.toUpperCase() + '\n\n';
+    desc += 'CREW CALL\n\n';
+
+    // ── Event Info ────────────────────────────────────────────────
+    desc += '📍 EVENT INFO\n\n';
+    if (d.venue_name)       desc += line('Venue', d.venue_name);
+    if (d.venue_address)    desc += line('Address', d.venue_address);
+    if (d.staff_entrance)   desc += line('Staff / Vendor Entrance', d.staff_entrance);
+    if (d.event_date)       desc += line('Date', fmtDate(d.event_date));
+    if (d.performing_bands) desc += line('Performing Bands', d.performing_bands);
+
+    // ── Pre-Show (crew-relevant rows only) ────────────────────────
+    const preRows = (d.pre_show_rows || []).filter(r =>
+        /crew|arrival|sound.?check|break|dark|load.?in/i.test(r.label || '')
+    );
+    if (preRows.length) {
+        desc += '\n⏰ PRE-SHOW\n\n';
+        desc += fmt(preRows) + '\n';
+    }
+
+    // ── Run of Show (full) ────────────────────────────────────────
+    const rosRows = d.run_of_show_rows || [];
+    if (rosRows.length) {
+        desc += '\n🎶 RUN OF SHOW\n\n';
+        desc += fmt(rosRows) + '\n';
+    }
+
+    // ── Logistics (public/private → truck parking) ────────────────
+    const hasLogistics = d.event_access || d.dress_code || d.parking_info || d.truck_parking;
+    if (hasLogistics) {
+        desc += '\n🚗 LOGISTICS\n\n';
+        if (d.event_access)  desc += line('Event Type', d.event_access);
+        if (d.dress_code)    desc += line('Dress Code', d.dress_code);
+        if (d.parking_info)  desc += line('Parking', d.parking_info);
+        if (d.truck_parking) desc += line('Truck Parking (20ft box)', d.truck_parking);
+    }
+
+    // ── Production (stage → power) ────────────────────────────────
+    const hasProd = d.stage_provider || d.sound_provider || d.lights_provider || d.power_situation;
+    if (hasProd) {
+        desc += '\n🔧 PRODUCTION\n\n';
+        if (d.stage_provider)  desc += line('Stage', d.stage_provider);
+        if (d.sound_provider)  desc += line('Sound', d.sound_provider);
+        if (d.lights_provider) desc += line('Lights', d.lights_provider);
+        if (d.power_situation) desc += line('Power', d.power_situation);
+    }
+
+    desc += '\nPlease arrive on time. Schedule is subject to small adjustments as we get closer to the event.';
+
+    return desc.trim();
+}
+
 function initGoogleTokenClient(callback) {
     if (!window.google || !window.google.accounts) {
         showToast('Google Sign-In library not loaded yet — try again in a moment', 'error');
@@ -7744,42 +7955,200 @@ function closeIntakeCalendarPanel() {
 }
 window.closeIntakeCalendarPanel = closeIntakeCalendarPanel;
 
+function parseTimeToHHMM(str) {
+    if (!str) return null;
+    // Strip range suffix (e.g. "6:30 – 7:00pm" or "6:30-7pm" → "6:30")
+    str = str.split(/\s*[–—\-]\s*\d/)[0].trim();
+    // Match H:MM AM/PM or H AM/PM (no minutes)
+    const ampm = str.match(/(\d{1,2})(?::(\d{2}))?\s*(AM|PM)/i);
+    if (ampm) {
+        let h = parseInt(ampm[1], 10);
+        const m = ampm[2] ? parseInt(ampm[2], 10) : 0;
+        if (ampm[3].toUpperCase() === 'AM') { if (h === 12) h = 0; }
+        else { if (h !== 12) h += 12; }
+        return String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
+    }
+    // 24h H:MM
+    const plain = str.match(/^(\d{1,2}):(\d{2})$/);
+    if (plain) {
+        const h = parseInt(plain[1], 10), m = parseInt(plain[2], 10);
+        if (h >= 0 && h < 24 && m >= 0 && m < 60)
+            return String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
+    }
+    return null;
+}
+
+function addHoursToHHMM(hhmmStr, hours) {
+    if (!hhmmStr) return '';
+    const [h, m] = hhmmStr.split(':').map(Number);
+    const total = h * 60 + m + hours * 60;
+    return String(Math.floor(total / 60) % 24).padStart(2, '0') + ':' + String(total % 60).padStart(2, '0');
+}
+
+function crewArrivalTime(d) {
+    const rows = (d && d.pre_show_rows) || [];
+    // Look for a row that mentions both "crew" and "arrival"
+    const crewRow = rows.find(r => /crew/i.test(r.label || '') && /arrival/i.test(r.label || ''));
+    if (crewRow) {
+        const t = parseTimeToHHMM(crewRow.time);
+        if (t) return t;
+    }
+    // Fall back to any row mentioning "crew"
+    const anyCrewRow = rows.find(r => /crew/i.test(r.label || ''));
+    if (anyCrewRow) {
+        const t = parseTimeToHHMM(anyCrewRow.time);
+        if (t) return t;
+    }
+    return '';
+}
+
+function earliestPreShowTime(d) {
+    const rows = (d && d.pre_show_rows) || [];
+    // Prefer the first row whose label mentions "arrival"
+    const arrivalRow = rows.find(r => /arrival/i.test(r.label || ''));
+    if (arrivalRow) {
+        const t = parseTimeToHHMM(arrivalRow.time);
+        if (t) return t;
+    }
+    // Fall back to the first row with any parseable time
+    for (const r of rows) {
+        const t = parseTimeToHHMM(r.time);
+        if (t) return t;
+    }
+    return '';
+}
+
+function showEndTime(d) {
+    const rows = (d && d.run_of_show_rows) || [];
+    // Look for a row whose label mentions "end"
+    const endRow = rows.find(r => /\bend\b/i.test(r.label || ''));
+    if (endRow) {
+        const t = parseTimeToHHMM(endRow.time);
+        if (t) return t;
+    }
+    // Fall back to the last row with any parseable time
+    for (let i = rows.length - 1; i >= 0; i--) {
+        const t = parseTimeToHHMM(rows[i].time);
+        if (t) return t;
+    }
+    return '';
+}
+
 function populateIntakeCalendarPanel() {
     const ev = state.activeEvent;
     const d  = state.intake || {};
     if (ev) {
         const t = document.getElementById('ical-title');
-        if (t && !t.value) t.value = (d.event_name || ev.name || '') + ' — Performer Call';
+        if (t) t.value = 'Show: ' + (d.event_name || ev.name || '');
         const l = document.getElementById('ical-location');
-        if (l && !l.value) l.value = d.venue_name || ev.venue || ev.location || '';
+        if (l) l.value = d.venue_address || '';
         const dt = document.getElementById('ical-date');
         if (dt && !dt.value) dt.value = d.event_date || ev.date || '';
+        const startEl = document.getElementById('ical-start');
+        if (startEl) startEl.value = earliestPreShowTime(d);
+        const endEl = document.getElementById('ical-end');
+        if (endEl) endEl.value = showEndTime(d);
         const notesEl = document.getElementById('ical-notes');
         if (notesEl && !notesEl.value) notesEl.value = buildCalendarDescription();
     }
     const listEl = document.getElementById('ical-performer-list');
     if (!listEl) return;
+
     const dir = [...state.performerDirectory].sort((a, b) =>
         (a.act || '').localeCompare(b.act || '') || (a.name || '').localeCompare(b.name || '')
     );
     if (!dir.length) { listEl.innerHTML = '<div class="si-empty">No performers in directory yet.</div>'; return; }
-    let lastAct = null;
-    listEl.innerHTML = dir.map(p => {
-        let header = '';
-        if (p.act !== lastAct) { lastAct = p.act; header = '<div class="si-act-header">' + escapeHtml(p.act || 'No Act') + '</div>'; }
-        const hasEmail = p.email || (p.parents || []).some(par => par.email);
-        return header + '<label class="si-performer-row' + (hasEmail ? '' : ' si-no-email') + '">' +
-            '<input type="checkbox" class="ical-check" data-id="' + p.id + '" ' + (hasEmail ? 'checked' : 'disabled') + '>' +
-            '<span class="si-performer-name">' + escapeHtml(p.name || '') + '</span>' +
-            (hasEmail ? '' : '<span class="si-no-email-tag">no email</span>') +
-        '</label>';
+
+    // Group by act/band
+    const bands = {};
+    dir.forEach(p => {
+        const act = p.act || 'No Act';
+        if (!bands[act]) bands[act] = [];
+        bands[act].push(p);
+    });
+
+    listEl.innerHTML = Object.entries(bands).map(([act, members], idx) => {
+        const key = 'ical-band-' + idx;
+        const membersHTML = members.map(p => {
+            const hasEmail = p.email || (p.parents || []).some(par => par.email);
+            return '<label class="si-performer-row' + (hasEmail ? '' : ' si-no-email') + '">' +
+                '<input type="checkbox" class="ical-check" data-id="' + p.id + '" ' + (hasEmail ? 'checked' : 'disabled') + '>' +
+                '<span class="si-performer-name">' + escapeHtml(p.name || '') + '</span>' +
+                (hasEmail ? '' : '<span class="si-no-email-tag">no email</span>') +
+            '</label>';
+        }).join('');
+        return `
+        <div class="ical-band-group" id="${key}">
+            <div class="ical-band-header">
+                <input type="checkbox" class="ical-band-check" checked onchange="icalBandCheckChange('${key}', this)">
+                <div class="ical-band-toggle" onclick="icalToggleBand('${key}')">
+                    <svg class="ical-band-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 4.5 6 7.5 9 4.5"/></svg>
+                    <span class="ical-band-name">${escapeHtml(act)}</span>
+                </div>
+            </div>
+            <div class="ical-band-members" id="${key}-members" style="display:none">${membersHTML}</div>
+        </div>`;
     }).join('');
 }
 
-function icalSelectAll() { document.querySelectorAll('.ical-check:not(:disabled)').forEach(cb => cb.checked = true); }
+window.icalBandCheckChange = function(key, cb) {
+    const group   = document.getElementById(key);
+    const members = document.getElementById(key + '-members');
+    if (!group) return;
+    if (cb.checked) {
+        group.classList.remove('ical-band-disabled');
+    } else {
+        group.classList.add('ical-band-disabled');
+        if (members) { members.style.display = 'none'; }
+        group.classList.remove('ical-band-open');
+        group.querySelectorAll('.ical-check').forEach(c => { c.checked = false; });
+    }
+};
+
+window.icalToggleBand = function(key) {
+    const group   = document.getElementById(key);
+    const members = document.getElementById(key + '-members');
+    if (!group || !members || group.classList.contains('ical-band-disabled')) return;
+    const isOpen = members.style.display !== 'none';
+    members.style.display = isOpen ? 'none' : '';
+    group.classList.toggle('ical-band-open', !isOpen);
+};
+
+function icalSelectAll() {
+    document.querySelectorAll('.ical-band-group').forEach(g => {
+        const cb = g.querySelector('.ical-band-check');
+        if (cb) cb.checked = true;
+        g.classList.remove('ical-band-disabled');
+        const m = document.getElementById(g.id + '-members');
+        if (m) { m.style.display = ''; g.classList.add('ical-band-open'); }
+    });
+    document.querySelectorAll('.ical-check:not(:disabled)').forEach(cb => cb.checked = true);
+}
 window.icalSelectAll = icalSelectAll;
-function icalSelectNone() { document.querySelectorAll('.ical-check').forEach(cb => cb.checked = false); }
+
+function icalSelectNone() {
+    document.querySelectorAll('.ical-band-group').forEach(g => {
+        const cb = g.querySelector('.ical-band-check');
+        if (cb) cb.checked = false;
+        g.classList.add('ical-band-disabled');
+        const m = document.getElementById(g.id + '-members');
+        if (m) m.style.display = 'none';
+        g.classList.remove('ical-band-open');
+    });
+    document.querySelectorAll('.ical-check').forEach(cb => cb.checked = false);
+}
 window.icalSelectNone = icalSelectNone;
+
+window.icalAddExtraEmail = function() {
+    const list = document.getElementById('ical-extra-email-list');
+    if (!list) return;
+    const row = document.createElement('div');
+    row.className = 'ical-extra-email-row';
+    row.innerHTML = `<input type="email" class="ical-extra-email-input" placeholder="email@example.com">
+        <button class="ical-extra-email-remove" onclick="this.parentElement.remove()" title="Remove">&times;</button>`;
+    list.appendChild(row);
+    row.querySelector('input').focus();
+};
 
 async function sendIntakeCalendarInvites() {
     const title    = (document.getElementById('ical-title')?.value    || '').trim();
@@ -7793,9 +8162,11 @@ async function sendIntakeCalendarInvites() {
     if (!title || !date || !start || !end) { showToast('Title, date, start and end time are required', 'error'); return; }
 
     const selectedIds = Array.from(document.querySelectorAll('.ical-check:checked')).map(cb => cb.dataset.id);
-    if (!selectedIds.length) { showToast('Select at least one performer', 'error'); return; }
+    const extraEmails = Array.from(document.querySelectorAll('.ical-extra-email-input'))
+        .map(i => i.value.trim()).filter(Boolean);
+    if (!selectedIds.length && !extraEmails.length) { showToast('Select at least one performer or add an email', 'error'); return; }
 
-    const emails = new Set();
+    const emails = new Set(extraEmails);
     selectedIds.forEach(id => {
         const p = state.performerDirectory.find(p => p.id === id);
         if (!p) return;
@@ -7838,6 +8209,190 @@ async function sendIntakeCalendarInvites() {
 }
 window.sendIntakeCalendarInvites = sendIntakeCalendarInvites;
 
+// ─── Send Crew Invites ────────────────────────────────────────────────────────
+
+function openCrewCalendarPanel() {
+    const modal = document.getElementById('crew-cal-modal');
+    if (modal) { modal.style.display = 'flex'; modal.classList.add('active'); }
+    populateCrewCalendarPanel();
+}
+window.openCrewCalendarPanel = openCrewCalendarPanel;
+
+function closeCrewCalendarPanel() {
+    const modal = document.getElementById('crew-cal-modal');
+    if (modal) { modal.style.display = ''; modal.classList.remove('active'); }
+}
+window.closeCrewCalendarPanel = closeCrewCalendarPanel;
+
+function populateCrewCalendarPanel() {
+    const ev = state.activeEvent;
+    const d  = state.intake || {};
+    if (ev) {
+        const t = document.getElementById('crew-title');
+        if (t) t.value = 'Show: ' + (d.event_name || ev.name || '');
+        const l = document.getElementById('crew-location');
+        if (l) l.value = d.venue_address || '';
+        const dt = document.getElementById('crew-date');
+        if (dt && !dt.value) dt.value = d.event_date || ev.date || '';
+        const startEl = document.getElementById('crew-start');
+        if (startEl) startEl.value = crewArrivalTime(d);
+        const endEl = document.getElementById('crew-end');
+        if (endEl) endEl.value = addHoursToHHMM(showEndTime(d), 2);
+        const notesEl = document.getElementById('crew-notes');
+        if (notesEl && !notesEl.value) notesEl.value = buildCrewCalendarDescription();
+    }
+
+    const listEl = document.getElementById('crew-list');
+    if (!listEl) return;
+
+    const crew = state.staff.filter(s => !s.isPlaceholder && s.name);
+    if (!crew.length) { listEl.innerHTML = '<div class="si-empty">No crew assigned to this show yet.</div>'; return; }
+
+    // Group by role
+    const groups = {};
+    crew.forEach(s => {
+        const role = s.role || s.department || 'No Role';
+        if (!groups[role]) groups[role] = [];
+        groups[role].push(s);
+    });
+
+    listEl.innerHTML = Object.entries(groups).sort(([a],[b]) => a.localeCompare(b)).map(([role, members], idx) => {
+        const key = 'crew-grp-' + idx;
+        const membersHTML = members.map(s => {
+            const hasEmail = !!s.email;
+            return '<label class="si-performer-row' + (hasEmail ? '' : ' si-no-email') + '">' +
+                '<input type="checkbox" class="crew-check" data-id="' + s.id + '" ' + (hasEmail ? 'checked' : 'disabled') + '>' +
+                '<span class="si-performer-name">' + escapeHtml(s.name || '') + '</span>' +
+                (hasEmail ? '' : '<span class="si-no-email-tag">no email</span>') +
+            '</label>';
+        }).join('');
+        return `
+        <div class="ical-band-group" id="${key}">
+            <div class="ical-band-header">
+                <input type="checkbox" class="ical-band-check" checked onchange="crewGroupCheckChange('${key}', this)">
+                <div class="ical-band-toggle" onclick="crewToggleGroup('${key}')">
+                    <svg class="ical-band-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 4.5 6 7.5 9 4.5"/></svg>
+                    <span class="ical-band-name">${escapeHtml(role)}</span>
+                </div>
+            </div>
+            <div class="ical-band-members" id="${key}-members" style="display:none">${membersHTML}</div>
+        </div>`;
+    }).join('');
+}
+
+window.crewGroupCheckChange = function(key, cb) {
+    const group = document.getElementById(key);
+    const members = document.getElementById(key + '-members');
+    if (!group) return;
+    if (cb.checked) {
+        group.classList.remove('ical-band-disabled');
+    } else {
+        group.classList.add('ical-band-disabled');
+        if (members) members.style.display = 'none';
+        group.classList.remove('ical-band-open');
+        group.querySelectorAll('.crew-check').forEach(c => { c.checked = false; });
+    }
+};
+
+window.crewToggleGroup = function(key) {
+    const group = document.getElementById(key);
+    const members = document.getElementById(key + '-members');
+    if (!group || !members || group.classList.contains('ical-band-disabled')) return;
+    const isOpen = members.style.display !== 'none';
+    members.style.display = isOpen ? 'none' : '';
+    group.classList.toggle('ical-band-open', !isOpen);
+};
+
+function crewSelectAll() {
+    document.querySelectorAll('#crew-list .ical-band-group').forEach(g => {
+        const cb = g.querySelector('.ical-band-check');
+        if (cb) cb.checked = true;
+        g.classList.remove('ical-band-disabled');
+        const m = document.getElementById(g.id + '-members');
+        if (m) { m.style.display = ''; g.classList.add('ical-band-open'); }
+    });
+    document.querySelectorAll('#crew-list .crew-check:not(:disabled)').forEach(cb => cb.checked = true);
+}
+window.crewSelectAll = crewSelectAll;
+
+function crewSelectNone() {
+    document.querySelectorAll('#crew-list .ical-band-group').forEach(g => {
+        const cb = g.querySelector('.ical-band-check');
+        if (cb) cb.checked = false;
+        g.classList.add('ical-band-disabled');
+        const m = document.getElementById(g.id + '-members');
+        if (m) m.style.display = 'none';
+        g.classList.remove('ical-band-open');
+    });
+    document.querySelectorAll('#crew-list .crew-check').forEach(cb => cb.checked = false);
+}
+window.crewSelectNone = crewSelectNone;
+
+window.crewAddExtraEmail = function() {
+    const list = document.getElementById('crew-extra-email-list');
+    if (!list) return;
+    const row = document.createElement('div');
+    row.className = 'ical-extra-email-row';
+    row.innerHTML = `<input type="email" class="ical-extra-email-input" placeholder="email@example.com">
+        <button class="ical-extra-email-remove" onclick="this.parentElement.remove()" title="Remove">&times;</button>`;
+    list.appendChild(row);
+    row.querySelector('input').focus();
+};
+
+async function sendCrewCalendarInvites() {
+    const title    = (document.getElementById('crew-title')?.value    || '').trim();
+    const location = (document.getElementById('crew-location')?.value || '').trim();
+    const date     = (document.getElementById('crew-date')?.value     || '').trim();
+    const start    = (document.getElementById('crew-start')?.value    || '').trim();
+    const end      = (document.getElementById('crew-end')?.value      || '').trim();
+    const notes    = (document.getElementById('crew-notes')?.value    || '').trim();
+
+    if (!title || !date || !start || !end) { showToast('Title, date, start and end time are required', 'error'); return; }
+
+    const selectedIds = Array.from(document.querySelectorAll('#crew-list .crew-check:checked')).map(cb => cb.dataset.id);
+    const extraEmails = Array.from(document.querySelectorAll('#crew-extra-email-list .ical-extra-email-input'))
+        .map(i => i.value.trim()).filter(Boolean);
+    if (!selectedIds.length && !extraEmails.length) { showToast('Select at least one crew member or add an email', 'error'); return; }
+
+    const emails = new Set(extraEmails);
+    selectedIds.forEach(id => {
+        const s = state.staff.find(s => s.id === id);
+        if (s && s.email) emails.add(s.email);
+    });
+    if (!emails.size) { showToast('No email addresses found for selected crew', 'error'); return; }
+
+    const statusEl = document.getElementById('crew-auth-status');
+    if (statusEl) { statusEl.style.display = ''; statusEl.textContent = 'Authorizing with Google…'; statusEl.className = 'si-auth-status si-auth-pending'; }
+
+    initGoogleTokenClient(async (accessToken) => {
+        try {
+            if (statusEl) statusEl.textContent = 'Creating calendar event…';
+            const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            const event = {
+                summary: title,
+                location,
+                description: notes,
+                start: { dateTime: date + 'T' + start + ':00', timeZone: tz },
+                end:   { dateTime: date + 'T' + end   + ':00', timeZone: tz },
+                attendees: Array.from(emails).map(email => ({ email })),
+                guestsCanSeeOtherGuests: false,
+            };
+            const res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events?sendUpdates=all', {
+                method: 'POST',
+                headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' },
+                body: JSON.stringify(event),
+            });
+            if (!res.ok) throw new Error((await res.json()).error?.message || 'Unknown error');
+            if (statusEl) { statusEl.textContent = '✓ Invitations sent to ' + emails.size + ' crew member' + (emails.size !== 1 ? 's' : '') + '!'; statusEl.className = 'si-auth-status si-auth-ok'; }
+            setTimeout(() => closeCrewCalendarPanel(), 2500);
+        } catch (err) {
+            console.error('Crew invite error:', err);
+            if (statusEl) { statusEl.textContent = 'Error: ' + err.message; statusEl.className = 'si-auth-status si-auth-error'; }
+        }
+    });
+}
+window.sendCrewCalendarInvites = sendCrewCalendarInvites;
+
 function toggleSendInvitesPanel() {
     const panel = document.getElementById('send-invites-panel');
     const addForm = document.getElementById('performer-add-form');
@@ -7854,11 +8409,15 @@ function populateSendInvitesPanel() {
     const d  = state.intake || {};
     if (ev) {
         const titleEl = document.getElementById('si-title');
-        if (titleEl && !titleEl.value) titleEl.value = (d.event_name || ev.name || '') + ' — Performer Call';
+        if (titleEl) titleEl.value = 'Show: ' + (d.event_name || ev.name || '');
         const locEl = document.getElementById('si-location');
-        if (locEl && !locEl.value) locEl.value = d.venue_name || ev.venue || ev.location || '';
+        if (locEl) locEl.value = d.venue_address || '';
         const dateEl = document.getElementById('si-date');
         if (dateEl && !dateEl.value) dateEl.value = d.event_date || ev.date || '';
+        const siStartEl = document.getElementById('si-start');
+        if (siStartEl) siStartEl.value = earliestPreShowTime(d);
+        const siEndEl = document.getElementById('si-end');
+        if (siEndEl) siEndEl.value = showEndTime(d);
         const notesEl = document.getElementById('si-notes');
         if (notesEl && !notesEl.value) notesEl.value = buildCalendarDescription();
     }

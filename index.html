@@ -9,12 +9,16 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
 </head>
 <body>
     <!-- Navigation -->
     <nav class="navbar">
         <div class="nav-container">
-            <div class="nav-brand">YMU Events</div>
+            <div class="nav-brand">
+                <div class="sb-eyebrow">YMU Shows</div>
+                <div class="sb-brand-title">Events</div>
+            </div>
             <button id="nav-event-settings-btn" class="nav-settings-btn" onclick="openEventSettings()" title="Manage Pages" style="display:none">
                 <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><circle cx="9" cy="9" r="3"/><path d="M9 1v2M9 15v2M1 9h2M15 9h2M3.05 3.05l1.41 1.41M13.54 13.54l1.41 1.41M3.05 14.95l1.41-1.41M13.54 4.46l1.41-1.41"/></svg>
             </button>
@@ -26,42 +30,40 @@
             <div class="nav-menu" id="nav-menu">
                 <!-- Intake - direct link -->
                 <a href="#intake" class="nav-link" data-page="intake">
-                    <svg class="nav-icon" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1z"/><line x1="5" y1="6" x2="13" y2="6"/><line x1="5" y1="9" x2="13" y2="9"/><line x1="5" y1="12" x2="9" y2="12"/></svg>
+                    <i class="ti ti-file-description nav-icon"></i>
                     <span class="nav-label">Intake</span>
                 </a>
 
                 <!-- Dashboard - direct link -->
                 <a href="#dashboard" class="nav-link" data-page="dashboard">
-                    <svg class="nav-icon" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="1" width="7" height="7" rx="1"/><rect x="10" y="1" width="7" height="7" rx="1"/><rect x="1" y="10" width="7" height="7" rx="1"/><rect x="10" y="10" width="7" height="7" rx="1"/></svg>
+                    <i class="ti ti-layout-dashboard nav-icon"></i>
                     <span class="nav-label">Dashboard</span>
                 </a>
 
                 <!-- Production group -->
                 <div class="nav-group">
                     <button class="nav-group-toggle" type="button">
-                        <svg class="nav-icon" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="9" r="8"/><polyline points="9 4 9 9 13 11"/></svg>
                         <span class="nav-label">Production</span>
-                        <svg class="nav-chevron" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="2 4 6 8 10 4"/></svg>
                     </button>
                     <div class="nav-dropdown">
                         <a href="#timeline" class="nav-link" data-page="timeline">
-                            <svg class="nav-icon" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="1" y1="5" x2="17" y2="5"/><line x1="1" y1="9" x2="13" y2="9"/><line x1="1" y1="13" x2="15" y2="13"/><circle cx="17" cy="9" r="0.5" fill="currentColor"/><circle cx="15" cy="13" r="0.5" fill="currentColor"/></svg>
+                            <i class="ti ti-timeline-event nav-icon"></i>
                             <span class="nav-label">Timeline</span>
                         </a>
                         <a href="#technical-cue-sheet" class="nav-link" data-page="technical-cue-sheet">
-                            <svg class="nav-icon" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="14" height="14" rx="1.5"/><line x1="2" y1="6" x2="16" y2="6"/><line x1="6" y1="2" x2="6" y2="16"/><circle cx="11" cy="10" r="1" fill="currentColor"/><circle cx="13" cy="13" r="1" fill="currentColor"/></svg>
+                            <i class="ti ti-table nav-icon"></i>
                             <span class="nav-label">Technical Cue Sheet</span>
                         </a>
                         <a href="#input-lists" class="nav-link" data-page="input-lists">
-                            <svg class="nav-icon" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="2 5 4 7 8 3"/><line x1="10" y1="5" x2="17" y2="5"/><polyline points="2 11 4 13 8 9"/><line x1="10" y1="11" x2="17" y2="11"/></svg>
+                            <i class="ti ti-list-check nav-icon"></i>
                             <span class="nav-label">Input Lists</span>
                         </a>
                         <a href="#stage-plots" class="nav-link" data-page="stage-plots">
-                            <svg class="nav-icon" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="1" width="16" height="16" rx="2"/><line x1="1" y1="7" x2="17" y2="7"/><line x1="7" y1="7" x2="7" y2="17"/></svg>
+                            <i class="ti ti-layout-board nav-icon"></i>
                             <span class="nav-label">Stage Plots</span>
                         </a>
                         <a href="#set-lists" class="nav-link" data-page="set-lists">
-                            <svg class="nav-icon" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="13" r="3"/><line x1="8" y1="13" x2="8" y2="2"/><path d="M8 2 C10 2 15 1 15 4 C15 7 10 6 8 6"/></svg>
+                            <i class="ti ti-music nav-icon"></i>
                             <span class="nav-label">Performers</span>
                         </a>
                     </div>
@@ -70,33 +72,31 @@
                 <!-- Operations group -->
                 <div class="nav-group">
                     <button class="nav-group-toggle" type="button">
-                        <svg class="nav-icon" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="5" width="16" height="12" rx="2"/><path d="M5 5V3a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                         <span class="nav-label">Operations</span>
-                        <svg class="nav-chevron" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="2 4 6 8 10 4"/></svg>
                     </button>
                     <div class="nav-dropdown">
                         <a href="#vendors" class="nav-link" data-page="vendors">
-                            <svg class="nav-icon" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 7l2-6h12l2 6"/><path d="M1 7v9a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V7"/><path d="M7 17V11h4v6"/></svg>
+                            <i class="ti ti-building-store nav-icon"></i>
                             <span class="nav-label">Vendors</span>
                         </a>
                         <a href="#budget" class="nav-link" data-page="budget">
-                            <svg class="nav-icon" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="9" r="8"/><path d="M9 4v10"/><path d="M6 7c0-1.5 1.3-2 3-2s3 .5 3 2-1.3 2-3 2-3 .5-3 2 1.3 2 3 2 3-.5 3-2"/></svg>
+                            <i class="ti ti-currency-dollar nav-icon"></i>
                             <span class="nav-label">Budget</span>
                         </a>
                         <a href="#staff" class="nav-link" data-page="staff">
-                            <svg class="nav-icon" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="5" r="4"/><path d="M1 17c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+                            <i class="ti ti-users nav-icon"></i>
                             <span class="nav-label">Staff</span>
                         </a>
                         <a href="#packing-list" class="nav-link" data-page="packing-list">
-                            <svg class="nav-icon" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="1" width="14" height="16" rx="1.5"/><path d="M6 1v2h6V1"/><path d="M6 7h1.5m2 0h2.5"/><path d="M6 10.5h1.5m2 0h2.5"/><path d="M6 14h1.5m2 0h2.5"/></svg>
+                            <i class="ti ti-package nav-icon"></i>
                             <span class="nav-label">Packing List</span>
                         </a>
                         <a href="#seating" class="nav-link" data-page="seating">
-                            <svg class="nav-icon" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8V3a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v5"/><path d="M3 8h12v4H3z"/><path d="M5 12v4"/><path d="M13 12v4"/></svg>
+                            <i class="ti ti-armchair nav-icon"></i>
                             <span class="nav-label">Seating</span>
                         </a>
                         <a href="#guests" class="nav-link" data-page="guests">
-                            <svg class="nav-icon" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="5" r="3"/><path d="M1 17c0-3.9 3.6-7 8-7s8 3.1 8 7"/><circle cx="15" cy="5" r="2.2"/><path d="M17 14.5c1.3.5 1 2.5 1 2.5"/></svg>
+                            <i class="ti ti-user-plus nav-icon"></i>
                             <span class="nav-label">Guests</span>
                         </a>
                     </div>
@@ -105,17 +105,15 @@
                 <!-- Creative group -->
                 <div class="nav-group">
                     <button class="nav-group-toggle" type="button">
-                        <svg class="nav-icon" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 12l3 3L15 5z"/><path d="M10 4l3 3"/><path d="M2 12l3 3"/><circle cx="15" cy="3" r="2"/></svg>
                         <span class="nav-label">Creative</span>
-                        <svg class="nav-chevron" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="2 4 6 8 10 4"/></svg>
                     </button>
                     <div class="nav-dropdown">
                         <a href="#printed-materials" class="nav-link" data-page="printed-materials">
-                            <svg class="nav-icon" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="14" height="13" rx="1.5"/><path d="M5 3V1h8v2"/><path d="M2 9h14"/><rect x="5" y="9" width="8" height="7" rx="0.5"/><circle cx="4" cy="6" r="0.8" fill="currentColor"/></svg>
+                            <i class="ti ti-printer nav-icon"></i>
                             <span class="nav-label">Printed Materials</span>
                         </a>
                         <a href="#digital-assets" class="nav-link" data-page="digital-assets">
-                            <svg class="nav-icon" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="14" height="14" rx="2"/><path d="M6 6h6M6 9h6M6 12h4"/></svg>
+                            <i class="ti ti-photo nav-icon"></i>
                             <span class="nav-label">Digital Assets</span>
                         </a>
                     </div>
@@ -123,13 +121,13 @@
 
                 <!-- Menu - direct link -->
                 <a href="#menu" class="nav-link" data-page="menu">
-                    <svg class="nav-icon" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2v14c0 1 1 1 1 1h1c1 0 1-1 1-1V2"/><path d="M3 8h3"/><line x1="12" y1="2" x2="12" y2="7"/><path d="M10 7c0 2 2 3 2 3s2-1 2-3V2"/><line x1="12" y1="10" x2="12" y2="17"/></svg>
+                    <i class="ti ti-tools-kitchen-2 nav-icon"></i>
                     <span class="nav-label">Menu</span>
                 </a>
 
                 <!-- Venue Map - direct link -->
                 <a href="#venue-map" class="nav-link" data-page="venue-map">
-                    <svg class="nav-icon" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 1C6 1 4 3.5 4 6.5S9 17 9 17s5-7.5 5-10.5S12 1 9 1z"/><circle cx="9" cy="6.5" r="2"/></svg>
+                    <i class="ti ti-map-pin nav-icon"></i>
                     <span class="nav-label">Venue Map</span>
                 </a>
 
@@ -152,6 +150,14 @@
                     <div class="hub-seasons-label">Seasons</div>
                     <div id="hub-seasons-list"></div>
                     <button class="hub-season-add-btn" onclick="promptAddSeason()">+ New Season</button>
+                </div>
+            </div>
+            <!-- Sidebar footer -->
+            <div class="sb-foot">
+                <div class="sb-user" onclick="openStaffIndex()">
+                    <div class="sb-avatar" id="sb-avatar-initials">EP</div>
+                    <span class="sb-uname" id="sb-user-display">Estelle</span>
+                    <i class="ti ti-settings"></i>
                 </div>
             </div>
         </div>
@@ -234,11 +240,21 @@
         <div id="intake" class="page">
             <div class="page-header intake-page-header">
                 <h1>Show Intake</h1>
-                <span class="intake-save-status" id="intake-save-status"></span>
-                <button class="btn btn-secondary btn-sm intake-cal-btn" onclick="openIntakeCalendarPanel()">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                    Send Performer Invites
-                </button>
+                <div style="display:flex;flex-direction:column;gap:6px;align-items:stretch">
+                    <button class="btn btn-secondary btn-sm intake-cal-btn" onclick="openIntakeCalendarPanel()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                        Send Performer Invites
+                    </button>
+                    <button class="btn btn-secondary btn-sm intake-cal-btn" onclick="openCrewCalendarPanel()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                        Send Crew Invites
+                    </button>
+                </div>
+            </div>
+            <div class="intake-progress-row">
+                <div class="intake-progress-label">Completion</div>
+                <div class="intake-progress-bar"><div class="intake-progress-fill" id="intake-progress-fill"></div></div>
+                <div class="intake-progress-pct" id="intake-progress-pct">0%</div>
             </div>
             <div id="intake-form-body" class="intake-form"></div>
         </div>
@@ -2467,18 +2483,20 @@
                                 <label>Date</label>
                                 <input type="date" id="ical-date">
                             </div>
-                            <div class="form-group">
-                                <label>Start Time</label>
-                                <input type="time" id="ical-start">
-                            </div>
-                            <div class="form-group">
-                                <label>End Time</label>
-                                <input type="time" id="ical-end">
+                            <div class="form-row" style="margin:0;padding:0;gap:8px">
+                                <div class="form-group">
+                                    <label>Start Time</label>
+                                    <input type="time" id="ical-start">
+                                </div>
+                                <div class="form-group">
+                                    <label>End Time</label>
+                                    <input type="time" id="ical-end">
+                                </div>
                             </div>
                         </div>
                         <div class="form-group">
                             <label>Notes / Description</label>
-                            <textarea id="ical-notes" rows="8" placeholder="e.g. Load-in at 4pm. Dressing rooms on level 2."></textarea>
+                            <textarea id="ical-notes" rows="12" placeholder="e.g. Load-in at 4pm. Dressing rooms on level 2."></textarea>
                         </div>
                     </div>
                     <div class="send-invites-select-hdr">
@@ -2488,6 +2506,13 @@
                         <button class="btn btn-sm btn-secondary" onclick="icalSelectNone()">None</button>
                     </div>
                     <div id="ical-performer-list" class="si-performer-list"></div>
+                    <div class="ical-extra-emails-section">
+                        <div class="ical-extra-emails-header">
+                            <span>Additional Recipients</span>
+                            <button class="btn btn-sm btn-secondary" onclick="icalAddExtraEmail()">+ Add Email</button>
+                        </div>
+                        <div id="ical-extra-email-list"></div>
+                    </div>
                     <div id="ical-auth-status" class="si-auth-status" style="display:none"></div>
                     <div class="send-invites-actions">
                         <button class="btn btn-primary-gold" onclick="sendIntakeCalendarInvites()">
@@ -2495,6 +2520,73 @@
                             Send Invitations
                         </button>
                         <button class="btn btn-secondary" onclick="closeIntakeCalendarPanel()">Cancel</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Intake: Send Crew Invites Modal -->
+    <div id="crew-cal-modal" class="modal" onclick="if(event.target===this)closeCrewCalendarPanel()">
+        <div class="modal-content modal-lg">
+            <div class="modal-header">
+                <h2>Send Crew Invitations</h2>
+                <button class="modal-close" onclick="closeCrewCalendarPanel()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="send-invites-inner" style="border:none;padding:0;background:none">
+                    <div class="send-invites-fields">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Event Title</label>
+                                <input type="text" id="crew-title" placeholder="e.g. YMU Gala 2026 — Crew Call">
+                            </div>
+                            <div class="form-group">
+                                <label>Location / Venue</label>
+                                <input type="text" id="crew-location" placeholder="e.g. The Beverly Hilton">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Date</label>
+                                <input type="date" id="crew-date">
+                            </div>
+                            <div class="form-row" style="margin:0;padding:0;gap:8px">
+                                <div class="form-group">
+                                    <label>Start Time</label>
+                                    <input type="time" id="crew-start">
+                                </div>
+                                <div class="form-group">
+                                    <label>End Time</label>
+                                    <input type="time" id="crew-end">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Notes / Description</label>
+                            <textarea id="crew-notes" rows="12" placeholder="e.g. Load-in at 8am. Staging area on level 1."></textarea>
+                        </div>
+                    </div>
+                    <div class="send-invites-select-hdr">
+                        <span>Select Crew</span>
+                        <button class="btn btn-sm btn-secondary" onclick="crewSelectAll()">Select All</button>
+                        <button class="btn btn-sm btn-secondary" onclick="crewSelectNone()">None</button>
+                    </div>
+                    <div id="crew-list" class="si-performer-list"></div>
+                    <div class="ical-extra-emails-section">
+                        <div class="ical-extra-emails-header">
+                            <span>Additional Recipients</span>
+                            <button class="btn btn-sm btn-secondary" onclick="crewAddExtraEmail()">+ Add Email</button>
+                        </div>
+                        <div id="crew-extra-email-list"></div>
+                    </div>
+                    <div id="crew-auth-status" class="si-auth-status" style="display:none"></div>
+                    <div class="send-invites-actions">
+                        <button class="btn btn-primary-gold" onclick="sendCrewCalendarInvites()">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.39 2 2 0 0 1 3.58 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.54a16 16 0 0 0 6 6l.92-.92a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21.72 16h.2z"/></svg>
+                            Send Invitations
+                        </button>
+                        <button class="btn btn-secondary" onclick="closeCrewCalendarPanel()">Cancel</button>
                     </div>
                 </div>
             </div>

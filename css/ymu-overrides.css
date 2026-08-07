@@ -9,10 +9,26 @@
  * Make all future edits here, not in styles.css.
  */
 
-/* ── 1. FONTS ──────────────────────────────────────────────────────────
-   Kill the 5-font soup. One display face, one UI face, one mono. */
+/* ── 0. TOKEN OVERRIDES ────────────────────────────────────────────────
+   Replace dark-charcoal palette with teal design system */
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+[data-theme="dark"],
+[data-theme="dark"] :root {
+  --bg-page:       #1c2b2b !important;
+  --bg-surface:    #1a1d22 !important;
+  --bg-surface-2:  #0f1a1a !important;
+  --bg-hover:      rgba(255,255,255,0.04) !important;
+  --border-subtle: rgba(255,255,255,0.07) !important;
+  --border-medium: rgba(255,255,255,0.12) !important;
+  --text-primary:  #ffffff !important;
+  --text-secondary:rgba(255,255,255,0.58) !important;
+  --text-tertiary: rgba(255,255,255,0.28) !important;
+}
+
+/* ── 1. FONTS ──────────────────────────────────────────────────────────
+   Kill the 5-font soup. One display face, one UI face, one mono. */
 
 body {
   font-family: 'Inter', sans-serif !important;
@@ -47,79 +63,107 @@ h1, h2, h3 {
   letter-spacing: 0.06em !important;
 }
 
-/* ── 2. NAVBAR ─────────────────────────────────────────────────────────
-   Replace the dark green/gold gradient with the clean light sidebar feel */
+/* Nav item labels are not section labels — reset the mono/uppercase */
+.nav-link .nav-label,
+.app-settings-btn .nav-label {
+  font-family: 'Inter', sans-serif !important;
+  font-size: 13px !important;
+  text-transform: none !important;
+  letter-spacing: normal !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  min-width: 0 !important;
+}
 
+/* ── 2. NAVBAR ─────────────────────────────────────────────────────────
+   Navy palette scoped to the sidebar only.
+   Use [data-theme] to beat the same-specificity rule in styles.css. */
+
+[data-theme] .navbar,
 .navbar {
-  background: var(--bg-surface) !important;
+  background: #0f1a1a !important;
   box-shadow: none !important;
-  border-bottom: 0.5px solid var(--border-subtle) !important;
-  color: var(--text-primary) !important;
+  border-bottom: none !important;
+  color: #ffffff !important;
 }
 
 .nav-brand {
   font-family: 'Inter', sans-serif !important;
   font-size: 15px !important;
   font-weight: 700 !important;
-  color: var(--text-primary) !important;
+  color: #ffffff !important;
   letter-spacing: normal !important;
   text-transform: none !important;
 }
 
 .nav-link,
 .nav-group-toggle {
-  color: var(--text-secondary) !important;
+  color: #ffffff !important;
   font-family: 'Inter', sans-serif !important;
-  font-size: 13px !important;
+  font-size: 11px !important;
   font-weight: 400 !important;
+  line-height: 1.2 !important;
   letter-spacing: normal !important;
-  padding: 9px 14px !important;
-  border-radius: 0 !important;
-  transition: background 0.15s, color 0.15s !important;
+  padding: 4px 8px !important;
+  border-radius: 6px !important;
+  border-left: 2px solid transparent !important;
+  transition: background 0.12s, color 0.12s, border-color 0.12s !important;
 }
 
 .nav-link:hover,
 .nav-group-toggle:hover,
 .nav-group:hover .nav-group-toggle {
-  color: var(--text-primary) !important;
-  background-color: var(--bg-hover) !important;
+  color: #ffffff !important;
+  background-color: rgba(255,255,255,0.06) !important;
 }
 
 .nav-link.active {
-  color: var(--text-primary) !important;
-  background-color: var(--bg-hover) !important;
+  color: #6BA3F0 !important;
+  background-color: rgba(74,127,212,0.18) !important;
+  border-left-color: #4A7FD4 !important;
   font-weight: 500 !important;
 }
 
-/* Remove gold underline indicator — use background instead */
+/* Remove underline indicator */
 .nav-menu > .nav-link.active::after,
 .nav-group.has-active .nav-group-toggle::after {
   display: none !important;
 }
 
+/* Section labels stay muted — not highlighted when child is active */
 .nav-group.has-active .nav-group-toggle {
-  color: var(--text-primary) !important;
-  background-color: var(--bg-hover) !important;
+  color: rgba(255,255,255,0.40) !important;
+  background-color: transparent !important;
 }
 
-/* Dropdown */
-.nav-dropdown {
-  background: var(--bg-surface) !important;
-  border: 0.5px solid var(--border-subtle) !important;
-  border-top: none !important;
-  border-radius: 0 0 var(--radius-md) var(--radius-md) !important;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.08) !important;
-}
-
+/* Dropdown — flat, transparent */
+[data-theme] .nav-dropdown .nav-link,
 .nav-dropdown .nav-link {
-  border-bottom: 0.5px solid var(--border-subtle) !important;
-  padding: 9px 16px !important;
+  border-bottom: none !important;
+  background: transparent !important;
 }
 
+[data-theme] .nav-dropdown .nav-link.active,
 .nav-dropdown .nav-link.active {
-  border-left: 2px solid var(--text-primary) !important;
-  padding-left: calc(16px - 2px) !important;
-  background: var(--bg-hover) !important;
+  background: rgba(74,127,212,0.18) !important;
+  border-left-color: #4A7FD4 !important;
+  color: #6BA3F0 !important;
+}
+
+/* Tabler icon sizing inside nav */
+.nav-link .ti.nav-icon,
+.nav-group-toggle .ti.nav-icon {
+  font-size: 12px !important;
+  width: 13px !important;
+  height: auto !important;
+  text-align: center !important;
+  flex-shrink: 0 !important;
+  opacity: 0.55 !important;
+}
+.nav-link.active .ti.nav-icon,
+.nav-link:hover .ti.nav-icon {
+  opacity: 0.80 !important;
 }
 
 /* ── 3. PAGE HEADERS ───────────────────────────────────────────────────*/
@@ -633,6 +677,7 @@ body {
   padding-left: 210px !important;
 }
 
+[data-theme] .navbar,
 .navbar {
   position: fixed !important;
   left: 0 !important;
@@ -643,10 +688,9 @@ body {
   flex-direction: column !important;
   align-items: stretch !important;
   border-bottom: none !important;
-  border-right: 0.5px solid var(--border-subtle) !important;
-  overflow-y: auto !important;
-  overflow-x: hidden !important;
-  background: var(--bg-surface-2) !important;
+  border-right: 0.5px solid rgba(255,255,255,0.08) !important;
+  overflow: hidden !important;
+  background: #0f1a1a !important;
   z-index: 100 !important;
 }
 
@@ -662,10 +706,15 @@ body {
 /* Brand block at top of sidebar */
 .nav-brand {
   display: block !important;
-  padding: 18px 16px 14px !important;
-  border-bottom: 0.5px solid var(--border-subtle) !important;
+  padding: 12px 14px 10px !important;
+  border-bottom: 0.5px solid rgba(255,255,255,0.07) !important;
   flex-shrink: 0 !important;
-  line-height: 1.3 !important;
+  line-height: 1.2 !important;
+  font-size: unset !important;
+  font-weight: unset !important;
+  color: unset !important;
+  letter-spacing: unset !important;
+  text-transform: unset !important;
 }
 
 .hamburger       { display: none !important; }
@@ -700,10 +749,10 @@ body:has(.nav-menu.hub-mode) {
   border: none !important;
   padding: 6px !important;
   cursor: pointer !important;
-  color: var(--text-secondary) !important;
+  color: rgba(255,255,255,0.60) !important;
 }
 .nav-container:has(.nav-menu.hub-mode) .hamburger:hover {
-  color: var(--text-primary) !important;
+  color: #ffffff !important;
 }
 
 /* No backdrop — keep events page fully visible behind the drawer */
@@ -719,43 +768,37 @@ body:has(.nav-menu.hub-mode) {
 
 /* Brighten drawer text to match the rest of the UI */
 .app-settings-btn {
-  color: var(--text-primary) !important;
+  color: rgba(255,255,255,0.70) !important;
   font-family: var(--font-body) !important;
   font-size: 13px !important;
-  padding: 9px 16px !important;
-  border-radius: var(--radius-sm) !important;
+  padding: 8px 10px !important;
+  border-radius: 8px !important;
 }
 .app-settings-btn:hover {
-  background: var(--bg-hover) !important;
-  color: var(--text-primary) !important;
-}
-.hub-seasons-label {
-  color: var(--text-tertiary) !important;
-  font-family: var(--font-mono) !important;
-  font-size: 10px !important;
-  letter-spacing: 0.08em !important;
+  background: rgba(255,255,255,0.06) !important;
+  color: #ffffff !important;
 }
 .hub-season-link {
-  color: var(--text-primary) !important;
+  color: rgba(255,255,255,0.70) !important;
   font-family: var(--font-body) !important;
   font-size: 13px !important;
-  padding: 9px 16px !important;
-  border-radius: var(--radius-sm) !important;
+  padding: 8px 10px !important;
+  border-radius: 8px !important;
 }
 .hub-season-link:hover {
-  background: var(--bg-hover) !important;
-  color: var(--text-primary) !important;
+  background: rgba(255,255,255,0.06) !important;
+  color: #ffffff !important;
 }
 .hub-season-link.active {
-  background: var(--bg-hover) !important;
-  color: var(--text-primary) !important;
-  font-weight: 700 !important;
+  background: rgba(74,127,212,0.18) !important;
+  color: #6BA3F0 !important;
+  font-weight: 600 !important;
 }
 .hub-season-add-btn {
-  color: var(--text-secondary) !important;
+  color: rgba(255,255,255,0.40) !important;
   font-family: var(--font-body) !important;
   font-size: 12px !important;
-  padding: 7px 16px !important;
+  padding: 7px 10px !important;
 }
 
 /* Nav menu becomes vertical column */
@@ -763,78 +806,207 @@ body:has(.nav-menu.hub-mode) {
 .nav-menu.active {
   display: flex !important;
   flex-direction: column !important;
-  padding: 8px 0 12px !important;
+  padding: 4px 0 6px !important;
   position: static !important;
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
   flex: 1 !important;
+  overflow-x: hidden !important;
   overflow-y: auto !important;
+  scrollbar-width: none !important;
   gap: 0 !important;
   width: 100% !important;
+  min-width: 0 !important;
 }
+.nav-menu::-webkit-scrollbar { display: none !important; }
 
 /* Groups expand inline, no floating dropdown */
 .nav-group { position: static !important; }
+[data-theme] .nav-dropdown,
 .nav-dropdown {
   position: static !important;
   display: block !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  transform: none !important;
   box-shadow: none !important;
   border: none !important;
+  border-color: transparent !important;
   border-radius: 0 !important;
   background: transparent !important;
   padding: 0 !important;
 }
 .nav-chevron { display: none !important; }
 
-/* Nav items full-width */
+/* Nav items full-width with small horizontal margin so border-left isn't clipped */
 .nav-link,
 .nav-group-toggle {
-  width: 100% !important;
-  border-radius: 0 !important;
-  margin: 0 !important;
-  padding: 9px 16px !important;
+  width: calc(100% - 16px) !important;
+  margin: 0 8px !important;
   display: flex !important;
   align-items: center !important;
   gap: 9px !important;
-}
-
-/* Active pill inside sidebar */
-.nav-link.active,
-.nav-group.has-active .nav-group-toggle {
-  border-radius: var(--radius-sm) !important;
-  margin: 1px 6px !important;
-  width: calc(100% - 12px) !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
 }
 
 /* Dropdown items slightly indented */
 .nav-dropdown .nav-link {
-  padding-left: 36px !important;
+  padding-left: 28px !important;
   border-bottom: none !important;
-  border-left: none !important;
   font-size: 12px !important;
 }
-.nav-dropdown .nav-link.active {
-  padding-left: 34px !important;
+
+/* ── Sidebar brand / header ─────────────────────────────────────── */
+.sb-eyebrow {
+  font-size: 9px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.10em !important;
+  text-transform: uppercase !important;
+  color: #6BA3F0 !important;
+  margin-bottom: 3px !important;
+  font-family: 'IBM Plex Mono', monospace !important;
+}
+.sb-brand-title {
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  color: #ffffff !important;
+  line-height: 1.2 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+.sb-prog {
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  margin-top: 8px !important;
+}
+.sb-track {
+  flex: 1 !important;
+  height: 2.5px !important;
+  background: rgba(255,255,255,0.10) !important;
+  border-radius: 2px !important;
+  overflow: hidden !important;
+}
+.sb-fill {
+  height: 100% !important;
+  background: #4A7FD4 !important;
+  border-radius: 2px !important;
+  transition: width 0.4s ease !important;
+}
+.sb-pct {
+  font-size: 10px !important;
+  color: rgba(255,255,255,0.28) !important;
+  font-family: 'IBM Plex Mono', monospace !important;
+  flex-shrink: 0 !important;
+}
+.nav-back-btn {
+  display: block !important;
+  margin-top: 8px !important;
+  font-size: 11px !important;
+  color: rgba(255,255,255,0.35) !important;
+  background: none !important;
+  border: none !important;
+  padding: 0 !important;
+  cursor: pointer !important;
+  font-family: 'Inter', sans-serif !important;
+  text-align: left !important;
+}
+.nav-back-btn:hover { color: rgba(255,255,255,0.70) !important; }
+
+/* ── Sidebar footer ─────────────────────────────────────────────── */
+.sb-foot {
+  padding: 8px 6px !important;
+  border-top: 0.5px solid rgba(255,255,255,0.07) !important;
+  flex-shrink: 0 !important;
+}
+.sb-user {
+  display: flex !important;
+  align-items: center !important;
+  gap: 7px !important;
+  padding: 6px 8px !important;
+  border-radius: 7px !important;
+  cursor: pointer !important;
+  transition: background 0.12s !important;
+}
+.sb-user:hover { background: rgba(255,255,255,0.05) !important; }
+.sb-avatar {
+  width: 24px !important;
+  height: 24px !important;
+  border-radius: 50% !important;
+  background: #1a2e2e !important;
+  border: 1px solid rgba(74,127,212,0.30) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 9px !important;
+  font-weight: 600 !important;
+  color: #6BA3F0 !important;
+  flex-shrink: 0 !important;
+}
+.sb-uname {
+  font-size: 11px !important;
+  color: rgba(255,255,255,0.40) !important;
+  flex: 1 !important;
+  font-family: 'Inter', sans-serif !important;
+}
+.sb-user .ti-settings {
+  font-size: 12px !important;
+  color: rgba(255,255,255,0.20) !important;
+}
+
+/* Legacy event card — hidden, kept for JS compat */
+#sidebar-event-card { display: none !important; }
+
+/* ── Nav group toggles as section labels ────────────────────────── */
+.nav-group-toggle {
+  font-family: var(--font-mono) !important;
+  font-size: 9px !important;
+  font-weight: 600 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.10em !important;
+  color: rgba(255,255,255,0.40) !important;
+  padding: 6px 10px 2px !important;
+  line-height: 1 !important;
+  cursor: default !important;
+  pointer-events: none !important;
   border-left: none !important;
+  border-radius: 0 !important;
+  gap: 6px !important;
+}
+.nav-group-toggle .nav-icon { display: none !important; }
+.nav-group { display: block !important; }
+
+/* ── Locked nav items ───────────────────────────────────────────── */
+.nav-link--locked {
+  opacity: 0.38 !important;
+  pointer-events: none !important;
+}
+.nav-lock-icon {
+  margin-left: auto !important;
+  flex-shrink: 0 !important;
+  color: var(--text-tertiary) !important;
+  display: flex !important;
+  align-items: center !important;
 }
 
 /* Section labels inside sidebar */
 .hub-seasons-nav,
 .app-settings-nav {
-  padding: 12px 16px 4px !important;
-  border-top: 0.5px solid var(--border-subtle) !important;
-  margin-top: 4px !important;
+  padding: 8px 10px 4px !important;
+  border-top: 0.5px solid rgba(255,255,255,0.08) !important;
+  margin-top: 2px !important;
 }
-.hub-seasons-label,
 .hub-seasons-label,
 .app-settings-nav .hub-seasons-label {
   font-family: 'IBM Plex Mono', monospace !important;
-  font-size: 10px !important;
-  font-weight: 700 !important;
+  font-size: 9.5px !important;
+  font-weight: 600 !important;
   text-transform: uppercase !important;
-  letter-spacing: 0.08em !important;
-  color: var(--text-tertiary) !important;
+  letter-spacing: 0.10em !important;
+  color: rgba(255,255,255,0.40) !important;
   margin-bottom: 4px !important;
   display: block !important;
 }
@@ -990,5 +1162,422 @@ body:has(.nav-menu.hub-mode) {
   color: var(--text-tertiary);
   text-decoration: line-through;
 }
+
+/* ── 17. INTAKE FORM ───────────────────────────────────────────────────
+   Full redesign: card sections, progress bar, explicit save bar         */
+
+/* Progress bar */
+.intake-progress-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.intake-progress-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  white-space: nowrap;
+}
+.intake-progress-bar {
+  flex: 1;
+  height: 2px;
+  background: var(--border-subtle);
+  border-radius: 1px;
+}
+.intake-progress-fill {
+  height: 100%;
+  width: 0%;
+  background: #854F0B;
+  border-radius: 1px;
+  transition: width 0.3s ease;
+}
+.intake-progress-pct {
+  font-size: 11px;
+  color: #854F0B;
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  min-width: 30px;
+  text-align: right;
+}
+[data-theme="dark"] .intake-progress-fill { background: #FAC775; }
+[data-theme="dark"] .intake-progress-pct  { color: #FAC775; }
+
+/* Section card */
+.intake-section {
+  background: var(--bg-surface);
+  border: 0.5px solid var(--border-subtle);
+  border-radius: 10px;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+/* Section header */
+.intake-sec-head {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 11px 16px;
+  border-bottom: 0.5px solid var(--border-subtle);
+}
+.intake-sec-icon {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  background: var(--bg-page);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.intake-sec-title {
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  color: var(--text-primary) !important;
+  font-family: var(--font-body) !important;
+  text-transform: none !important;
+  letter-spacing: normal !important;
+}
+.intake-sec-count {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+}
+
+/* Subsection within a card */
+.intake-sub-head {
+  padding: 9px 16px;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  color: var(--text-secondary) !important;
+  font-family: var(--font-body) !important;
+  text-transform: none !important;
+  letter-spacing: normal !important;
+  background: var(--bg-page);
+  border-bottom: 0.5px solid var(--border-subtle);
+  border-top: 0.5px solid var(--border-subtle);
+}
+
+/* Field row */
+.intake-field {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  align-items: center;
+  border-bottom: 0.5px solid var(--border-subtle);
+  transition: background 0.12s;
+}
+.intake-field:last-child {
+  border-bottom: none;
+}
+.intake-field:hover {
+  background: var(--bg-hover);
+}
+.intake-field:focus-within {
+  background: var(--bg-hover);
+}
+.intake-field-label {
+  padding: 11px 16px;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  color: var(--text-primary) !important;
+  font-family: var(--font-body) !important;
+  text-transform: none !important;
+  letter-spacing: normal !important;
+  border-right: 0.5px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 46px;
+}
+.intake-required {
+  color: #854F0B;
+  font-size: 10px;
+}
+[data-theme="dark"] .intake-required { color: #FAC775; }
+.intake-field-input-wrap {
+  padding: 7px 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.intake-field-input-wrap.top {
+  align-items: flex-start;
+  padding-top: 10px;
+}
+.intake-field-input,
+.intake-field-textarea {
+  width: 100%;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: 14px !important;
+  color: var(--text-primary) !important;
+  font-family: var(--font-body) !important;
+  text-transform: none !important;
+  letter-spacing: normal !important;
+}
+select.intake-field-input {
+  flex: 1;
+  cursor: pointer;
+  width: 100%;
+  height: auto !important;
+  min-height: 26px;
+  background: transparent !important;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  padding: 2px 4px;
+  -webkit-appearance: auto;
+  appearance: auto;
+}
+/* Selects already have a native dropdown arrow — hide the pencil icon */
+select.intake-field-input ~ .intake-field-edit {
+  display: none;
+}
+.intake-field-input {
+  height: 26px;
+}
+.intake-field-textarea {
+  resize: none;
+  height: 56px;
+  padding-top: 2px;
+  line-height: 1.5;
+}
+.intake-field-input::placeholder,
+.intake-field-textarea::placeholder {
+  color: var(--text-tertiary);
+}
+.intake-field-edit {
+  color: var(--border-subtle);
+  font-size: 13px;
+  flex-shrink: 0;
+  transition: color 0.12s;
+  pointer-events: none;
+}
+.intake-field:hover .intake-field-edit,
+.intake-field:focus-within .intake-field-edit {
+  color: var(--text-tertiary);
+}
+
+/* Dynamic row drag handle */
+.intake-dyn-handle {
+  flex-shrink: 0;
+  width: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--border-medium);
+  cursor: grab;
+  user-select: none;
+  transition: color 0.12s;
+}
+.intake-dyn-row:hover .intake-dyn-handle {
+  color: var(--text-tertiary);
+}
+.intake-dyn-handle:active { cursor: grabbing; }
+
+/* Drag state styles */
+.intake-dyn-row.intake-dyn-dragging {
+  opacity: 0.35;
+}
+.intake-dyn-row.intake-dyn-drag-over {
+  border-top: 2px solid var(--text-primary) !important;
+}
+
+/* Dynamic row column sizing — give time column more breathing room */
+.intake-dyn-time,
+.intake-section .intake-dyn-time {
+  flex: 0 0 220px !important;
+}
+.intake-dyn-col-headers span:last-child {
+  flex: 0 0 220px !important;
+}
+
+/* Dynamic sections inside cards */
+.intake-section .intake-dyn-col-headers {
+  background: var(--bg-page) !important;
+  border-bottom-color: var(--border-subtle) !important;
+}
+.intake-section .intake-dyn-body {
+  background: transparent !important;
+}
+.intake-section .intake-dyn-row {
+  border-bottom-color: var(--border-subtle) !important;
+}
+.intake-section .intake-dyn-footer {
+  background: var(--bg-page) !important;
+  border-top: 0.5px solid var(--border-subtle) !important;
+  border-bottom: none !important;
+}
+
+/* Dynamic row inputs inside cards */
+.intake-section .intake-dyn-label,
+.intake-section .intake-dyn-time {
+  background: transparent !important;
+  border-color: var(--border-subtle) !important;
+  color: var(--text-primary) !important;
+  font-family: var(--font-body) !important;
+  font-size: 13px !important;
+}
+.intake-section .intake-dyn-label::placeholder,
+.intake-section .intake-dyn-time::placeholder {
+  color: var(--text-tertiary) !important;
+}
+
+/* Page header */
+.intake-page-header h1,
+.intake-page-header .page-title {
+  color: var(--text-primary) !important;
+  font-family: var(--font-display) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   18. Send Performer Invites — band-collapsible list
+   ───────────────────────────────────────────────────────────────────── */
+/* Performer list becomes a 2-col grid of band cards */
+#ical-performer-list.si-performer-list,
+#si-performer-list.si-performer-list {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr !important;
+  gap: 6px !important;
+  max-height: none !important;
+  overflow-y: visible !important;
+  padding: 8px !important;
+}
+
+.ical-band-group {
+  border: 0.5px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  transition: opacity 150ms;
+  background: var(--bg-surface);
+}
+
+.ical-band-group.ical-band-disabled {
+  opacity: 0.38;
+}
+
+/* Header = checkbox + toggle area side by side */
+.ical-band-header {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 0;
+}
+
+.ical-band-check {
+  flex-shrink: 0;
+  margin: 0 8px 0 10px;
+  width: 14px;
+  height: 14px;
+  accent-color: var(--text-primary);
+  cursor: pointer;
+}
+
+/* The clickable expand area */
+.ical-band-toggle {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 10px 9px 0;
+  cursor: pointer;
+  user-select: none;
+  transition: background 150ms;
+}
+.ical-band-toggle:hover { background: var(--bg-hover); }
+.ical-band-group.ical-band-disabled .ical-band-toggle {
+  cursor: default;
+  pointer-events: none;
+}
+
+.ical-band-chevron {
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  transition: transform 200ms ease;
+}
+.ical-band-group.ical-band-open .ical-band-chevron {
+  transform: rotate(180deg);
+}
+
+.ical-band-name {
+  flex: 1;
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ical-band-members {
+  background: var(--bg-page);
+  border-top: 0.5px solid var(--border-subtle);
+  padding: 4px 0;
+}
+
+.ical-band-members .si-performer-row {
+  padding-left: 10px;
+}
+
+/* Additional recipients */
+.ical-extra-emails-section {
+  border-top: 0.5px solid var(--border-subtle);
+  padding: 10px 14px 6px;
+}
+
+.ical-extra-emails-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.ical-extra-email-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 5px;
+}
+
+.ical-extra-email-input {
+  flex: 1;
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--text-primary);
+  background: var(--bg-page);
+  border: 0.5px solid var(--border-medium);
+  border-radius: var(--radius-sm);
+  padding: 5px 8px;
+  outline: none;
+}
+.ical-extra-email-input:focus { border-color: var(--text-primary); }
+
+.ical-extra-email-remove {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  color: var(--text-tertiary);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ical-extra-email-remove:hover { background: var(--bg-hover); color: var(--text-primary); }
 
 /* ── END ───────────────────────────────────────────────────────────────*/
