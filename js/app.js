@@ -323,6 +323,7 @@ const INTAKE_SCHEMA = [
     { type: 'dynamic-section', id: 'run_of_show_rows', label: 'Run of Show' },
 
     { type: 'section', label: 'Logistics' },
+    { field: 'event_access',    label: 'Public or Private Event?',            inputType: 'text'     },
     { field: 'dress_code',      label: 'Dress Code',                          inputType: 'text'     },
     { field: 'parking_info',    label: 'Parking (free? validated? by whom?)', inputType: 'textarea' },
     { field: 'truck_parking',   label: 'Truck Parking (20ft box truck)',      inputType: 'text'     },
@@ -341,24 +342,11 @@ const INTAKE_SCHEMA = [
     { field: 'additional_services',  label: 'Additional Services',           inputType: 'textarea' },
 
     { type: 'section', label: 'Marketing' },
+    { field: 'should_promote',     label: 'Should We Promote?',                     inputType: 'yesno'    },
     { field: 'ymu_table',          label: 'May YMU Set Up a Table / Tent?',         inputType: 'yesno'    },
     { field: 'ymu_donations',      label: 'May YMU Solicit Donations?',             inputType: 'yesno'    },
-    { field: 'ymu_banners',        label: 'May We Set Up Banners?',                 inputType: 'yesno'    },
     { field: 'ymu_promotion',      label: 'Is YMU Responsible for Promotion?',      inputType: 'yesno'    },
-    { field: 'flyer_provided',     label: 'Will a Flyer Be Provided?',              inputType: 'yesno'    },
-    { field: 'ymu_make_flyer',     label: 'Will YMU Be Required to Make a Flyer?',  inputType: 'yesno'    },
-    { field: 'event_logos',        label: 'Event Logos',                            inputType: 'url'      },
-    { field: 'band_logos',         label: 'Band Logos',                             inputType: 'url'      },
-    { field: 'sponsors',           label: 'Sponsors',                               inputType: 'text'     },
-    { field: 'promo_link',         label: 'Promo Link',                             inputType: 'url'      },
-    { field: 'show_blurb',         label: 'Two Sentence Blurb on Show',             inputType: 'textarea' },
-    { field: 'bands_in_town',      label: 'Bands in Town',                          inputType: 'text'     },
-    { field: 'facebook',           label: 'Facebook',                               inputType: 'url'      },
-    { field: 'eventbrite',         label: 'Eventbrite',                             inputType: 'url'      },
-    { field: 'submit_new_tropic',  label: 'Submit to the New Tropic?',              inputType: 'yesno'    },
-    { field: 'submit_miami_found', label: 'Submit to the Miami Foundation?',        inputType: 'yesno'    },
-    { field: 'ymu_ad_spend',       label: 'YMU Ad Spend',                           inputType: 'text'     },
-    { field: 'social_media',       label: 'Social Media Notes',                     inputType: 'text'     },
+    { field: 'flyer_status',       label: 'Flyer',                                  inputType: 'select',  options: ['Provided', 'YMU to Make', 'Not Needed'] },
 
     { type: 'section', label: 'Insurance' },
     { field: 'insured_party1',  label: 'Party #1 — Named Insured', inputType: 'text' },
@@ -1419,6 +1407,12 @@ function buildIntakeHTML() {
                 <option value="">—</option>
                 <option value="yes">Yes</option>
                 <option value="no">No</option>
+            </select>`;
+        } else if (item.inputType === 'select') {
+            const opts = item.options.map(o => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join('');
+            inputHTML = `<select id="intake-${item.field}" class="intake-input intake-select" onchange="saveIntakeField('${item.field}', this.value)">
+                <option value="">—</option>
+                ${opts}
             </select>`;
         } else {
             inputHTML = `<input type="${item.inputType}" id="intake-${item.field}" class="intake-input" placeholder=" " onblur="saveIntakeField('${item.field}', this.value)">`;
