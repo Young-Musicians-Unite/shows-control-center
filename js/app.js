@@ -1399,6 +1399,107 @@ window.createNewEvent = async function() {
     enterEvent(id);
 };
 
+window.duplicateCurrentEvent = function() {
+    const event = state.activeEvent;
+    if (!event) { showToast('No active event to duplicate', 'error'); return; }
+
+    document.getElementById('dup-event-name').value = (event.name || '') + ' (Copy)';
+    document.getElementById('dup-event-date').value = '';
+
+    const seasonSelect = document.getElementById('dup-event-season');
+    seasonSelect.innerHTML = (state.seasons || [state.currentSeason]).map(s =>
+        `<option value="${escapeHtml(s)}" ${s === state.currentSeason ? 'selected' : ''}>${escapeHtml(s)}</option>`
+    ).join('');
+
+    document.getElementById('duplicate-event-modal').classList.add('is-open');
+    document.getElementById('dup-event-name').focus();
+};
+
+window.closeDuplicateEventModal = function() {
+    document.getElementById('duplicate-event-modal').classList.remove('is-open');
+};
+
+window.confirmDuplicateEvent = async function() {
+    const sourceEvent = state.activeEvent;
+    if (!sourceEvent) return;
+
+    const name   = document.getElementById('dup-event-name').value.trim();
+    const date   = document.getElementById('dup-event-date').value;
+    const season = document.getElementById('dup-event-season').value;
+
+    if (!name) {
+        showToast('Please enter a show name', 'error');
+        document.getElementById('dup-event-name').focus();
+        return;
+    }
+
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    const newId = `${slug}-${Date.now()}`;
+    const sourceRef = eventsCollection.doc(sourceEvent.id);
+    const destRef   = eventsCollection.doc(newId);
+
+    const SUBCOLLECTIONS = [
+        'budget', 'timeline', 'mainStageInputs', 'cocktailStageInputs',
+        'staff', 'stagePlots', 'setLists', 'packingList', 'packingCategoryColors',
+        'menuItems', 'printedMaterials', 'digitalAssets', 'guests', 'seatingTables',
+        'invitees', 'vendors', 'venueMapLayers', 'event-info',
+    ];
+
+    closeDuplicateEventModal();
+    showToast('Duplicating show…', 'info');
+
+    try {
+        await destRef.set({
+            name, date, season,
+            lead: sourceEvent.lead || '',
+            phase: sourceEvent.phase || 'planning',
+            enabledPages: sourceEvent.enabledPages || [],
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        });
+
+        // Copy intake (single doc)
+        const intakeSnap = await sourceRef.collection('intake').doc('main').get();
+        if (intakeSnap.exists) {
+            await destRef.collection('intake').doc('main').set(intakeSnap.data());
+        }
+
+        // Copy all flat subcollections in batches
+        for (const collName of SUBCOLLECTIONS) {
+            const snap = await sourceRef.collection(collName).get();
+            if (snap.empty) continue;
+            for (let i = 0; i < snap.docs.length; i += 499) {
+                const batch = db.batch();
+                snap.docs.slice(i, i + 499).forEach(doc =>
+                    batch.set(destRef.collection(collName).doc(doc.id), doc.data())
+                );
+                await batch.commit();
+            }
+
+            // stagePlots has nested objects subcollection per plot doc
+            if (collName === 'stagePlots') {
+                for (const plotDoc of snap.docs) {
+                    const objSnap = await sourceRef.collection('stagePlots').doc(plotDoc.id).collection('objects').get();
+                    if (objSnap.empty) continue;
+                    const destObjects = destRef.collection('stagePlots').doc(plotDoc.id).collection('objects');
+                    for (let i = 0; i < objSnap.docs.length; i += 499) {
+                        const batch = db.batch();
+                        objSnap.docs.slice(i, i + 499).forEach(doc => batch.set(destObjects.doc(doc.id), doc.data()));
+                        await batch.commit();
+                    }
+                }
+            }
+        }
+
+        showToast(`"${name}" ready`, 'success');
+        await loadEvents();
+        enterEvent(newId);
+    } catch (err) {
+        console.error('Duplicate event failed:', err);
+        showToast('Failed to duplicate show', 'error');
+    }
+};
+
 function openEventSettings() {
     const event = state.activeEvent;
     if (!event) return;
@@ -1946,23 +2047,14 @@ function renderDashboard() {
             <div class="db2-topbar">
                 <h1 class="db2-topbar-title">Dashboard</h1>
                 <div class="db2-topbar-actions">
-                    <button class="db2-icon-btn" onclick="switchPage('events-hub')" title="All Events">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-                    </button>
                     <button class="db2-icon-btn" onclick="openEventSettings()" title="Settings">
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v3M12 20v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M1 12h3M20 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"/></svg>
                     </button>
-                    <button class="db2-new-btn" onclick="switchPage('events-hub')">+ New Show</button>
                 </div>
             </div>
 
             <!-- Stats row -->
             <div class="db2-stats">
-                <div class="db2-stat" onclick="switchPage('events-hub')">
-                    <div class="db2-stat-label">Total Shows</div>
-                    <div class="db2-stat-num">${(state.events || []).length}</div>
-                    <div class="db2-stat-sub">${escapeHtml(state.currentSeason || '')}</div>
-                </div>
                 ${enabled.has('budget') ? `
                 <div class="db2-stat" onclick="switchPage('budget')">
                     <div class="db2-stat-label">Budget Remaining</div>
@@ -1981,17 +2073,6 @@ function renderDashboard() {
                     <div class="db2-stat-num">${filledCount}</div>
                     <div class="db2-stat-sub ${unfilledStaff.length > 0 ? 'warn' : 'ok'}">${unfilledStaff.length > 0 ? unfilledStaff.length + ' open roles' : 'Fully staffed'}</div>
                 </div>` : ''}
-            </div>
-
-            <!-- Upcoming shows -->
-            <div class="db2-section">
-                <div class="db2-section-hdr">
-                    <span>Upcoming shows</span>
-                    <button class="db2-see-all-btn" onclick="switchPage('events-hub')">See all →</button>
-                </div>
-                <div class="db2-list">
-                    ${showRows || '<div class="db2-empty">No shows yet</div>'}
-                </div>
             </div>
 
             <!-- Bottom panels -->
