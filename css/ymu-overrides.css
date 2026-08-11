@@ -649,6 +649,24 @@ label {
 
 /* ── 12. FILTER / TAB PILLS ────────────────────────────────────────────*/
 
+/* Container was a hardcoded white pill-track from the pre-dark-mode pass.
+   The active .filter-btn gets its own white background so it still reads
+   fine, but the inactive ones use light text meant for a dark backdrop —
+   sitting on white instead, they read as barely-visible white-on-white. */
+.timeline-filters {
+  background: var(--bg-page) !important;
+  border-color: var(--border-medium) !important;
+}
+
+/* Same bug, same fix — .vendor-view-btn's inactive text is also forced
+   light by the shared rule below, and was sitting on this same kind of
+   light cream track. .staff-view-btn keeps its own warm-toned text
+   unaffected either way, but shares this container so it comes along too. */
+.staff-view-toggle,
+.vendor-view-toggle {
+  background: var(--bg-page) !important;
+}
+
 .filter-btn,
 .vendor-view-btn,
 .day-tab {

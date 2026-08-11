@@ -3280,12 +3280,22 @@ function populateBudgetCategorySelect() {
 }
 
 function renderBudget() {
-    if (state.activeEvent && !state.activeEvent.budgetSetup) {
+    if (state.currentPage !== 'budget') return;
+    const skippedThisEvent = state.budgetSetupSkippedEventId === state.currentEventId;
+    if (state.activeEvent && !state.activeEvent.budgetSetup && !skippedThisEvent) {
         openBudgetSetupModal();
         return;
     }
     renderBudgetGrouped();
 }
+
+window.skipBudgetSetup = function() {
+    // Not persisted — nothing is configured, so the setup modal will prompt
+    // again on a fresh visit. Just defers it for the rest of this session.
+    state.budgetSetupSkippedEventId = state.currentEventId;
+    document.getElementById('budget-setup-modal').classList.remove('is-open');
+    renderBudgetGrouped();
+};
 
 window.resetBudgetSetup = async function() {
     if (!state.currentEventId) return;
@@ -3294,6 +3304,7 @@ window.resetBudgetSetup = async function() {
             budgetSetup: firebase.firestore.FieldValue.delete()
         });
         state.activeEvent.budgetSetup = null;
+        if (state.budgetSetupSkippedEventId === state.currentEventId) state.budgetSetupSkippedEventId = null;
         switchPage('budget');
     } catch(e) {
         console.error('Failed to reset budget setup:', e);
