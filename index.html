@@ -83,6 +83,10 @@
                             <i class="ti ti-currency-dollar nav-icon"></i>
                             <span class="nav-label">Budget</span>
                         </a>
+                        <a href="#quote" class="nav-link" data-page="quote">
+                            <i class="ti ti-file-invoice nav-icon"></i>
+                            <span class="nav-label">Quote</span>
+                        </a>
                         <a href="#staff" class="nav-link" data-page="staff">
                             <i class="ti ti-users nav-icon"></i>
                             <span class="nav-label">Staff</span>
@@ -159,6 +163,9 @@
                 </div>
                 <div class="sb-user-menu-item" onclick="openJobTemplates(); closeSbUserMenu()">
                     <i class="ti ti-briefcase"></i> Job Titles
+                </div>
+                <div class="sb-user-menu-item" onclick="openManageInventory(); closeSbUserMenu()">
+                    <i class="ti ti-box"></i> Manage Inventory
                 </div>
                 <div class="sb-user-menu-divider"></div>
                 <div class="sb-user-menu-item" id="sb-menu-manage-pages" onclick="openEventSettings(); closeSbUserMenu()" style="display:none">
@@ -905,17 +912,29 @@
 
         <!-- Packing List Page -->
         <div id="packing-list" class="page">
+            <input type="file" id="packing-image-upload" accept="image/*" style="display:none">
+            <input type="file" id="inv-image-upload" accept="image/*" style="display:none">
+
             <div class="page-header">
                 <h1>Packing List</h1>
                 <div class="header-actions">
-                    <button class="btn btn-primary-gold" id="add-packing-item-btn">+ Add Item</button>
+                    <button class="btn btn-icon" onclick="printPackingList()" title="Print packing list">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                    </button>
+                    <button class="btn btn-icon" onclick="openPackingCategoriesModal()" title="Edit categories">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                    </button>
+                    <button class="btn btn-icon" onclick="clearAllPackingSelections()" title="Clear all selections">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+                    </button>
+                    <button class="btn btn-primary-gold" onclick="openPackingModal()">+ One-Off Item</button>
                 </div>
             </div>
 
             <!-- Search & Filters -->
             <div class="page-search-bar">
                 <div class="page-search-wrapper">
-                    <svg class="page-search-icon" viewBox="0 0 20 20" fill="currentColor" width="18" height="18">
+                    <svg class="page-search-icon" viewBox="0 0 20 20" fill="currentColor" width="16" height="16">
                         <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"/>
                     </svg>
                     <input type="text" id="packing-search-input" class="search-input" placeholder="Search items..." oninput="handlePackingSearch(this.value)">
@@ -923,71 +942,26 @@
                 </div>
                 <select id="packing-category-filter" class="filter-select" onchange="handlePackingCategoryFilter(this.value)">
                     <option value="all">All Categories</option>
-                    <option value="Audio">Audio</option>
-                    <option value="Lighting">Lighting</option>
-                    <option value="Decor">Decor</option>
-                    <option value="Signage">Signage</option>
-                    <option value="Catering">Catering</option>
-                    <option value="Printed Materials">Printed Materials</option>
-                    <option value="Misc">Misc</option>
-                </select>
-                <select id="packing-status-filter" class="filter-select" onchange="handlePackingStatusFilter(this.value)">
-                    <option value="all">All Statuses</option>
-                    <option value="to-pack">To Pack</option>
-                    <option value="packed">Packed</option>
-                    <option value="loaded">Loaded</option>
-                    <option value="at-venue">At Venue</option>
                 </select>
                 <span id="packing-search-count" class="page-search-count"></span>
             </div>
 
-            <!-- Progress Bar -->
-            <div class="packing-progress-bar-container">
-                <div class="packing-progress-bar" id="packing-progress-bar">
-                    <div class="packing-progress-segment segment-to-pack" id="progress-to-pack" style="width: 0%"></div>
-                    <div class="packing-progress-segment segment-packed" id="progress-packed" style="width: 0%"></div>
-                    <div class="packing-progress-segment segment-loaded" id="progress-loaded" style="width: 0%"></div>
-                    <div class="packing-progress-segment segment-at-venue" id="progress-at-venue" style="width: 0%"></div>
+            <!-- View Toggle + Stats row -->
+            <div class="pl-top-bar">
+                <div class="pl-view-toggle">
+                    <button id="pl-view-inventory" class="pl-view-btn active" onclick="switchPackingView('inventory')">Full Inventory</button>
+                    <button id="pl-view-packing"   class="pl-view-btn"        onclick="switchPackingView('packing')">Packing List</button>
                 </div>
-                <div class="packing-progress-legend">
-                    <span class="legend-item"><span class="legend-dot dot-to-pack"></span> To Pack</span>
-                    <span class="legend-item"><span class="legend-dot dot-packed"></span> Packed</span>
-                    <span class="legend-item"><span class="legend-dot dot-loaded"></span> Loaded</span>
-                    <span class="legend-item"><span class="legend-dot dot-at-venue"></span> At Venue</span>
+                <div class="pl-stats">
+                    <div class="pl-stat"><span class="pl-stat-value" id="packing-stat-total">0</span><span class="pl-stat-label">in inventory</span></div>
+                    <div class="pl-stat"><span class="pl-stat-value" id="packing-stat-selected">0</span><span class="pl-stat-label">selected</span></div>
+                    <div class="pl-stat pl-stat-broken"><span class="pl-stat-value" id="packing-stat-broken">0</span><span class="pl-stat-label">broken</span></div>
                 </div>
             </div>
 
-            <!-- Stats -->
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <div class="stat-content">
-                        <div class="stat-label">Total Items</div>
-                        <div class="stat-value" id="packing-stat-total">0</div>
-                    </div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-content">
-                        <div class="stat-label">To Pack</div>
-                        <div class="stat-value" id="packing-stat-topack">0</div>
-                    </div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-content">
-                        <div class="stat-label">Packed / Loaded</div>
-                        <div class="stat-value" id="packing-stat-inprogress">0</div>
-                    </div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-content">
-                        <div class="stat-label">At Venue</div>
-                        <div class="stat-value" id="packing-stat-atvenue">0</div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Category Accordion Container -->
+            <!-- Items Table -->
             <div id="packing-list-container">
-                <p class="empty-state">No packing items added</p>
+                <p class="empty-state">No items added. Start by selecting from your inventory.</p>
             </div>
         </div>
 
@@ -1989,6 +1963,112 @@
         </div>
     </div>
 
+    <!-- Quote Page -->
+    <div id="quote" class="page">
+        <div class="page-header">
+            <h1>Quote</h1>
+            <div class="header-actions">
+                <button class="btn btn-secondary no-print" onclick="printQuote()">
+                    <i class="ti ti-printer"></i> Print / Export PDF
+                </button>
+                <button class="btn btn-primary-gold no-print" onclick="addQuoteLine()">+ Add Service</button>
+            </div>
+        </div>
+        <div class="quote-canvas">
+            <div class="quote-doc" id="quote-document">
+                <!-- Blue header band -->
+                <div class="quote-header-band">
+                    <div class="quote-header-inner">
+                        <div class="quote-logo-block">
+                            <div class="quote-logo-letters">YMU</div>
+                            <div class="quote-logo-text">
+                                <div>YOUNG</div>
+                                <div>MUSICIANS</div>
+                                <div>UNITE</div>
+                            </div>
+                        </div>
+                        <div class="quote-org-address">
+                            <strong>Young Musicians Unite</strong><br>
+                            1584 NW 29th St<br>
+                            Miami, FL 33142<br>
+                            (305) 814-6092
+                        </div>
+                    </div>
+                    <svg class="quote-wave-top" viewBox="0 0 820 48" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M0,0 C180,48 480,8 820,36 L820,48 L0,48 Z" fill="white"/>
+                    </svg>
+                </div>
+
+                <!-- Document body -->
+                <div class="quote-body">
+                    <div class="quote-title-row">Quote</div>
+
+                    <!-- Client + event details -->
+                    <div class="quote-event-details">
+                        <div class="quote-event-label">Event Details:</div>
+                        <div class="quote-detail-grid">
+                            <div class="quote-detail-row">
+                                <span class="quote-detail-key">Client:</span>
+                                <input class="quote-detail-input no-print-border" id="quote-client" placeholder="—" onblur="saveQuoteMeta('quoteClient',this.value)">
+                                <span class="quote-detail-print" id="quote-client-print"></span>
+                            </div>
+                            <div class="quote-detail-row">
+                                <span class="quote-detail-key">Location:</span>
+                                <input class="quote-detail-input no-print-border" id="quote-location" placeholder="—" onblur="saveQuoteMeta('quoteLocation',this.value)">
+                            </div>
+                            <div class="quote-detail-row">
+                                <span class="quote-detail-key">Date:</span>
+                                <input class="quote-detail-input no-print-border" id="quote-date" placeholder="—" onblur="saveQuoteMeta('quoteDate',this.value)">
+                            </div>
+                            <div class="quote-detail-row">
+                                <span class="quote-detail-key">Load In Time:</span>
+                                <input class="quote-detail-input no-print-border" id="quote-load-in" placeholder="—" onblur="saveQuoteMeta('quoteLoadIn',this.value)">
+                            </div>
+                            <div class="quote-detail-row">
+                                <span class="quote-detail-key">Event Time:</span>
+                                <input class="quote-detail-input no-print-border" id="quote-event-time" placeholder="—" onblur="saveQuoteMeta('quoteEventTime',this.value)">
+                            </div>
+                            <div class="quote-detail-row">
+                                <span class="quote-detail-key">Load Out Time:</span>
+                                <input class="quote-detail-input no-print-border" id="quote-load-out" placeholder="—" onblur="saveQuoteMeta('quoteLoadOut',this.value)">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Services table -->
+                    <table class="quote-table">
+                        <thead>
+                            <tr>
+                                <th class="quote-th quote-th-desc">Description of Services</th>
+                                <th class="quote-th quote-th-qty">QTY</th>
+                                <th class="quote-th quote-th-cost">Rate</th>
+                                <th class="quote-th quote-th-sub">Subtotal</th>
+                                <th class="quote-th quote-th-notes">Notes</th>
+                                <th class="quote-th quote-th-del no-print"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="quote-lines-body"></tbody>
+                        <tfoot>
+                            <tr class="quote-total-row">
+                                <td class="quote-total-label" colspan="3">Services Grand Total</td>
+                                <td class="quote-total-amount" id="quote-grand-total">$0.00</td>
+                                <td colspan="2" class="quote-total-notes"></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+
+                <!-- Blue footer band -->
+                <div class="quote-footer-band">
+                    <svg class="quote-wave-bottom" viewBox="0 0 820 48" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M0,12 C340,50 600,0 820,28 L820,0 L0,0 Z" fill="white"/>
+                    </svg>
+                    <div class="quote-tagline">Transforming Lives &amp; Communities Through Music</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Staff Modal -->
     <div id="staff-modal" class="modal">
         <div class="modal-content">
@@ -2081,7 +2161,7 @@
     <div id="packing-modal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h2 id="packing-modal-title">Add Packing Item</h2>
+                <h2 id="packing-modal-title">Add One-Off Item</h2>
                 <button class="close-btn">&times;</button>
             </div>
             <div class="modal-body">
@@ -2096,34 +2176,16 @@
                             <label for="packing-category">Category *</label>
                             <select id="packing-category" required>
                                 <option value="">Select category...</option>
-                                <option value="Audio">Audio</option>
-                                <option value="Lighting">Lighting</option>
-                                <option value="Decor">Decor</option>
-                                <option value="Signage">Signage</option>
-                                <option value="Catering">Catering</option>
-                                <option value="Printed Materials">Printed Materials</option>
-                                <option value="Misc">Misc</option>
                             </select>
                         </div>
                         <div class="form-group">
-                            <label for="packing-quantity">Quantity *</label>
-                            <input type="number" id="packing-quantity" min="1" value="1" required>
+                            <label for="packing-quantity">Quantity</label>
+                            <input type="number" id="packing-quantity" min="1" value="1">
                         </div>
                     </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="packing-status">Status</label>
-                            <select id="packing-status">
-                                <option value="to-pack">To Pack</option>
-                                <option value="packed">Packed</option>
-                                <option value="loaded">Loaded</option>
-                                <option value="at-venue">At Venue</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="packing-assignee">Assignee</label>
-                            <input type="text" id="packing-assignee" placeholder="Who's responsible">
-                        </div>
+                    <div class="form-group">
+                        <label for="packing-assignee">Assignee</label>
+                        <input type="text" id="packing-assignee" placeholder="Who's responsible">
                     </div>
                     <div class="form-group">
                         <label for="packing-notes">Notes</label>
@@ -2134,6 +2196,121 @@
                         <button type="submit" class="btn btn-primary">Save Item</button>
                     </div>
                 </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Inventory Picker Modal -->
+    <div id="inv-picker-modal" class="hub-modal-overlay">
+        <div class="hub-modal inv-picker-modal-box">
+            <div class="hub-modal-header">
+                <h2>Select from Inventory</h2>
+                <button class="hub-modal-close" onclick="closeInventoryPickerModal()">&times;</button>
+            </div>
+            <div class="inv-picker-search-row">
+                <input type="text" id="inv-picker-search" class="search-input" placeholder="Search inventory..." oninput="invPickerSearch(this.value)">
+            </div>
+            <div id="inv-picker-list" class="inv-picker-list"></div>
+            <div class="hub-modal-footer">
+                <button class="btn btn-secondary" onclick="closeInventoryPickerModal()">Cancel</button>
+                <button class="btn btn-primary-gold" id="inv-picker-add-btn" onclick="confirmAddFromInventory()" disabled>Add Selected</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Inventory Item Modal -->
+    <div id="inventory-modal" class="hub-modal-overlay">
+        <div class="hub-modal">
+            <div class="hub-modal-header">
+                <h2 id="inv-modal-title">Add to Inventory</h2>
+                <button class="hub-modal-close" onclick="closeInventoryModal()">&times;</button>
+            </div>
+            <div class="hub-modal-body">
+                <p style="font-size:0.75rem;color:var(--text-tertiary);margin-bottom:14px;font-family:var(--font-mono);text-transform:uppercase;letter-spacing:0.05em;">Changes apply across all events</p>
+                <form id="inventory-form" onsubmit="handleInventorySubmit(event)">
+                    <input type="hidden" id="inv-id">
+                    <input type="hidden" id="inv-condition-input" value="working">
+                    <div class="inv-image-section">
+                        <img id="inv-image-preview" style="display:none; width:80px; height:80px; object-fit:cover; border-radius:8px; margin-bottom:8px;">
+                        <button type="button" class="btn btn-secondary" onclick="triggerInvImageUpload()">Upload Photo</button>
+                    </div>
+                    <div class="form-group">
+                        <label for="inv-name">Item Name *</label>
+                        <input type="text" id="inv-name" required>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="inv-category">Category</label>
+                            <select id="inv-category">
+                                <option value="Misc">Misc</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="inv-quantity">Quantity</label>
+                            <input type="number" id="inv-quantity" min="1" value="1">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Condition</label>
+                            <button type="button" id="inv-condition-btn" class="pl-condition-badge cond-working" onclick="cycleInvCondition()">Working</button>
+                        </div>
+                        <div class="form-group">
+                            <label for="inv-serialNumber">Serial / Tag #</label>
+                            <input type="text" id="inv-serialNumber" placeholder="Optional">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="inv-notes">Notes</label>
+                        <textarea id="inv-notes" rows="2" placeholder="Storage location, purchase info, etc."></textarea>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-secondary" onclick="closeInventoryModal()">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Save</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Manage Inventory Modal -->
+    <input type="file" id="inv-import-file" accept=".xlsx,.csv" style="display:none" onchange="handleInventoryImport(event)">
+    <div id="manage-inventory-modal" class="hub-modal-overlay">
+        <div class="hub-modal inv-mgr-modal-box">
+            <div class="hub-modal-header">
+                <h2>Manage Inventory</h2>
+                <div class="inv-mgr-header-actions">
+                    <button class="btn btn-secondary btn-sm" onclick="document.getElementById('inv-import-file').click()">
+                        <i class="ti ti-upload"></i> Import
+                    </button>
+                    <button class="btn btn-primary-gold btn-sm" onclick="openInventoryModal()">+ Add Item</button>
+                </div>
+                <button class="hub-modal-close" onclick="closeManageInventory()">&times;</button>
+            </div>
+            <div id="manage-inventory-list" class="inv-mgr-list"></div>
+            <div class="hub-modal-footer">
+                <button class="btn btn-secondary" onclick="closeManageInventory()">Done</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Packing List Categories Modal -->
+    <div id="packing-categories-modal" class="hub-modal-overlay">
+        <div class="hub-modal" style="width:400px">
+            <div class="hub-modal-header">
+                <h2>Packing Categories</h2>
+                <button class="hub-modal-close" onclick="closePackingCategoriesModal()">&times;</button>
+            </div>
+            <div class="hub-modal-body">
+                <p style="font-size:0.8rem;color:var(--text-tertiary);margin-bottom:14px;">Categories are saved per event. Changes only affect this event.</p>
+                <div id="packing-cat-list" class="pcat-list"></div>
+                <div class="pcat-add-row">
+                    <input type="text" id="new-packing-cat-input" class="search-input" placeholder="New category name..." onkeydown="if(event.key==='Enter'){event.preventDefault();addPackingCategory();}">
+                    <button class="btn btn-primary-gold" onclick="addPackingCategory()">Add</button>
+                </div>
+            </div>
+            <div class="hub-modal-footer">
+                <button class="btn btn-secondary" onclick="closePackingCategoriesModal()">Done</button>
             </div>
         </div>
     </div>

@@ -113,11 +113,17 @@ const state = {
     vmBaseWidth: 0,
     vmBaseHeight: 0,
     // Packing list state
+    inventory: [],
     packingList: [],
     packingCategoryColors: [],
     packingSearch: '',
     packingCategoryFilter: 'all',
-    packingStatusFilter: 'all',
+    packingView: 'inventory',
+    _pendingPackingImageItemId: null,
+    _pendingPackingImageInventoryId: null,
+    _inventoryPickerSelected: new Set(),
+    // Quote state
+    quoteLines: [],
     // Menu state
     menuItems: [],
     menuSearch: '',
@@ -331,6 +337,7 @@ const ALL_PAGES = [
     { id: 'menu',                label: 'Menu' },
     { id: 'venue-map',           label: 'Venue Map' },
     { id: 'guests',              label: 'Guests' },
+    { id: 'quote',               label: 'Quote' },
 ];
 
 const INTAKE_SECTION_ICONS = {
@@ -465,6 +472,7 @@ function setActiveEvent(eventId) {
         seatingTables:         ref.collection('seatingTables'),
         invitees:              ref.collection('invitees'),
         intake:                ref.collection('intake'),
+        quoteLines:            ref.collection('quoteLines'),
     };
     state.currentEventId = eventId;
 }
@@ -836,6 +844,7 @@ function switchPage(pageName) {
             if (daStatusSelect) daStatusSelect.value = 'all';
             renderDigitalAssets();
         }
+        if (pageName === 'quote') renderQuote();
     }
 }
 
@@ -883,6 +892,7 @@ function loadAllData() {
     setupCollectionListener('guests', 'guests', [renderSeatingTable, renderSeatingMap, renderSeatingPanel, updateSeatingStats]);
     setupCollectionListener('seatingTables', 'seatingTables', [renderSeatingTable, renderSeatingMap, renderSeatingPanel, updateSeatingStats]);
     setupCollectionListener('invitees', 'invitees', [renderGuestList]);
+    setupCollectionListener('quoteLines', 'quoteLines', [renderQuote]);
     setupIntakeListener();
 }
 
@@ -1086,6 +1096,21 @@ function loadEvents() {
     db.collection('blockDates').onSnapshot(snap => {
         state.blockDates = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         renderHub();
+    });
+
+    db.collection('inventory').onSnapshot(snap => {
+        state.inventory = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+            .sort((a, b) => {
+                const _pcats = getPackingCategories();
+                const ai = _pcats.indexOf(a.category || 'Misc');
+                const bi = _pcats.indexOf(b.category || 'Misc');
+                const catDiff = (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+                return catDiff !== 0 ? catDiff : (a.name || '').localeCompare(b.name || '');
+            });
+        renderPackingList();
+        if (document.getElementById('inv-picker-modal')?.classList.contains('is-open')) {
+            renderInventoryPickerList();
+        }
     });
 }
 
@@ -9608,7 +9633,96 @@ window.toggleMenuCategory = toggleMenuCategory;
 
 // ==================== PACKING LIST ====================
 
-const PACKING_CATEGORIES = ['Audio', 'Lighting', 'Decor', 'Signage', 'Catering', 'Printed Materials', 'Misc'];
+const PACKING_CATEGORIES_DEFAULT = ['Audio', 'Lighting', 'Decor', 'Signage', 'Catering', 'Printed Materials', 'Misc'];
+
+function getPackingCategories() {
+    return (state.activeEvent && state.activeEvent.packingCategories && state.activeEvent.packingCategories.length)
+        ? state.activeEvent.packingCategories
+        : PACKING_CATEGORIES_DEFAULT;
+}
+
+// --- Category management ---
+window.openPackingCategoriesModal = function() {
+    renderPackingCategoriesModal();
+    document.getElementById('packing-categories-modal').classList.add('is-open');
+};
+
+window.closePackingCategoriesModal = function() {
+    document.getElementById('packing-categories-modal').classList.remove('is-open');
+};
+
+function renderPackingCategoriesModal() {
+    const cats = getPackingCategories();
+    const list = document.getElementById('packing-cat-list');
+    if (!list) return;
+    list.innerHTML = cats.map((c, i) => `
+        <div class="pcat-item">
+            <span class="pcat-name">${escapeHtml(c)}</span>
+            <button class="btn-icon-sm delete" onclick="removePackingCategory(${i})" title="Remove">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>`).join('');
+}
+
+window.addPackingCategory = async function() {
+    const input = document.getElementById('new-packing-cat-input');
+    const name = (input?.value || '').trim();
+    if (!name) return;
+    const cats = getPackingCategories();
+    if (cats.includes(name)) { showToast('Category already exists', 'error'); return; }
+    const updated = [...cats, name];
+    try {
+        await eventsCollection.doc(state.activeEvent.id).update({ packingCategories: updated });
+        state.activeEvent.packingCategories = updated;
+        input.value = '';
+        renderPackingCategoriesModal();
+        populatePackingCategorySelects();
+    } catch (err) { showToast('Error saving category', 'error'); }
+};
+
+window.removePackingCategory = async function(index) {
+    const cats = getPackingCategories();
+    const name = cats[index];
+    const inUse = state.packingList.some(i => i.category === name) || state.inventory.some(i => i.category === name);
+    if (inUse && !confirm(`"${name}" is used by existing items. Remove it anyway?`)) return;
+    const updated = cats.filter((_, i) => i !== index);
+    try {
+        await eventsCollection.doc(state.activeEvent.id).update({ packingCategories: updated });
+        state.activeEvent.packingCategories = updated;
+        renderPackingCategoriesModal();
+        populatePackingCategorySelects();
+        renderPackingList();
+    } catch (err) { showToast('Error removing category', 'error'); }
+};
+
+function populatePackingCategorySelects() {
+    const cats = getPackingCategories();
+    const catOptions = cats.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+
+    // Category filter dropdown
+    const filterEl = document.getElementById('packing-category-filter');
+    if (filterEl) {
+        const cur = filterEl.value;
+        filterEl.innerHTML = `<option value="all">All Categories</option>${catOptions}`;
+        if (cats.includes(cur)) filterEl.value = cur;
+    }
+
+    // Packing item modal select
+    const packingCatEl = document.getElementById('packing-category');
+    if (packingCatEl) {
+        const cur2 = packingCatEl.value;
+        packingCatEl.innerHTML = `<option value="">Select category...</option>${catOptions}`;
+        if (cats.includes(cur2)) packingCatEl.value = cur2;
+    }
+
+    // Inventory modal select
+    const invCatEl = document.getElementById('inv-category');
+    if (invCatEl) {
+        const cur3 = invCatEl.value;
+        invCatEl.innerHTML = catOptions;
+        if (cats.includes(cur3)) invCatEl.value = cur3;
+    }
+}
 
 const PACKING_COLOR_PALETTE = [
     { hex: null,      title: 'None' },
@@ -9648,236 +9762,293 @@ function getStatusInfo(statusValue) {
     return PACKING_STATUSES.find(s => s.value === statusValue) || PACKING_STATUSES[0];
 }
 
+function getInventoryItem(id) {
+    return (state.inventory || []).find(i => i.id === id) || null;
+}
+
 function renderPackingList() {
     const container = document.getElementById('packing-list-container');
     if (!container) return;
 
-    const items = state.packingList;
-    const total = items.length;
-    const toPack = items.filter(i => i.status === 'to-pack').length;
-    const packed = items.filter(i => i.status === 'packed').length;
-    const loaded = items.filter(i => i.status === 'loaded').length;
-    const atVenue = items.filter(i => i.status === 'at-venue').length;
+    populatePackingCategorySelects();
 
-    // Update stat cards
-    const statTotal = document.getElementById('packing-stat-total');
-    const statToPack = document.getElementById('packing-stat-topack');
-    const statInProgress = document.getElementById('packing-stat-inprogress');
-    const statAtVenue = document.getElementById('packing-stat-atvenue');
-    if (statTotal) statTotal.textContent = total;
-    if (statToPack) statToPack.textContent = toPack;
-    if (statInProgress) statInProgress.textContent = packed + loaded;
-    if (statAtVenue) statAtVenue.textContent = atVenue;
-
-    // Update progress bar
-    if (total > 0) {
-        document.getElementById('progress-to-pack').style.width = ((toPack / total) * 100) + '%';
-        document.getElementById('progress-packed').style.width = ((packed / total) * 100) + '%';
-        document.getElementById('progress-loaded').style.width = ((loaded / total) * 100) + '%';
-        document.getElementById('progress-at-venue').style.width = ((atVenue / total) * 100) + '%';
-    } else {
-        document.getElementById('progress-to-pack').style.width = '0%';
-        document.getElementById('progress-packed').style.width = '0%';
-        document.getElementById('progress-loaded').style.width = '0%';
-        document.getElementById('progress-at-venue').style.width = '0%';
-    }
-
-    // Apply filters
-    let filtered = [...items];
-    if (state.packingSearch) {
-        const q = state.packingSearch.toLowerCase();
-        filtered = filtered.filter(i =>
-            (i.name || '').toLowerCase().includes(q) ||
-            (i.assignee || '').toLowerCase().includes(q) ||
-            (i.notes || '').toLowerCase().includes(q)
-        );
-    }
-    if (state.packingCategoryFilter !== 'all') {
-        filtered = filtered.filter(i => i.category === state.packingCategoryFilter);
-    }
-    if (state.packingStatusFilter !== 'all') {
-        filtered = filtered.filter(i => i.status === state.packingStatusFilter);
-    }
-
-    // Update search count
-    const searchCount = document.getElementById('packing-search-count');
-    if (searchCount) {
-        if (state.packingSearch || state.packingCategoryFilter !== 'all' || state.packingStatusFilter !== 'all') {
-            searchCount.textContent = `${filtered.length} of ${total} items`;
-        } else {
-            searchCount.textContent = '';
-        }
-    }
-
-    if (filtered.length === 0) {
-        container.innerHTML = `<p class="empty-state">${total === 0 ? 'No packing items added' : 'No items match your filters'}</p>`;
-        return;
-    }
-
-    // Group by category
-    const grouped = {};
-    filtered.forEach(item => {
-        const cat = item.category || 'Misc';
-        if (!grouped[cat]) grouped[cat] = [];
-        grouped[cat].push(item);
+    // Build a lookup: inventoryId → packingList doc id (for checked state)
+    const selectedMap = {}; // inventoryId → packingList doc id
+    const adHocItems = [];
+    state.packingList.forEach(p => {
+        if (p.inventoryId) selectedMap[p.inventoryId] = p.id;
+        else adHocItems.push(p);
     });
 
-    // Sort categories by PACKING_CATEGORIES order
+    // For ad-hoc items, checked = not deselected
+    adHocItems.forEach(p => { p._checked = !p.deselected; });
+
+    const totalInventory = state.inventory.length;
+    const selectedCount  = Object.keys(selectedMap).length + adHocItems.filter(p => !p.deselected).length;
+    const brokenCount    = state.inventory.filter(i => i.condition === 'broken').length;
+
+    const el = (id, val) => { const e = document.getElementById(id); if (e) e.textContent = val; };
+    el('packing-stat-total',     totalInventory);
+    el('packing-stat-selected',  selectedCount);
+    el('packing-stat-broken',    brokenCount);
+
+    // Decide which items to show based on view
+    const isPacking = state.packingView === 'packing';
+
+    // Update toggle button states
+    document.getElementById('pl-view-inventory')?.classList.toggle('active', !isPacking);
+    document.getElementById('pl-view-packing')?.classList.toggle('active', isPacking);
+
+    // Build display rows: inventory items (filtered by view) + ad-hoc items
+    let invItems = state.inventory;
+    if (isPacking) invItems = invItems.filter(i => selectedMap[i.id] !== undefined);
+
+    // Apply search & category filter to inventory items
+    const q = (state.packingSearch || '').toLowerCase();
+    if (q) invItems = invItems.filter(i => (i.name || '').toLowerCase().includes(q) || (i.category || '').toLowerCase().includes(q));
+    if (state.packingCategoryFilter !== 'all') invItems = invItems.filter(i => i.category === state.packingCategoryFilter);
+
+    // Filter ad-hoc items — in packing view only show checked ones
+    let shownAdHoc = isPacking ? adHocItems.filter(p => !p.deselected) : adHocItems;
+    if (q) shownAdHoc = shownAdHoc.filter(i => (i.name || '').toLowerCase().includes(q));
+    if (state.packingCategoryFilter !== 'all') shownAdHoc = shownAdHoc.filter(i => i.category === state.packingCategoryFilter);
+
+    const sc = document.getElementById('packing-search-count');
+    if (sc) {
+        const total = invItems.length + shownAdHoc.length;
+        const anyFilter = q || state.packingCategoryFilter !== 'all';
+        sc.textContent = anyFilter ? `${total} result${total !== 1 ? 's' : ''}` : '';
+    }
+
+    // Group inventory items by category
+    const grouped = {};
+    invItems.forEach(i => {
+        const cat = i.category || 'Misc';
+        if (!grouped[cat]) grouped[cat] = [];
+        grouped[cat].push({ ...i, _isInv: true });
+    });
+    // Ad-hoc items go in their own category groups too
+    shownAdHoc.forEach(i => {
+        const cat = i.category || 'Misc';
+        if (!grouped[cat]) grouped[cat] = [];
+        grouped[cat].push({ ...i, _isAdHoc: true });
+    });
+
     const sortedCats = Object.keys(grouped).sort((a, b) => {
-        const ai = PACKING_CATEGORIES.indexOf(a);
-        const bi = PACKING_CATEGORIES.indexOf(b);
+        const _pc = getPackingCategories(); const ai = _pc.indexOf(a), bi = _pc.indexOf(b);
         return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
     });
 
-    let html = '';
+    if (sortedCats.length === 0) {
+        container.innerHTML = isPacking
+            ? '<p class="empty-state">No items selected for this event yet. Switch to Full Inventory and check the items you need.</p>'
+            : '<p class="empty-state">Your inventory is empty. Add items via Manage Inventory.</p>';
+        return;
+    }
+
+    const THUMB_SVG = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`;
+
+    let rows = '';
     sortedCats.forEach(cat => {
         const catItems = grouped[cat];
-        const catAtVenue = catItems.filter(i => i.status === 'at-venue').length;
-        const catTotal = catItems.length;
-        const catPct = catTotal > 0 ? Math.round((catAtVenue / catTotal) * 100) : 0;
-        const allDone = catAtVenue === catTotal;
-        const hasAdvanceable = catItems.some(i => getStatusInfo(i.status).next !== null);
-        const catColor = getPackingCategoryColor(cat);
-        const catSwatches = renderPackingColorSwatches('setPackingCategoryColor', cat);
+        const catSelected = catItems.filter(i => i._isAdHoc || selectedMap[i.id] !== undefined).length;
+        const hasBroken   = catItems.some(i => i.condition === 'broken');
+        rows += `<tr class="pl-category-row">
+            <td colspan="6">
+                <span class="pl-cat-name">${escapeHtml(cat)}</span>
+                <span class="pl-cat-count">${catSelected}/${catItems.length} selected</span>
+                ${hasBroken ? '<span class="pl-cat-broken-flag">⚠ broken</span>' : ''}
+            </td>
+        </tr>`;
 
-        html += `
-        <div class="packing-category-section" data-category="${cat}">
-            <div class="packing-category-header" onclick="togglePackingCategory('${cat}')">
-                <div class="packing-category-header-left">
-                    <svg class="packing-chevron" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="2 4 6 8 10 4"/></svg>
-                    <span class="packing-category-name">${cat}</span>
-                    <span class="packing-category-count">${catAtVenue}/${catTotal}</span>
-                </div>
-                <div class="packing-category-header-right">
-                    <div class="color-swatch-wrapper">
-                        <button type="button" class="color-swatch-btn packing-cat-swatch" style="background-color:${catColor || '#ffffff'}; ${catColor ? '' : 'border:2px dashed #ccc;'}" onclick="event.stopPropagation(); togglePackingCategoryColorPicker('${cat}')" title="Set color for all ${cat} items"></button>
-                        <div class="color-swatch-dropdown" id="pcat-picker-${cat.replace(/\s+/g, '-')}">${catSwatches}</div>
-                    </div>
-                    <div class="packing-mini-progress">
-                        <div class="packing-mini-progress-fill${allDone ? ' complete' : ''}" style="width: ${catPct}%"></div>
-                    </div>
-                    ${hasAdvanceable ? `<button class="btn btn-sm btn-advance-all" onclick="event.stopPropagation(); bulkAdvanceCategory('${cat}')" title="Advance all items in ${cat}">Advance All</button>` : ''}
-                </div>
-            </div>
-            <div class="packing-category-body open">
-                ${catItems.map(item => {
-                    const si = getStatusInfo(item.status);
-                    const isLast = si.next === null;
-                    const itemColor = item.color || null;
-                    const borderStyle = itemColor ? `style="border-left-color:${itemColor};"` : '';
-                    const itemSwatches = renderPackingColorSwatches('setPackingItemColor', item.id);
-                    return `
-                    <div class="packing-item-row${isLast ? ' done' : ''}${itemColor ? ' has-color' : ''}" ${borderStyle}>
-                        <button class="packing-status-badge status-${item.status}${isLast ? '' : ' advanceable'}" onclick="cyclePackingStatus('${item.id}')" title="${isLast ? 'At Venue' : 'Click to advance to ' + getStatusInfo(item.status).next}">
-                            ${si.label}${isLast ? '' : ' ›'}
+        catItems.forEach(item => {
+            const isAdHoc   = !!item._isAdHoc;
+            const invId     = isAdHoc ? null : item.id;
+            const packDocId = isAdHoc ? item.id : (selectedMap[item.id] || null);
+            const checked   = isAdHoc ? !item.deselected : packDocId !== null;
+            // Notes come from the packing list doc (not the inventory item)
+            const packDoc   = packDocId ? state.packingList.find(p => p.id === packDocId) : null;
+            const rowNotes  = packDoc ? (packDoc.notes || '') : (isAdHoc ? (item.notes || '') : '');
+            const condition = item.condition || 'working';
+            const condLabel = { working: 'Working', damaged: 'Damaged', broken: 'Broken' }[condition] || 'Working';
+            const qty = item.quantity || 1;
+            const thumb = item.imageUrl
+                ? `<img class="pl-thumb-img" src="${escapeHtml(item.imageUrl)}" alt="">`
+                : `<div class="pl-thumb-placeholder">${THUMB_SVG}</div>`;
+
+            rows += `<tr class="pl-item-row${condition !== 'working' ? ' has-issue' : ''}${checked ? ' is-selected' : ''}">
+                <td class="pl-check-cell">
+                    <input type="checkbox" class="pl-checkbox" ${checked ? 'checked' : ''}
+                        onchange="${isAdHoc
+                            ? `toggleAdHocItem('${item.id}', this.checked)`
+                            : `toggleItemForEvent('${invId}', '${packDocId || ''}')`
+                        }"
+                        onclick="event.stopPropagation()">
+                </td>
+                <td class="pl-thumb-cell">
+                    <button class="pl-thumb" onclick="uploadPackingItemImage('${isAdHoc ? item.id : ''}', '${invId || ''}')" title="Upload image">
+                        ${thumb}
+                    </button>
+                </td>
+                <td class="pl-name-cell">
+                    <span class="pl-item-name">${escapeHtml(item.name || 'Unnamed')}</span>
+                    ${isAdHoc ? '<span class="pl-adhoc-tag">one-off</span>' : ''}
+                </td>
+                <td class="pl-qty-cell">${qty > 1 ? `<span class="pl-qty">×${qty}</span>` : '<span class="pl-muted">—</span>'}</td>
+                <td class="pl-condition-cell">
+                    <button class="pl-condition-badge cond-${condition}" onclick="cyclePackingCondition('', '${invId || item.id}')" title="Click to update condition">
+                        ${condLabel}
+                    </button>
+                </td>
+                <td class="pl-notes-cell">
+                    ${packDocId
+                        ? `<input type="text" class="pl-notes-input" value="${escapeHtml(rowNotes)}" placeholder="Add a note…" onblur="savePackingNote('${packDocId}', this.value)" onkeydown="if(event.key==='Enter')this.blur()">`
+                        : `<input type="text" class="pl-notes-input pl-notes-disabled" placeholder="Check to add notes" disabled>`
+                    }
+                </td>
+                ${isAdHoc ? `
+                <td class="pl-actions-cell">
+                    <div class="pl-actions">
+                        <button class="btn-icon-sm" onclick="openPackingModal('${item.id}')" title="Edit one-off item">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                         </button>
-                        <div class="packing-item-info">
-                            <span class="packing-item-name">${item.name || 'Unnamed'}</span>
-                            ${item.quantity > 1 ? `<span class="packing-item-qty">×${item.quantity}</span>` : ''}
-                        </div>
-                        ${item.assignee ? `<span class="packing-item-assignee">${item.assignee}</span>` : ''}
-                        ${item.notes ? `<span class="packing-item-notes" title="${item.notes.replace(/"/g, '&quot;')}">📋</span>` : ''}
-                        <div class="packing-item-actions">
-                            <div class="color-swatch-wrapper">
-                                <button type="button" class="color-swatch-btn-sm" style="background-color:${itemColor || '#ffffff'}; ${itemColor ? '' : 'border:1px dashed #ccc;'}" onclick="togglePackingItemColorPicker('${item.id}')" title="Item color"></button>
-                                <div class="color-swatch-dropdown" id="pitem-picker-${item.id}">${itemSwatches}</div>
-                            </div>
-                            <button class="btn-icon-sm" onclick="openPackingModal('${item.id}')" title="Edit">✎</button>
-                            <button class="btn-icon-sm delete" onclick="deletePackingItem('${item.id}')" title="Delete">✕</button>
-                        </div>
-                    </div>`;
-                }).join('')}
-            </div>
-        </div>`;
+                        <button class="btn-icon-sm delete" onclick="deletePackingItem('${item.id}')" title="Remove">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+                        </button>
+                    </div>
+                </td>` : '<td></td>'}
+
+            </tr>`;
+        });
     });
 
-    container.innerHTML = html;
+    container.innerHTML = `
+    <table class="pl-table">
+        <thead>
+            <tr>
+                <th class="pl-th-check"></th>
+                <th class="pl-th-img"></th>
+                <th>Item</th>
+                <th>Qty</th>
+                <th>Condition</th>
+                <th class="pl-th-notes">Notes</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+    </table>`;
 }
 
-async function cyclePackingStatus(itemId) {
-    const item = state.packingList.find(i => i.id === itemId);
-    if (!item) return;
-
-    const si = getStatusInfo(item.status);
-    if (!si.next) {
-        showToast('Already at venue', 'info');
-        return;
-    }
-
+window.savePackingNote = async function(packDocId, value) {
+    if (!packDocId) return;
     try {
-        await collections.packingList.doc(itemId).update({
-            status: si.next,
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        await collections.packingList.doc(packDocId).update({
+            notes: value,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
         });
-        const nextLabel = getStatusInfo(si.next).label;
-        showToast(`${item.name} → ${nextLabel}`);
-    } catch (error) {
-        console.error('Error updating packing status:', error);
-        showToast('Error updating status', 'error');
-    }
-}
+    } catch (err) { showToast('Error saving note', 'error'); }
+};
 
-async function bulkAdvanceCategory(category) {
-    const items = state.packingList.filter(i => i.category === category);
-    const advanceable = items.filter(i => getStatusInfo(i.status).next !== null);
-
-    if (advanceable.length === 0) {
-        showToast('All items already at venue', 'info');
-        return;
-    }
-
-    if (!confirm(`Advance ${advanceable.length} item(s) in ${category} to next status?`)) return;
-
+window.clearAllPackingSelections = async function() {
+    if (!confirm('Uncheck all items for this event? Notes will be kept but nothing will be selected.')) return;
     try {
         const batch = db.batch();
-        advanceable.forEach(item => {
-            const si = getStatusInfo(item.status);
-            batch.update(collections.packingList.doc(item.id), {
-                status: si.next,
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-            });
-        });
+        // Remove all inventory-linked packing list docs
+        state.packingList.filter(p => p.inventoryId).forEach(p => batch.delete(collections.packingList.doc(p.id)));
+        // Mark all ad-hoc items as deselected
+        state.packingList.filter(p => !p.inventoryId).forEach(p => batch.update(collections.packingList.doc(p.id), { deselected: true }));
         await batch.commit();
-        showToast(`Advanced ${advanceable.length} items in ${category}`);
-    } catch (error) {
-        console.error('Error bulk advancing:', error);
-        showToast('Error advancing items', 'error');
+        showToast('Cleared all selections');
+    } catch (err) { showToast('Error clearing selections', 'error'); }
+};
+
+window.toggleAdHocItem = async function(packDocId, checked) {
+    try {
+        await collections.packingList.doc(packDocId).update({
+            deselected: !checked,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        });
+    } catch (err) { showToast('Error updating item', 'error'); }
+};
+
+window.toggleItemForEvent = async function(inventoryId, existingPackDocId) {
+    if (!state.activeEvent) return;
+    if (existingPackDocId) {
+        // Uncheck — remove from packing list
+        try {
+            await collections.packingList.doc(existingPackDocId).delete();
+        } catch (err) { showToast('Error removing item', 'error'); }
+    } else {
+        // Check — add to packing list
+        const inv = getInventoryItem(inventoryId);
+        if (!inv) return;
+        try {
+            await collections.packingList.add({
+                inventoryId,
+                name: inv.name,
+                category: inv.category || 'Misc',
+                quantity: inv.quantity || 1,
+                isAdHoc: false,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            });
+        } catch (err) { showToast('Error selecting item', 'error'); }
     }
-}
+};
+
+window.switchPackingView = function(view) {
+    state.packingView = view;
+    renderPackingList();
+};
 
 const PACKING_FIELD_MAP = {
     'packing-name': 'name',
     'packing-category': 'category',
     'packing-quantity': 'quantity',
-    'packing-status': 'status',
     'packing-assignee': 'assignee',
-    'packing-notes': 'notes'
+    'packing-notes': 'notes',
 };
 
 function openPackingModal(itemId = null) {
     openModal({
         modalId: 'packing-modal',
         formId: 'packing-form',
-        title: 'Packing Item',
+        title: itemId ? 'Edit Item' : 'Add One-Off Item',
         stateKey: 'packingList',
         itemId: itemId,
         idFieldId: 'packing-id',
         fieldMap: PACKING_FIELD_MAP,
         defaultValues: {
-            'packing-status': 'to-pack',
-            'packing-quantity': '1'
+            'packing-quantity': '1',
         }
     });
 }
 
 async function handlePackingSubmit(e) {
-    await handleFormSubmit(e, {
-        collection: 'packingList',
-        fieldMap: PACKING_FIELD_MAP,
-        idFieldId: 'packing-id',
-        itemName: 'packing item',
-        numericFields: ['quantity']
+    e.preventDefault();
+    const data = {};
+    Object.entries(PACKING_FIELD_MAP).forEach(([fieldId, dataKey]) => {
+        const el = document.getElementById(fieldId);
+        if (el) data[dataKey] = el.type === 'checkbox' ? el.checked : el.value;
     });
+    data.quantity = parseInt(data.quantity) || 1;
+    data.isAdHoc = true;
+    data.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+    const id = document.getElementById('packing-id').value;
+    try {
+        if (id) {
+            await collections.packingList.doc(id).update(data);
+            showToast('Item updated');
+        } else {
+            data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+            await collections.packingList.add(data);
+            showToast('Item added');
+        }
+        closeAllModals();
+    } catch (err) {
+        console.error('Error saving packing item:', err);
+        showToast('Error saving item', 'error');
+    }
 }
 
 function handlePackingSearch(value) {
@@ -9990,8 +10161,6 @@ document.addEventListener('click', (e) => {
 
 window.deletePackingItem = createDeleteHandler('packingList', 'packing item');
 window.openPackingModal = openPackingModal;
-window.cyclePackingStatus = cyclePackingStatus;
-window.bulkAdvanceCategory = bulkAdvanceCategory;
 window.handlePackingSearch = handlePackingSearch;
 window.clearPackingSearch = clearPackingSearch;
 window.handlePackingCategoryFilter = handlePackingCategoryFilter;
@@ -10001,6 +10170,465 @@ window.togglePackingCategoryColorPicker = togglePackingCategoryColorPicker;
 window.togglePackingItemColorPicker = togglePackingItemColorPicker;
 window.setPackingCategoryColor = setPackingCategoryColor;
 window.setPackingItemColor = setPackingItemColor;
+
+// =============================================
+// INVENTORY + PACKING LIST (REIMAGINED)
+// =============================================
+
+// --- Image upload ---
+window.uploadPackingItemImage = async function(packingItemId, inventoryId) {
+    state._pendingPackingImageItemId = packingItemId;
+    state._pendingPackingImageInventoryId = inventoryId || null;
+    document.getElementById('packing-image-upload').click();
+};
+
+document.addEventListener('DOMContentLoaded', () => {
+    const fileInput = document.getElementById('packing-image-upload');
+    if (fileInput) fileInput.addEventListener('change', handlePackingImageChange);
+
+    const invFileInput = document.getElementById('inv-image-upload');
+    if (invFileInput) invFileInput.addEventListener('change', handleInventoryImageChange);
+});
+
+async function handlePackingImageChange(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const invId = state._pendingPackingImageInventoryId;
+    const itemId = state._pendingPackingImageItemId;
+    e.target.value = '';
+    if (file.size > 5 * 1024 * 1024) { showToast('Image must be under 5MB', 'error'); return; }
+    try {
+        showToast('Uploading…', 'info');
+        const targetId = invId || itemId;
+        const path = invId ? `inventory/${targetId}` : `packingImages/${state.activeEvent?.id}/${targetId}`;
+        const ref = storage.ref(path);
+        await ref.put(file, { contentType: file.type });
+        const url = await ref.getDownloadURL();
+        if (invId) {
+            await db.collection('inventory').doc(invId).update({ imageUrl: url });
+        } else {
+            await collections.packingList.doc(itemId).update({ imageUrl: url, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+        }
+        showToast('Image uploaded');
+    } catch (err) {
+        console.error('Image upload failed:', err);
+        showToast('Upload failed', 'error');
+    }
+}
+
+// --- Condition cycling (event packing item or inventory item) ---
+window.cyclePackingCondition = async function(packingItemId, inventoryId) {
+    const order = ['working', 'damaged', 'broken'];
+    if (inventoryId) {
+        const inv = getInventoryItem(inventoryId);
+        if (!inv) return;
+        const next = order[(order.indexOf(inv.condition || 'working') + 1) % order.length];
+        try {
+            await db.collection('inventory').doc(inventoryId).update({ condition: next });
+        } catch (err) { showToast('Error updating condition', 'error'); }
+    } else {
+        const item = state.packingList.find(i => i.id === packingItemId);
+        if (!item) return;
+        const next = order[(order.indexOf(item.condition || 'working') + 1) % order.length];
+        try {
+            await collections.packingList.doc(packingItemId).update({ condition: next, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+        } catch (err) { showToast('Error updating condition', 'error'); }
+    }
+};
+
+// --- Condition filter ---
+window.handlePackingConditionFilter = function(value) {
+    state.packingConditionFilter = value;
+    renderPackingList();
+};
+
+// --- Print ---
+window.printPackingList = function() {
+    window.print();
+};
+
+// --- Inventory Picker Modal ---
+window.openInventoryPickerModal = function() {
+    state._inventoryPickerSelected = new Set();
+    document.getElementById('inv-picker-modal').classList.add('is-open');
+    document.getElementById('inv-picker-search').value = '';
+    state._invPickerSearch = '';
+    renderInventoryPickerList();
+};
+
+window.closeInventoryPickerModal = function() {
+    document.getElementById('inv-picker-modal').classList.remove('is-open');
+};
+
+window.invPickerSearch = function(value) {
+    state._invPickerSearch = value;
+    renderInventoryPickerList();
+};
+
+window.toggleInventoryPickerItem = function(id) {
+    if (state._inventoryPickerSelected.has(id)) {
+        state._inventoryPickerSelected.delete(id);
+    } else {
+        state._inventoryPickerSelected.add(id);
+    }
+    // toggle checkbox UI without full re-render
+    const cb = document.querySelector(`.inv-picker-row[data-id="${id}"] .inv-picker-cb`);
+    if (cb) cb.checked = state._inventoryPickerSelected.has(id);
+    document.getElementById('inv-picker-add-btn').disabled = state._inventoryPickerSelected.size === 0;
+};
+
+function renderInventoryPickerList() {
+    const container = document.getElementById('inv-picker-list');
+    if (!container) return;
+    const alreadyAdded = new Set(state.packingList.filter(i => i.inventoryId).map(i => i.inventoryId));
+    const q = (state._invPickerSearch || '').toLowerCase();
+    let items = state.inventory;
+    if (q) items = items.filter(i => (i.name || '').toLowerCase().includes(q) || (i.category || '').toLowerCase().includes(q));
+
+    if (items.length === 0) {
+        container.innerHTML = `<p class="inv-picker-empty">${state.inventory.length === 0 ? 'No inventory items yet. Add items to your inventory first.' : 'No matches.'}</p>`;
+        return;
+    }
+
+    const grouped = {};
+    items.forEach(i => { const c = i.category || 'Misc'; if (!grouped[c]) grouped[c] = []; grouped[c].push(i); });
+    const sortedCats = Object.keys(grouped).sort((a, b) => {
+        const _pc = getPackingCategories(); const ai = _pc.indexOf(a), bi = _pc.indexOf(b);
+        return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+    });
+
+    let html = '';
+    sortedCats.forEach(cat => {
+        html += `<div class="inv-picker-cat-header">${escapeHtml(cat)}</div>`;
+        grouped[cat].forEach(inv => {
+            const already = alreadyAdded.has(inv.id);
+            const checked = state._inventoryPickerSelected.has(inv.id);
+            const cond = inv.condition || 'working';
+            html += `<label class="inv-picker-row${already ? ' already-added' : ''}" data-id="${inv.id}" onclick="toggleInventoryPickerItem('${inv.id}')">
+                <input type="checkbox" class="inv-picker-cb" ${checked ? 'checked' : ''} ${already ? 'disabled' : ''} onclick="event.stopPropagation()">
+                ${inv.imageUrl ? `<img class="inv-picker-thumb" src="${escapeHtml(inv.imageUrl)}" alt="">` : '<div class="inv-picker-thumb inv-picker-thumb-empty"></div>'}
+                <span class="inv-picker-name">${escapeHtml(inv.name || 'Unnamed')}</span>
+                ${inv.quantity > 1 ? `<span class="inv-picker-qty">×${inv.quantity}</span>` : ''}
+                <span class="pl-condition-badge cond-${cond} inv-picker-cond">${{ working: 'OK', damaged: 'Damaged', broken: 'Broken' }[cond] || 'OK'}</span>
+                ${already ? '<span class="inv-picker-added-label">added</span>' : ''}
+            </label>`;
+        });
+    });
+    container.innerHTML = html;
+    document.getElementById('inv-picker-add-btn').disabled = state._inventoryPickerSelected.size === 0;
+}
+
+window.confirmAddFromInventory = async function() {
+    const ids = [...state._inventoryPickerSelected];
+    if (ids.length === 0) return;
+    try {
+        const batch = db.batch();
+        ids.forEach(invId => {
+            const inv = getInventoryItem(invId);
+            if (!inv) return;
+            const ref = collections.packingList.doc();
+            batch.set(ref, {
+                inventoryId: invId,
+                name: inv.name,
+                category: inv.category || 'Misc',
+                quantity: inv.quantity || 1,
+                status: 'to-pack',
+                assignee: '',
+                notes: '',
+                isAdHoc: false,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            });
+        });
+        await batch.commit();
+        showToast(`Added ${ids.length} item${ids.length > 1 ? 's' : ''} to packing list`);
+        closeInventoryPickerModal();
+    } catch (err) {
+        console.error('Error adding from inventory:', err);
+        showToast('Error adding items', 'error');
+    }
+};
+
+// --- Inventory Management Modal ---
+const INVENTORY_FIELD_MAP = {
+    'inv-name': 'name',
+    'inv-category': 'category',
+    'inv-quantity': 'quantity',
+    'inv-serialNumber': 'serialNumber',
+    'inv-notes': 'notes',
+};
+
+window.openInventoryModal = function(itemId = null) {
+    populatePackingCategorySelects();
+    const modal = document.getElementById('inventory-modal');
+    const form  = document.getElementById('inventory-form');
+    form.reset();
+    document.getElementById('inv-id').value = '';
+    document.getElementById('inv-condition-input').value = 'working';
+    document.getElementById('inv-modal-title').textContent = itemId ? 'Edit Inventory Item' : 'Add to Inventory';
+    document.getElementById('inv-image-preview').style.display = 'none';
+    document.getElementById('inv-image-preview').src = '';
+
+    if (itemId) {
+        const item = getInventoryItem(itemId);
+        if (item) {
+            document.getElementById('inv-id').value = itemId;
+            Object.entries(INVENTORY_FIELD_MAP).forEach(([elId, field]) => {
+                const el = document.getElementById(elId);
+                if (el && item[field] !== undefined) el.value = item[field];
+            });
+            document.getElementById('inv-condition-input').value = item.condition || 'working';
+            updateInvConditionBtn(item.condition || 'working');
+            if (item.imageUrl) {
+                const preview = document.getElementById('inv-image-preview');
+                preview.src = item.imageUrl;
+                preview.style.display = 'block';
+            }
+        }
+    }
+
+    modal.classList.add('is-open');
+    document.getElementById('inv-name').focus();
+};
+
+window.closeInventoryModal = function() {
+    document.getElementById('inventory-modal').classList.remove('is-open');
+};
+
+function updateInvConditionBtn(condition) {
+    const btn = document.getElementById('inv-condition-btn');
+    if (!btn) return;
+    const labels = { working: 'Working', damaged: 'Damaged', broken: 'Broken' };
+    btn.textContent = labels[condition] || 'Working';
+    btn.className = `pl-condition-badge cond-${condition}`;
+}
+
+window.cycleInvCondition = function() {
+    const input = document.getElementById('inv-condition-input');
+    const order = ['working', 'damaged', 'broken'];
+    const next = order[(order.indexOf(input.value) + 1) % order.length];
+    input.value = next;
+    updateInvConditionBtn(next);
+};
+
+window.triggerInvImageUpload = function() {
+    document.getElementById('inv-image-upload').click();
+};
+
+async function handleInventoryImageChange(e) {
+    const file = e.target.files[0];
+    const invId = document.getElementById('inv-id').value;
+    e.target.value = '';
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { showToast('Image must be under 5MB', 'error'); return; }
+
+    // If editing existing inventory item, upload now
+    if (invId) {
+        try {
+            showToast('Uploading…', 'info');
+            const ref = storage.ref(`inventory/${invId}`);
+            await ref.put(file, { contentType: file.type });
+            const url = await ref.getDownloadURL();
+            await db.collection('inventory').doc(invId).update({ imageUrl: url });
+            const preview = document.getElementById('inv-image-preview');
+            preview.src = url; preview.style.display = 'block';
+            showToast('Image uploaded');
+        } catch (err) { showToast('Upload failed', 'error'); }
+    } else {
+        // New item: store file in state for upload after save
+        state._pendingInvImageFile = file;
+        const reader = new FileReader();
+        reader.onload = ev => {
+            const preview = document.getElementById('inv-image-preview');
+            preview.src = ev.target.result; preview.style.display = 'block';
+        };
+        reader.readAsDataURL(file);
+    }
+}
+
+window.handleInventorySubmit = async function(e) {
+    e.preventDefault();
+    const itemId = document.getElementById('inv-id').value;
+    const data = {};
+    Object.entries(INVENTORY_FIELD_MAP).forEach(([elId, field]) => {
+        const el = document.getElementById(elId);
+        if (el) data[field] = el.value.trim();
+    });
+    data.quantity  = parseInt(data.quantity) || 1;
+    data.condition = document.getElementById('inv-condition-input').value || 'working';
+    data.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+
+    try {
+        let newId = itemId;
+        if (itemId) {
+            await db.collection('inventory').doc(itemId).update(data);
+            showToast('Inventory item updated');
+        } else {
+            data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+            const ref = await db.collection('inventory').add(data);
+            newId = ref.id;
+            showToast('Item added to inventory');
+        }
+        // Upload pending image for new items
+        if (!itemId && state._pendingInvImageFile) {
+            try {
+                const imgRef = storage.ref(`inventory/${newId}`);
+                await imgRef.put(state._pendingInvImageFile, { contentType: state._pendingInvImageFile.type });
+                const url = await imgRef.getDownloadURL();
+                await db.collection('inventory').doc(newId).update({ imageUrl: url });
+            } catch (err) { console.error('Inventory image upload failed:', err); }
+            state._pendingInvImageFile = null;
+        }
+        closeInventoryModal();
+    } catch (err) {
+        console.error('Inventory save error:', err);
+        showToast('Error saving item', 'error');
+    }
+};
+
+window.deleteInventoryItem = async function(itemId) {
+    if (!confirm('Remove this item from your inventory?')) return;
+    try {
+        await db.collection('inventory').doc(itemId).delete();
+        showToast('Removed from inventory');
+    } catch (err) { showToast('Error removing item', 'error'); }
+};
+
+// Open Manage Inventory page (modal listing all inventory)
+window.openManageInventory = function() {
+    try {
+        const modal = document.getElementById('manage-inventory-modal');
+        if (!modal) { showToast('Modal element not found', 'error'); return; }
+        modal.classList.add('is-open');
+        renderManageInventory();
+    } catch(err) {
+        showToast('openManageInventory error: ' + err.message, 'error');
+        console.error('openManageInventory:', err);
+    }
+};
+
+window.closeManageInventory = function() {
+    document.getElementById('manage-inventory-modal').classList.remove('is-open');
+};
+
+function renderManageInventory() {
+    const container = document.getElementById('manage-inventory-list');
+    if (!container) return;
+    const items = state.inventory;
+    const cats = getPackingCategories();
+    const catOptions = cats.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+    const condLabels = { working: 'Working', damaged: 'Damaged', broken: 'Broken' };
+
+    if (items.length === 0) {
+        container.innerHTML = '<p class="empty-state" style="padding:24px">No inventory items yet. Click <strong>+ Add Item</strong> to get started.</p>';
+        return;
+    }
+
+    let rows = items.map(inv => {
+        const cond = inv.condition || 'working';
+        const invCat = inv.category || 'Misc';
+        const catOpts = cats.includes(invCat)
+            ? catOptions.replace(`value="${escapeHtml(invCat)}"`, `value="${escapeHtml(invCat)}" selected`)
+            : catOptions + `<option value="${escapeHtml(invCat)}" selected>${escapeHtml(invCat)}</option>`;
+        return `<tr class="inv-mgr-table-row">
+            <td class="inv-mgr-thumb-cell">
+                <button class="inv-mgr-thumb-btn" onclick="clickManageInvThumb('${inv.id}')" title="Upload photo">
+                    ${inv.imageUrl
+                        ? `<img class="inv-mgr-thumb-img" src="${escapeHtml(inv.imageUrl)}" alt="">`
+                        : `<span class="inv-mgr-thumb-placeholder"><i class="ti ti-camera"></i></span>`}
+                </button>
+            </td>
+            <td><input class="inv-mgr-input" type="text" value="${escapeHtml(inv.name || '')}" placeholder="Item name" onblur="saveInvField('${inv.id}','name',this.value)"></td>
+            <td>
+                <select class="inv-mgr-select" onchange="saveInvField('${inv.id}','category',this.value)">
+                    ${catOpts}
+                </select>
+            </td>
+            <td><input class="inv-mgr-input inv-mgr-input-num" type="number" min="1" value="${inv.quantity || 1}" onblur="saveInvField('${inv.id}','quantity',Math.max(1,parseInt(this.value)||1))"></td>
+            <td><input class="inv-mgr-input" type="text" value="${escapeHtml(inv.serialNumber || '')}" placeholder="—" onblur="saveInvField('${inv.id}','serialNumber',this.value)"></td>
+            <td><button class="pl-condition-badge cond-${cond}" onclick="cycleInvConditionInTable('${inv.id}',this)">${condLabels[cond] || 'Working'}</button></td>
+            <td class="inv-mgr-del-cell">
+                <button class="btn-icon-sm delete" onclick="deleteInventoryItem('${inv.id}')" title="Delete">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+                </button>
+            </td>
+        </tr>`;
+    }).join('');
+
+    container.innerHTML = `<table class="inv-mgr-table">
+        <thead><tr>
+            <th style="width:52px"></th>
+            <th>Name</th>
+            <th style="width:150px">Category</th>
+            <th style="width:60px">Qty</th>
+            <th style="width:130px">Serial #</th>
+            <th style="width:105px">Condition</th>
+            <th style="width:36px"></th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+    </table>`;
+}
+
+window.saveInvField = async function(invId, field, value) {
+    try {
+        await db.collection('inventory').doc(invId).update({ [field]: value });
+    } catch (err) { showToast('Error saving', 'error'); }
+};
+
+window.cycleInvConditionInTable = async function(invId, btn) {
+    const inv = getInventoryItem(invId);
+    if (!inv) return;
+    const order = ['working', 'damaged', 'broken'];
+    const labels = { working: 'Working', damaged: 'Damaged', broken: 'Broken' };
+    const next = order[(order.indexOf(inv.condition || 'working') + 1) % order.length];
+    try {
+        await db.collection('inventory').doc(invId).update({ condition: next });
+        btn.textContent = labels[next];
+        btn.className = `pl-condition-badge cond-${next}`;
+    } catch (err) { showToast('Error updating condition', 'error'); }
+};
+
+window.cycleInventoryItemCondition = window.cycleInvConditionInTable;
+
+window.clickManageInvThumb = function(invId) {
+    state._pendingPackingImageInventoryId = invId;
+    state._pendingPackingImageItemId = null;
+    document.getElementById('packing-image-upload').click();
+};
+
+window.handleInventoryImport = async function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    e.target.value = '';
+    try {
+        const data = await file.arrayBuffer();
+        const wb = XLSX.read(data);
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws);
+        if (rows.length === 0) { showToast('No data found in file', 'error'); return; }
+        const batch = db.batch();
+        let count = 0;
+        rows.forEach(row => {
+            const name = row['Name'] || row['name'] || row['Item'] || row['item'] || '';
+            if (!String(name).trim()) return;
+            const ref = db.collection('inventory').doc();
+            batch.set(ref, {
+                name: String(name).trim(),
+                category: String(row['Category'] || row['category'] || 'Misc').trim(),
+                quantity: parseInt(row['Quantity'] || row['quantity'] || row['Qty'] || row['qty'] || 1) || 1,
+                serialNumber: String(row['Serial Number'] || row['serialNumber'] || row['Serial'] || row['serial'] || '').trim(),
+                condition: String(row['Condition'] || row['condition'] || 'working').toLowerCase().trim(),
+                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            });
+            count++;
+        });
+        await batch.commit();
+        showToast(`Imported ${count} item${count !== 1 ? 's' : ''}`, 'success');
+    } catch (err) {
+        console.error('Import failed:', err);
+        showToast('Import failed — check file format', 'error');
+    }
+};
 
 // =============================================
 // PRINTED MATERIALS FUNCTIONS
@@ -18669,3 +19297,110 @@ window.unseatGuest = unseatGuest;
 window.setTableCapacity = setTableCapacity;
 window.importGuestsFromXlsx = importGuestsFromXlsx;
 window.exportSeatingToXlsx = exportSeatingToXlsx;
+
+// =============================================
+// QUOTE PAGE
+// =============================================
+
+function renderQuote() {
+    if (state.currentPage !== 'quote') return;
+    const ev = state.activeEvent || {};
+
+    // Populate event detail fields (only if not focused to avoid clobbering typing)
+    const fields = [
+        ['quote-location',   ev.quoteLocation  || ''],
+        ['quote-date',       ev.quoteDate       || (ev.date ? formatDate(ev.date) : '')],
+        ['quote-load-in',    ev.quoteLoadIn     || ''],
+        ['quote-event-time', ev.quoteEventTime  || ''],
+        ['quote-load-out',   ev.quoteLoadOut    || ''],
+        ['quote-client',     ev.quoteClient     || ''],
+    ];
+    fields.forEach(([id, val]) => {
+        const el = document.getElementById(id);
+        if (el && document.activeElement !== el) el.value = val;
+    });
+
+    // Render line items
+    const lines = [...state.quoteLines].sort((a, b) => (a.order || 0) - (b.order || 0));
+    const tbody = document.getElementById('quote-lines-body');
+    if (!tbody) return;
+
+    if (lines.length === 0) {
+        tbody.innerHTML = `<tr class="quote-empty-row"><td colspan="6">No services added yet. Click <strong>+ Add Service</strong> to begin.</td></tr>`;
+    } else {
+        tbody.innerHTML = lines.map(line => {
+            const qty     = parseFloat(line.qty)      || 0;
+            const rate    = parseFloat(line.unitCost)  || 0;
+            const sub     = qty * rate;
+            return `<tr class="quote-line-row">
+                <td class="quote-td-desc">
+                    <input class="quote-cell-input" value="${escapeHtml(line.description || '')}" placeholder="Service description…" onblur="saveQuoteField('${line.id}','description',this.value)">
+                </td>
+                <td class="quote-td-qty">
+                    <input class="quote-cell-input quote-cell-num" type="number" min="0" value="${line.qty || ''}" placeholder="1" onblur="saveQuoteField('${line.id}','qty',parseFloat(this.value)||0)">
+                </td>
+                <td class="quote-td-cost">
+                    <input class="quote-cell-input quote-cell-num" type="number" min="0" step="0.01" value="${line.unitCost || ''}" placeholder="0.00" onblur="saveQuoteField('${line.id}','unitCost',parseFloat(this.value)||0)">
+                </td>
+                <td class="quote-td-sub">${sub > 0 ? '$' + sub.toLocaleString('en-US', {minimumFractionDigits:2,maximumFractionDigits:2}) : '—'}</td>
+                <td class="quote-td-notes">
+                    <input class="quote-cell-input" value="${escapeHtml(line.notes || '')}" placeholder="Notes…" onblur="saveQuoteField('${line.id}','notes',this.value)">
+                </td>
+                <td class="quote-td-del no-print">
+                    <button class="btn-icon-sm delete" onclick="deleteQuoteLine('${line.id}')" title="Remove">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+                    </button>
+                </td>
+            </tr>`;
+        }).join('');
+    }
+
+    // Grand total
+    const total = lines.reduce((sum, l) => sum + (parseFloat(l.qty)||0) * (parseFloat(l.unitCost)||0), 0);
+    const totalEl = document.getElementById('quote-grand-total');
+    if (totalEl) totalEl.textContent = '$' + total.toLocaleString('en-US', {minimumFractionDigits:2,maximumFractionDigits:2});
+}
+
+window.saveQuoteMeta = async function(field, value) {
+    if (!state.currentEventId) return;
+    try {
+        await db.collection('events').doc(state.currentEventId).update({ [field]: value });
+        if (state.activeEvent) state.activeEvent[field] = value;
+    } catch(err) { showToast('Error saving', 'error'); }
+};
+
+window.saveQuoteField = async function(lineId, field, value) {
+    if (!state.currentEventId) return;
+    try {
+        await db.collection('events').doc(state.currentEventId).collection('quoteLines').doc(lineId).update({ [field]: value });
+    } catch(err) { showToast('Error saving', 'error'); }
+};
+
+window.addQuoteLine = async function() {
+    showToast('Adding…', 'info');
+    if (!state.currentEventId) { showToast('No event selected', 'error'); return; }
+    try {
+        const ref = db.collection('events').doc(state.currentEventId).collection('quoteLines');
+        await ref.add({
+            description: '',
+            qty: 1,
+            unitCost: 0,
+            notes: '',
+            order: Date.now(),
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        });
+    } catch(err) { showToast('Error adding line: ' + err.message, 'error'); console.error(err); }
+};
+
+window.deleteQuoteLine = async function(lineId) {
+    if (!state.currentEventId) return;
+    try {
+        await db.collection('events').doc(state.currentEventId).collection('quoteLines').doc(lineId).delete();
+    } catch(err) { showToast('Error deleting line', 'error'); }
+};
+
+window.printQuote = function() {
+    window.print();
+};
+
+window.renderQuote = renderQuote;
