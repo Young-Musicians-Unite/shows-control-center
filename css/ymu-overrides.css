@@ -2224,4 +2224,73 @@ select.intake-field-input ~ .intake-field-edit {
 }
 .ical-extra-email-remove:hover { background: var(--bg-hover); color: var(--text-primary); }
 
+/* ── QUOTE DOCUMENT — opt out of dark-mode inputs ───────────────────────
+   The quote is a fixed white printed letterhead, not a themed app page —
+   it should look the same regardless of dark mode. §11's generic
+   input[type=...] rule forces a dark background/border/padding onto every
+   text input site-wide (including these), so it has to be beaten with an
+   equally-!important, scoped rule rather than left to fall through. */
+#quote .quote-detail-input {
+  background: transparent !important;
+  border: none !important;
+  border-bottom: 1px dashed #ccc !important;
+  border-radius: 0 !important;
+  color: #1a1a1a !important;
+  font-family: 'DM Sans', 'Inter', sans-serif !important;
+  font-size: 12.5px !important;
+  padding: 1px 4px !important;
+}
+#quote .quote-detail-input:focus {
+  border-bottom-color: #3B5BDB !important;
+  background: rgba(59,91,219,0.04) !important;
+}
+
+#quote .quote-cell-input {
+  background: transparent !important;
+  border: none !important;
+  border-radius: 3px !important;
+  color: #1a1a1a !important;
+  font-family: 'DM Sans', 'Inter', sans-serif !important;
+  font-size: 14px !important;
+  padding: 2px 4px !important;
+}
+#quote .quote-cell-input:focus {
+  background: rgba(59,91,219,0.07) !important;
+  outline: 1px solid #3B5BDB !important;
+  border: none !important;
+}
+
+#quote .quote-pct-input {
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  color: #2d3f8f !important;
+  font-family: 'DM Sans', 'Inter', sans-serif !important;
+  font-size: 12.5px !important;
+  padding: 0 !important;
+  width: 36px !important;
+}
+
+#quote .quote-title-row {
+  background: transparent !important;
+  border: none !important;
+  border-radius: 6px !important;
+  color: #1a2540 !important;
+  font-family: inherit !important;
+  font-size: 1.6rem !important;
+  padding: 12px 0 6px !important;
+}
+#quote .quote-title-row:hover { background: rgba(59,91,219,0.04) !important; }
+#quote .quote-title-row:focus { background: rgba(59,91,219,0.07) !important; }
+
+/* §15's 210px sidebar-reserved body padding survives into print (the
+   sidebar itself is hidden, but this file loads after styles.css, so its
+   unconditional !important rule always wins that cascade tie regardless of
+   media query — the fix has to live here, not in styles.css's print
+   block). Squeezes the printed quote into a much narrower column than the
+   page actually has, forcing extra wrapping/height. */
+@media print {
+  body { padding-left: 0 !important; }
+}
+
 /* ── END ───────────────────────────────────────────────────────────────*/

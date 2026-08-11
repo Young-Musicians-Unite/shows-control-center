@@ -3496,18 +3496,20 @@ function renderBudgetGrouped() {
     const clearBtn = document.getElementById('budget-search-clear');
     if (clearBtn) clearBtn.style.display = isSearching ? '' : 'none';
 
-    if (state.budget.length === 0) {
-        container.innerHTML = '<div class="card"><div class="card-body"><p class="empty-state">No budget items</p></div></div>';
-        return;
-    }
-
     if (isSearching && filteredBudget.length === 0) {
         container.innerHTML = `<div class="card"><div class="card-body"><p class="empty-state">No items match "${escapeHtml(searchQuery)}"</p></div></div>`;
         return;
     }
 
-    // Group filtered items by category
+    // Group filtered items by category. Seed every configured letter first
+    // (A–G or A/B, per the event's budget setup) so each always shows as its
+    // own section with a phantom "+ add" row, even with zero items yet —
+    // skip this seeding while searching, since a text search should only
+    // surface matching results, not invite adding to unrelated categories.
     const categorized = {};
+    if (!isSearching) {
+        getBudgetCategories().forEach(c => { categorized[c.value] = []; });
+    }
     filteredBudget.forEach(item => {
         const cat = item.category || 'Uncategorized';
         if (!categorized[cat]) {
@@ -19302,9 +19304,57 @@ window.exportSeatingToXlsx = exportSeatingToXlsx;
 // QUOTE PAGE
 // =============================================
 
+const QUOTE_SECTIONS = [
+    { key: 'talent',    label: 'Talent' },
+    { key: 'equipment', label: 'Equipment' },
+    { key: 'labor',     label: 'Labor' },
+];
+
+function quoteLineSection(line) {
+    const key = line.section || 'talent';
+    return QUOTE_SECTIONS.some(s => s.key === key) ? key : 'talent';
+}
+
+function quoteLineSubtotal(line) {
+    return (parseFloat(line.qty) || 0) * (parseFloat(line.unitCost) || 0);
+}
+
+function renderQuoteLineRow(line) {
+    const sub = quoteLineSubtotal(line);
+    // A line that's just been added and never filled in (blank description,
+    // no rate, no notes) shouldn't show up as a "Description… / Notes…"
+    // ghost row in the exported PDF — same idea as the discount row.
+    const isEmpty = !line.description && !(parseFloat(line.unitCost) > 0) && !line.notes;
+    return `<tr class="quote-line-row${isEmpty ? ' is-empty' : ''}">
+        <td class="quote-td-desc">
+            <input class="quote-cell-input" value="${escapeHtml(line.description || '')}" placeholder="Description…" onblur="saveQuoteField('${line.id}','description',this.value)">
+        </td>
+        <td class="quote-td-qty">
+            <input class="quote-cell-input quote-cell-num" type="number" min="0" value="${line.qty || ''}" placeholder="1" onblur="saveQuoteField('${line.id}','qty',parseFloat(this.value)||0)">
+        </td>
+        <td class="quote-td-cost">
+            <input class="quote-cell-input quote-cell-num" type="number" min="0" step="0.01" value="${line.unitCost || ''}" placeholder="0.00" onblur="saveQuoteField('${line.id}','unitCost',parseFloat(this.value)||0)">
+        </td>
+        <td class="quote-td-sub">${sub > 0 ? '$' + sub.toLocaleString('en-US', {minimumFractionDigits:2,maximumFractionDigits:2}) : '—'}</td>
+        <td class="quote-td-notes">
+            <input class="quote-cell-input" value="${escapeHtml(line.notes || '')}" placeholder="Notes…" onblur="saveQuoteField('${line.id}','notes',this.value)">
+        </td>
+        <td class="quote-td-del no-print">
+            <button class="btn-icon-sm delete" onclick="deleteQuoteLine('${line.id}')" title="Remove">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+            </button>
+        </td>
+    </tr>`;
+}
+
 function renderQuote() {
     if (state.currentPage !== 'quote') return;
     const ev = state.activeEvent || {};
+
+    // Title defaults to the event's name so each event's quote is distinguishable
+    // out of the box, but stays freely editable/overridable per event.
+    const titleEl = document.getElementById('quote-title-input');
+    if (titleEl && document.activeElement !== titleEl) titleEl.value = ev.quoteTitle || ev.name || 'Quote';
 
     // Populate event detail fields (only if not focused to avoid clobbering typing)
     const fields = [
@@ -19320,45 +19370,48 @@ function renderQuote() {
         if (el && document.activeElement !== el) el.value = val;
     });
 
-    // Render line items
+    // Render line items, grouped into Talent / Equipment / Labor sections
     const lines = [...state.quoteLines].sort((a, b) => (a.order || 0) - (b.order || 0));
     const tbody = document.getElementById('quote-lines-body');
     if (!tbody) return;
 
-    if (lines.length === 0) {
-        tbody.innerHTML = `<tr class="quote-empty-row"><td colspan="6">No services added yet. Click <strong>+ Add Service</strong> to begin.</td></tr>`;
-    } else {
-        tbody.innerHTML = lines.map(line => {
-            const qty     = parseFloat(line.qty)      || 0;
-            const rate    = parseFloat(line.unitCost)  || 0;
-            const sub     = qty * rate;
-            return `<tr class="quote-line-row">
-                <td class="quote-td-desc">
-                    <input class="quote-cell-input" value="${escapeHtml(line.description || '')}" placeholder="Service description…" onblur="saveQuoteField('${line.id}','description',this.value)">
-                </td>
-                <td class="quote-td-qty">
-                    <input class="quote-cell-input quote-cell-num" type="number" min="0" value="${line.qty || ''}" placeholder="1" onblur="saveQuoteField('${line.id}','qty',parseFloat(this.value)||0)">
-                </td>
-                <td class="quote-td-cost">
-                    <input class="quote-cell-input quote-cell-num" type="number" min="0" step="0.01" value="${line.unitCost || ''}" placeholder="0.00" onblur="saveQuoteField('${line.id}','unitCost',parseFloat(this.value)||0)">
-                </td>
-                <td class="quote-td-sub">${sub > 0 ? '$' + sub.toLocaleString('en-US', {minimumFractionDigits:2,maximumFractionDigits:2}) : '—'}</td>
-                <td class="quote-td-notes">
-                    <input class="quote-cell-input" value="${escapeHtml(line.notes || '')}" placeholder="Notes…" onblur="saveQuoteField('${line.id}','notes',this.value)">
-                </td>
-                <td class="quote-td-del no-print">
-                    <button class="btn-icon-sm delete" onclick="deleteQuoteLine('${line.id}')" title="Remove">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
-                    </button>
-                </td>
+    tbody.innerHTML = QUOTE_SECTIONS.map(sec => {
+        const secLines = lines.filter(l => quoteLineSection(l) === sec.key);
+        const secTotal = secLines.reduce((sum, l) => sum + quoteLineSubtotal(l), 0);
+        const rowsHtml = secLines.length
+            ? secLines.map(renderQuoteLineRow).join('')
+            : `<tr class="quote-empty-row"><td colspan="6">No ${escapeHtml(sec.label.toLowerCase())} items yet.</td></tr>`;
+        return `
+            <tr class="quote-section-header"><td colspan="6">${escapeHtml(sec.label)}</td></tr>
+            ${rowsHtml}
+            <tr class="quote-add-row no-print">
+                <td colspan="6"><button class="quote-add-line-btn" onclick="addQuoteLine('${sec.key}')" type="button">+ Add ${escapeHtml(sec.label)}</button></td>
+            </tr>
+            <tr class="quote-subtotal-row">
+                <td class="quote-subtotal-label" colspan="3">${escapeHtml(sec.label)} Subtotal</td>
+                <td class="quote-subtotal-amount">$${secTotal.toLocaleString('en-US', {minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+                <td colspan="2"></td>
             </tr>`;
-        }).join('');
-    }
+    }).join('');
 
-    // Grand total
-    const total = lines.reduce((sum, l) => sum + (parseFloat(l.qty)||0) * (parseFloat(l.unitCost)||0), 0);
+    // Optional discount (%) — the whole row only shows on export/print when
+    // it's actually filled out; the Grand Total below always shows.
+    const discountPct = parseFloat(ev.quoteDiscountPct) || 0;
+    const discountEl = document.getElementById('quote-discount-input');
+    if (discountEl && document.activeElement !== discountEl) discountEl.value = ev.quoteDiscountPct || '';
+    const discountRow = document.getElementById('quote-discount-row');
+    if (discountRow) discountRow.classList.toggle('is-empty', discountPct <= 0);
+
+    // Grand total across all sections, minus the discount
+    const subtotal = lines.reduce((sum, l) => sum + quoteLineSubtotal(l), 0);
+    const total = subtotal - (subtotal * (discountPct / 100));
+    const totalStr = (total < 0 ? '-$' : '$') + Math.abs(total).toLocaleString('en-US', {minimumFractionDigits:2,maximumFractionDigits:2});
+
+    const discountTotalEl = document.getElementById('quote-discount-total');
+    if (discountTotalEl) discountTotalEl.textContent = totalStr;
+
     const totalEl = document.getElementById('quote-grand-total');
-    if (totalEl) totalEl.textContent = '$' + total.toLocaleString('en-US', {minimumFractionDigits:2,maximumFractionDigits:2});
+    if (totalEl) totalEl.textContent = totalStr;
 }
 
 window.saveQuoteMeta = async function(field, value) {
@@ -19366,6 +19419,10 @@ window.saveQuoteMeta = async function(field, value) {
     try {
         await db.collection('events').doc(state.currentEventId).update({ [field]: value });
         if (state.activeEvent) state.activeEvent[field] = value;
+        // state.activeEvent has no live listener (it's fetched once on enterEvent),
+        // so a re-render has to be triggered explicitly — needed for the discount
+        // %, which recomputes the total from this field.
+        renderQuote();
     } catch(err) { showToast('Error saving', 'error'); }
 };
 
@@ -19376,12 +19433,13 @@ window.saveQuoteField = async function(lineId, field, value) {
     } catch(err) { showToast('Error saving', 'error'); }
 };
 
-window.addQuoteLine = async function() {
+window.addQuoteLine = async function(section = 'talent') {
     showToast('Adding…', 'info');
     if (!state.currentEventId) { showToast('No event selected', 'error'); return; }
     try {
         const ref = db.collection('events').doc(state.currentEventId).collection('quoteLines');
         await ref.add({
+            section,
             description: '',
             qty: 1,
             unitCost: 0,
@@ -19400,7 +19458,29 @@ window.deleteQuoteLine = async function(lineId) {
 };
 
 window.printQuote = function() {
-    window.print();
+    // CSS alone (input::placeholder { color: transparent } in the print
+    // media block) only hides the ink — the placeholder text ("0.00",
+    // "Notes…") is still painted and ends up in the exported PDF's text
+    // layer (selectable, and read aloud by screen readers) even though it's
+    // invisible on the page. Strip the attribute from empty fields entirely
+    // before printing, then restore it for normal on-screen editing.
+    const stripped = [];
+    document.querySelectorAll('#quote input[placeholder]').forEach(el => {
+        if (!el.value) {
+            el.dataset.printPlaceholder = el.placeholder;
+            el.removeAttribute('placeholder');
+            stripped.push(el);
+        }
+    });
+    requestAnimationFrame(() => {
+        window.print();
+        setTimeout(() => {
+            stripped.forEach(el => {
+                el.setAttribute('placeholder', el.dataset.printPlaceholder);
+                delete el.dataset.printPlaceholder;
+            });
+        }, 500);
+    });
 };
 
 window.renderQuote = renderQuote;

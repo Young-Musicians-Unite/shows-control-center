@@ -1971,7 +1971,6 @@
                 <button class="btn btn-secondary no-print" onclick="printQuote()">
                     <i class="ti ti-printer"></i> Print / Export PDF
                 </button>
-                <button class="btn btn-primary-gold no-print" onclick="addQuoteLine()">+ Add Service</button>
             </div>
         </div>
         <div class="quote-canvas">
@@ -1980,12 +1979,7 @@
                 <div class="quote-header-band">
                     <div class="quote-header-inner">
                         <div class="quote-logo-block">
-                            <div class="quote-logo-letters">YMU</div>
-                            <div class="quote-logo-text">
-                                <div>YOUNG</div>
-                                <div>MUSICIANS</div>
-                                <div>UNITE</div>
-                            </div>
+                            <img class="quote-logo-img" src="ymu-logo.png" alt="Young Musicians Unite">
                         </div>
                         <div class="quote-org-address">
                             <strong>Young Musicians Unite</strong><br>
@@ -2001,7 +1995,7 @@
 
                 <!-- Document body -->
                 <div class="quote-body">
-                    <div class="quote-title-row">Quote</div>
+                    <input type="text" class="quote-title-row" id="quote-title-input" placeholder="Quote" onblur="saveQuoteMeta('quoteTitle', this.value)">
 
                     <!-- Client + event details -->
                     <div class="quote-event-details">
@@ -2049,8 +2043,25 @@
                         </thead>
                         <tbody id="quote-lines-body"></tbody>
                         <tfoot>
+                            <tr class="quote-discount-row" id="quote-discount-row">
+                                <td colspan="6" class="quote-discount-cell">
+                                    <div class="quote-discount-flex">
+                                        <div class="quote-discount-block">
+                                            <span class="quote-discount-block-label">Discount %</span>
+                                            <span class="quote-pct-input-wrap">
+                                                <input class="quote-pct-input" type="number" min="0" max="100" step="0.1" id="quote-discount-input" placeholder="0" onblur="saveQuoteMeta('quoteDiscountPct', parseFloat(this.value)||0)">
+                                                <span class="quote-pct-suffix">%</span>
+                                            </span>
+                                        </div>
+                                        <div class="quote-discount-block">
+                                            <span class="quote-discount-block-label">Total</span>
+                                            <span class="quote-discount-total-amount" id="quote-discount-total">$0.00</span>
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
                             <tr class="quote-total-row">
-                                <td class="quote-total-label" colspan="3">Services Grand Total</td>
+                                <td class="quote-total-label" colspan="3">Grand Total</td>
                                 <td class="quote-total-amount" id="quote-grand-total">$0.00</td>
                                 <td colspan="2" class="quote-total-notes"></td>
                             </tr>
