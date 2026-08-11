@@ -2199,48 +2199,6 @@ body {
     color: #c0392b;
 }
 
-.action-icon.action-icon-link {
-    color: #3498db;
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    white-space: nowrap;
-}
-
-.action-icon.action-icon-link:hover {
-    background: rgba(52, 152, 219, 0.1);
-    color: #2980b9;
-}
-
-.action-icon.action-icon-link .link-label {
-    font-size: 0.75rem;
-    max-width: 100px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.action-icon.action-icon-assign {
-    color: #aaa;
-    border: 1px dashed #ccc;
-    border-radius: 4px;
-    width: 24px;
-    height: 24px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.action-icon.action-icon-assign:hover {
-    color: #3498db;
-    border-color: #3498db;
-    background: rgba(52, 152, 219, 0.05);
-}
-
-.setlist-col, .stageplot-col {
-    text-align: center;
-    white-space: nowrap;
-}
-
 /* Form section divider for modals */
 .form-section-divider {
     border-top: 1px solid #e0e0e0;
@@ -2361,8 +2319,6 @@ body {
 .timeline-table.hide-responsible .responsible-col { display: none; }
 .timeline-table.hide-staff .staff-col { display: none; }
 .timeline-table.hide-screencue .screencue-col { display: none; }
-.timeline-table.hide-setlist .setlist-col { display: none; }
-.timeline-table.hide-stageplot .stageplot-col { display: none; }
 
 .filter-btn {
     padding: 0.4rem 1rem;
@@ -2950,8 +2906,6 @@ body.printing-timeline .timeline-table .prod-col,
 body.printing-timeline .timeline-table .andi-col,
 body.printing-timeline .timeline-table .pedro-col,
 body.printing-timeline .timeline-table .runner-col,
-body.printing-timeline .timeline-table .setlist-col,
-body.printing-timeline .timeline-table .stageplot-col,
 body.printing-timeline .timeline-table .actions-col {
     display: none !important;
 }

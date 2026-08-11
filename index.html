@@ -571,8 +571,6 @@
                         <label class="col-toggle"><input type="checkbox" checked onchange="toggleTimelineCol('prod', this.checked)"> Prod</label>
                         <label class="col-toggle"><input type="checkbox" checked onchange="toggleTimelineCol('responsible', this.checked)"> Responsible</label>
                         <label class="col-toggle"><input type="checkbox" checked onchange="toggleTimelineCol('staff', this.checked)"> Staff</label>
-                        <label class="col-toggle"><input type="checkbox" checked onchange="toggleTimelineCol('setlist', this.checked)"> Set List</label>
-                        <label class="col-toggle"><input type="checkbox" checked onchange="toggleTimelineCol('stageplot', this.checked)"> Stage Plot</label>
                     </div>
                 </div>
             </div>
@@ -596,14 +594,12 @@
                                 <th class="prod-col">Prod</th>
                                 <th class="responsible-col">Responsible</th>
                                 <th class="staff-col">Staff</th>
-                                <th class="setlist-col">Set List</th>
-                                <th class="stageplot-col">Stage Plot</th>
                                 <th class="actions-col no-print">Actions</th>
                             </tr>
                         </thead>
                         <tbody id="timeline-tbody">
                             <tr>
-                                <td colspan="10" class="empty-state">No tasks for this day</td>
+                                <td colspan="8" class="empty-state">No tasks for this day</td>
                             </tr>
                         </tbody>
                     </table>
@@ -2579,23 +2575,6 @@
                         <div class="form-group">
                             <label for="timeline-notes">Notes</label>
                             <textarea id="timeline-notes" rows="3"></textarea>
-                        </div>
-                    </div>
-                    <div class="form-group form-section-divider">
-                        <label class="form-section-label">Linked Resources</label>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="timeline-performer">Performer (Set List)</label>
-                            <select id="timeline-performer">
-                                <option value="">— None —</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="timeline-stage-plot">Stage Plot</label>
-                            <select id="timeline-stage-plot">
-                                <option value="">— None —</option>
-                            </select>
                         </div>
                     </div>
                     <div class="form-actions">
