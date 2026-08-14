@@ -87,6 +87,7 @@ const state = {
     timelineAnimateRows: true,  // Only animate rows on day/filter switch, not data updates
     timelineEditingRowId: null,  // Row ID currently being inline-edited (blocks re-render)
     timelineRenderPending: false,  // True if a Firestore snapshot arrived during editing
+    tlDragId: null,  // ID of the timeline row currently being dragged
     cueSheetEditingRowId: null,
     cueSheetRenderPending: false,
     cueSheetShowHidden: false,
@@ -304,6 +305,10 @@ function showToast(message, type = 'success', duration = 3000) {
 const eventDate = new Date('2026-04-25T18:00:00-04:00');
 
 // --- Multi-event system ---
+
+// Pseudo-season used to archive events that didn't move forward, rather
+// than deleting them — keeps the reason on file for future reference.
+const FAILED_INQUIRIES_SEASON = 'Failed Inquiries';
 
 const PHASES = [
     { id: 'phase-0', label: 'Phase 0 (Idea)',                                         color: '#9e9e9e', text: '#fff' },
@@ -878,7 +883,7 @@ function setupCollectionListener(collectionKey, stateKey, renderCallbacks = []) 
 function loadAllData() {
     teardownListeners();
     setupCollectionListener('budget', 'budget', [renderBudget, renderVendors, updateDashboard, renderStaff, backfillLinkedContactInfo]);
-    setupCollectionListener('timeline', 'timeline', [renderTimeline, renderCueSheet, updateDashboard]);
+    setupCollectionListener('timeline', 'timeline', [backfillTimelineOrder, renderTimeline, renderCueSheet, updateDashboard]);
     setupCollectionListener('mainStageInputs', 'mainStageInputs', [renderStageInputs]);
     setupCollectionListener('cocktailStageInputs', 'cocktailStageInputs', [renderStageInputs]);
     setupCollectionListener('staff', 'staff', [renderStaff, renderVendors, backfillLinkedContactInfo]);
@@ -976,6 +981,12 @@ async function loadSeasons() {
             await db.collection('config').doc('seasons').set({ list: state.seasons });
         }
     } catch (e) { /* use defaults */ }
+    // The failed-inquiries archive is always available, even on installs
+    // that predate the feature.
+    if (!state.seasons.includes(FAILED_INQUIRIES_SEASON)) {
+        state.seasons.push(FAILED_INQUIRIES_SEASON);
+        try { await db.collection('config').doc('seasons').set({ list: state.seasons }); } catch (e) { /* use defaults */ }
+    }
     renderSeasonNav();
 }
 
@@ -983,7 +994,7 @@ function renderSeasonNav() {
     const list = document.getElementById('hub-seasons-list');
     if (!list) return;
     list.innerHTML = state.seasons.map(s =>
-        `<button class="hub-season-link ${s === state.currentSeason ? 'active' : ''}" data-season="${escapeHtml(s)}">${escapeHtml(s)}</button>`
+        `<button class="hub-season-link ${s === state.currentSeason ? 'active' : ''}${s === FAILED_INQUIRIES_SEASON ? ' hub-season-failed' : ''}" data-season="${escapeHtml(s)}">${escapeHtml(s)}</button>`
     ).join('');
     list.querySelectorAll('button[data-season]').forEach(btn => {
         btn.addEventListener('click', () => window.switchSeason(btn.dataset.season));
@@ -993,8 +1004,10 @@ function renderSeasonNav() {
 window.switchSeason = async function(season) {
     const previousSeason = state.currentSeason;
     state.currentSeason = season;
-    // If this season's staff directory is empty, copy from the previous season
-    if (previousSeason && previousSeason !== season) {
+    // Failed Inquiries is just an archive bin, not a working season — skip
+    // the staff/performer directory carry-forward that real seasons get.
+    const isArchive = season === FAILED_INQUIRIES_SEASON || previousSeason === FAILED_INQUIRIES_SEASON;
+    if (previousSeason && previousSeason !== season && !isArchive) {
         const check = await db.collection('seasons').doc(season).collection('staffDirectory').limit(1).get();
         if (check.empty) await copySeasonData(previousSeason, season);
     }
@@ -1148,11 +1161,15 @@ function renderHub() {
             `<option value="${ph.id}" ${ph.id === ev.phase ? 'selected' : ''}>${ph.label}</option>`
         ).join('');
         const rowAccent = ev.rowColor || '';
+        const isFailed = ev.season === FAILED_INQUIRIES_SEASON;
         return {
             sortKey: ev.date || '',
             html: `<tr class="hub-event-row" style="${rowAccent ? 'box-shadow:inset 2px 0 0 ' + rowAccent : ''}">
                 <td class="hub-cell-date hub-cell-editable" onclick="editHubCell(this,'${ev.id}','date')" data-value="${escapeHtml(ev.date || '')}" title="Click to edit">${fmtDate(ev.date)}</td>
-                <td class="hub-cell-name hub-cell-editable" onclick="editHubCell(this,'${ev.id}','name')" data-value="${escapeHtml(ev.name || '')}" title="Click to edit">${escapeHtml(ev.name || '—')}</td>
+                <td class="hub-cell-name hub-cell-editable" onclick="editHubCell(this,'${ev.id}','name')" data-value="${escapeHtml(ev.name || '')}" title="Click to edit">
+                    ${escapeHtml(ev.name || '—')}
+                    ${ev.failureReason ? `<div class="hub-fail-reason" title="${escapeHtml(ev.failureReason)}">${escapeHtml(ev.failureReason)}</div>` : ''}
+                </td>
                 <td class="hub-cell-groups hub-cell-editable" onclick="editHubCell(this,'${ev.id}','performingGroups')" data-value="${escapeHtml(ev.performingGroups || '')}" title="Click to edit">${escapeHtml(ev.performingGroups || '—')}</td>
                 <td class="hub-cell-phase">
                     <select class="phase-select" style="background:${phase.color};color:${phase.text}"
@@ -1162,6 +1179,13 @@ function renderHub() {
                 </td>
                 <td class="hub-cell-actions">
                     <button class="hub-row-color-btn" onclick="openRowColorPicker(event,'event','${ev.id}')" title="Row color">&#9681;</button>
+                    <button class="hub-fail-btn" onclick="openFailInquiryPanel(event,'${ev.id}')" title="${isFailed ? 'Edit failure reason, or delete' : "Didn't move forward — archive or delete"}">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"></polyline><rect x="1" y="3" width="22" height="5"></rect><line x1="10" y1="12" x2="14" y2="12"></line></svg>
+                    </button>
+                    ${isFailed ? `<button class="hub-reactivate-btn" onclick="reactivateEvent('${ev.id}')" title="Move back to an active season">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
+                    </button>` : ''}
+                    <span class="hub-actions-divider"></span>
                     <button class="hub-enter-btn" onclick="enterEvent('${ev.id}')">Enter &rarr;</button>
                 </td>
             </tr>`
@@ -1297,6 +1321,133 @@ window.applyRowColor = async function(type, id, color) {
         renderHub();
     } catch(e) {
         console.error('Failed to set row color:', e);
+    }
+};
+// ─────────────────────────────────────────────────────────────────
+
+// ── Failed Inquiries ────────────────────────────────────────────
+window.openFailInquiryPanel = function(e, eventId) {
+    e.stopPropagation();
+    const existing = document.getElementById('hub-fail-picker');
+    if (existing) {
+        const isSame = existing.dataset.id === eventId;
+        existing.remove();
+        if (isSame) return;
+    }
+
+    const ev = state.events.find(ev => ev.id === eventId);
+    if (!ev) return;
+
+    const btn = e.currentTarget;
+    const rect = btn.getBoundingClientRect();
+
+    const panel = document.createElement('div');
+    panel.id = 'hub-fail-picker';
+    panel.dataset.id = eventId;
+    panel.innerHTML = `
+        <div class="hub-fail-picker-heading">This event isn't moving forward?</div>
+        <textarea class="hub-fail-picker-textarea" placeholder="Reason (optional)">${escapeHtml(ev.failureReason || '')}</textarea>
+        <div class="hub-fail-picker-actions">
+            <button type="button" class="hub-fail-picker-confirm">Move to Failed Inquiries</button>
+            <button type="button" class="hub-fail-picker-cancel">Cancel</button>
+        </div>
+        <div class="hub-fail-picker-danger-zone">
+            <button type="button" class="hub-fail-picker-delete">Delete permanently</button>
+        </div>
+    `;
+    panel.style.cssText = `position:fixed;top:${rect.bottom + 6}px;right:${window.innerWidth - rect.right}px;z-index:9999`;
+    document.body.appendChild(panel);
+
+    const textarea = panel.querySelector('.hub-fail-picker-textarea');
+    textarea.focus();
+
+    panel.querySelector('.hub-fail-picker-cancel').addEventListener('click', () => panel.remove());
+    panel.querySelector('.hub-fail-picker-confirm').addEventListener('click', () => {
+        markEventFailed(eventId, textarea.value.trim());
+        panel.remove();
+    });
+    panel.querySelector('.hub-fail-picker-delete').addEventListener('click', () => {
+        panel.remove();
+        window.deleteEvent(eventId, ev.name || 'this event');
+    });
+
+    setTimeout(() => document.addEventListener('click', _closeFailPicker, { once: true }), 0);
+};
+
+function _closeFailPicker(e) {
+    const panel = document.getElementById('hub-fail-picker');
+    if (panel && !panel.contains(e.target)) panel.remove();
+}
+
+async function markEventFailed(eventId, reason) {
+    const ev = state.events.find(e => e.id === eventId);
+    if (!ev) return;
+
+    const prevSeason = ev.season || state.currentSeason;
+    const prevReason = ev.failureReason || '';
+    if (prevSeason === FAILED_INQUIRIES_SEASON && reason === prevReason) return;
+
+    ev.season = FAILED_INQUIRIES_SEASON;
+    ev.previousSeason = prevSeason;
+    ev.failureReason = reason;
+    renderHub();
+
+    try {
+        await eventsCollection.doc(eventId).update({
+            season: FAILED_INQUIRIES_SEASON,
+            previousSeason: prevSeason,
+            failureReason: reason,
+            failedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        });
+        showToast(`"${ev.name || 'Event'}" moved to Failed Inquiries — Cmd+Z to undo`);
+        pushUndo('Mark event failed', async () => {
+            const current = state.events.find(e => e.id === eventId);
+            if (current) { current.season = prevSeason; current.failureReason = prevReason; }
+            renderHub();
+            await eventsCollection.doc(eventId).update({
+                season: prevSeason,
+                failureReason: prevReason,
+                failedAt: firebase.firestore.FieldValue.delete(),
+            });
+        });
+    } catch (err) {
+        console.error('Error marking event failed:', err);
+        ev.season = prevSeason;
+        ev.failureReason = prevReason;
+        renderHub();
+        showToast('Error updating event', 'error');
+    }
+}
+
+window.reactivateEvent = async function(eventId) {
+    const ev = state.events.find(e => e.id === eventId);
+    if (!ev) return;
+
+    const targetSeason = ev.previousSeason || state.currentSeason;
+    const prevReason = ev.failureReason || '';
+
+    ev.season = targetSeason;
+    ev.failureReason = '';
+    renderHub();
+
+    try {
+        await eventsCollection.doc(eventId).update({
+            season: targetSeason,
+            failureReason: firebase.firestore.FieldValue.delete(),
+        });
+        showToast(`"${ev.name || 'Event'}" reactivated — Cmd+Z to undo`);
+        pushUndo('Reactivate event', async () => {
+            const current = state.events.find(e => e.id === eventId);
+            if (current) { current.season = FAILED_INQUIRIES_SEASON; current.failureReason = prevReason; }
+            renderHub();
+            await eventsCollection.doc(eventId).update({ season: FAILED_INQUIRIES_SEASON, failureReason: prevReason });
+        });
+    } catch (err) {
+        console.error('Error reactivating event:', err);
+        ev.season = FAILED_INQUIRIES_SEASON;
+        ev.failureReason = prevReason;
+        renderHub();
+        showToast('Error reactivating event', 'error');
     }
 };
 // ─────────────────────────────────────────────────────────────────
@@ -3017,6 +3168,8 @@ async function saveVendorScheduleCell(cell, row, afterSave) {
     const linkedStaffId = budgetItem && budgetItem.linkedStaffId;
 
     try {
+        const targetColl = linkedStaffId ? collections.staff : collections.budget;
+        const targetId = linkedStaffId || id;
         if (linkedStaffId) {
             await collections.staff.doc(linkedStaffId).update({
                 [`schedule.${day}`]: writeValue,
@@ -3028,6 +3181,15 @@ async function saveVendorScheduleCell(cell, row, afterSave) {
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp()
             });
         }
+        const eventId = state.currentEventId;
+        pushUndo('Edit schedule', async () => {
+            if (eventId !== state.currentEventId) { showToast('Nothing to undo', 'info'); return; }
+            const revertValue = original === '' ? firebase.firestore.FieldValue.delete() : original;
+            await targetColl.doc(targetId).update({
+                [`schedule.${day}`]: revertValue,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+        });
         cell.dataset.original = newValue;
         restoreVendorScheduleCellDisplay(cell);
         showToast('Updated');
@@ -3663,6 +3825,69 @@ function renderBudgetGrouped() {
 }
 
 // Timeline
+// ── Manual ordering ──────────────────────────────────────────────
+// Rows display in an explicit `order` (number) rather than being sorted by
+// time — this lets rows with the same/no time be arranged manually via drag
+// and drop. Ties or missing values fall back to time so behavior stays sane
+// until backfillTimelineOrder() has assigned every row a real value.
+function timelineOrderComparator(a, b) {
+    const aHas = typeof a.order === 'number';
+    const bHas = typeof b.order === 'number';
+    if (aHas && bHas) return a.order - b.order;
+    if (aHas) return -1;
+    if (bHas) return 1;
+    if (!a.time && !b.time) return 0;
+    if (!a.time) return 1;
+    if (!b.time) return -1;
+    return a.time.localeCompare(b.time);
+}
+
+function timelineSortedDayItems(day) {
+    return state.timeline.filter(i => i.day === day).sort(timelineOrderComparator);
+}
+
+// Midpoint ordering: new value always sits strictly between its neighbors.
+function orderBetween(prevOrder, nextOrder) {
+    const hasPrev = typeof prevOrder === 'number';
+    const hasNext = typeof nextOrder === 'number';
+    if (hasPrev && hasNext) return (prevOrder + nextOrder) / 2;
+    if (hasPrev) return prevOrder + 1000;
+    if (hasNext) return nextOrder - 1000;
+    return 1000;
+}
+
+function nextTimelineOrderAfter(afterItem) {
+    const dayItems = timelineSortedDayItems(afterItem.day);
+    const idx = dayItems.findIndex(i => i.id === afterItem.id);
+    const nextItem = idx >= 0 ? dayItems[idx + 1] : null;
+    return orderBetween(afterItem.order, nextItem?.order);
+}
+
+// One-time-per-row migration: assigns every timeline row missing an `order`
+// a value that preserves today's time-sorted position, so introducing manual
+// ordering doesn't reshuffle anything on first load.
+function backfillTimelineOrder() {
+    const items = state.timeline;
+    if (!items || items.length === 0) return;
+    if (!items.some(i => typeof i.order !== 'number')) return;
+
+    const days = [...new Set(items.map(i => i.day))];
+    const batch = firebase.firestore().batch();
+    let hasWrites = false;
+    days.forEach(day => {
+        let next = 1000;
+        items.filter(i => i.day === day).sort(timelineOrderComparator).forEach(item => {
+            if (typeof item.order !== 'number') {
+                item.order = next;
+                batch.update(collections.timeline.doc(item.id), { order: next });
+                hasWrites = true;
+            }
+            next = item.order + 1000;
+        });
+    });
+    if (hasWrites) batch.commit().catch(err => console.error('Error backfilling timeline order:', err));
+}
+
 function renderTimeline() {
     // Guard: don't rebuild DOM if user is editing a cell
     if (state.timelineEditingRowId) {
@@ -3715,6 +3940,7 @@ function renderTimeline() {
     if (filteredTimeline.length === 0) {
         const phantomOnly = `
             <tr class="tl-row tl-phantom-row no-anim" data-phantom="true">
+                <td class="drag-col no-print"></td>
                 <td class="checkbox-col"></td>
                 <td class="time-col" data-field="time" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ time</span></td>
                 <td class="duration-col" data-field="duration" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ duration</span></td>
@@ -3730,12 +3956,7 @@ function renderTimeline() {
         return;
     }
 
-    // Sort by time
-    const sorted = [...filteredTimeline].sort((a, b) => {
-        if (!a.time) return 1;
-        if (!b.time) return -1;
-        return a.time.localeCompare(b.time);
-    });
+    const sorted = [...filteredTimeline].sort(timelineOrderComparator);
 
     const rowsHtml = sorted.map((item, idx) => {
         const isComplete = item.completed === true || item.status === 'complete';
@@ -3749,7 +3970,16 @@ function renderTimeline() {
         return `
             <tr class="tl-row ${isComplete ? 'task-completed' : ''} ${hasHighlight ? 'tl-highlighted' : ''} ${skipAnim ? 'no-anim' : ''}"
                 data-id="${item.id}"
-                style="--row-accent: ${borderColor}; ${animDelay}">
+                style="--row-accent: ${borderColor}; ${animDelay}"
+                ondragover="handleTimelineDragOver(event, this)"
+                ondragleave="handleTimelineDragLeave(event, this)"
+                ondrop="handleTimelineDrop(event, '${item.id}')">
+                <td class="drag-col no-print">
+                    <span class="tl-drag-handle" draggable="true"
+                          ondragstart="handleTimelineDragStart(event, '${item.id}')"
+                          ondragend="handleTimelineDragEnd(event)"
+                          title="Drag to reorder">⋮⋮</span>
+                </td>
                 <td class="checkbox-col">
                     <input type="checkbox" class="tl-checkbox"
                            ${isComplete ? 'checked' : ''}
@@ -4574,6 +4804,7 @@ window.duplicateTimelineItem = async (id) => {
 
     const { id: _id, createdAt, updatedAt, ...data } = item;
     data.event = (data.event || '') + ' (copy)';
+    data.order = nextTimelineOrderAfter(item);
     data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
     data.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
 
@@ -4986,12 +5217,7 @@ function exportTimelineToExcel() {
         // Filter by day
         const filteredTimeline = state.timeline.filter(item => item.day === day);
 
-        // Sort by time
-        const sorted = [...filteredTimeline].sort((a, b) => {
-            if (!a.time) return 1;
-            if (!b.time) return -1;
-            return a.time.localeCompare(b.time);
-        });
+        const sorted = [...filteredTimeline].sort(timelineOrderComparator);
 
         // Prepare data for Excel
         const data = sorted.map(item => ({
@@ -5110,6 +5336,10 @@ function editTimelineCell(cell) {
 
     // Set editing guard (use 'phantom' for phantom row)
     state.timelineEditingRowId = isPhantom ? 'phantom' : rowId;
+    // Unlike timelineEditingRowId, this isn't cleared when editing stops —
+    // it's "where you last were," used by Cmd/Ctrl+Enter to insert a new
+    // row right after it instead of always at the bottom.
+    if (!isPhantom) state.timelineLastActiveRowId = rowId;
 
     row.classList.add('editing');
 
@@ -5177,6 +5407,11 @@ function handleCellKeydown(e, cell, row) {
             saveSingleCell(cell, row, true);
         }
         navigateToAdjacentCell(row, field, direction);
+    } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+        // Handled globally by setupKeyboardShortcuts (insert a new row right
+        // after this one) — just save what's currently being typed first.
+        e.preventDefault();
+        if (!isPhantom) saveSingleCell(cell, row, true);
     } else if (e.key === 'Enter') {
         e.preventDefault();
         if (isPhantom) {
@@ -5274,6 +5509,14 @@ function saveSingleCell(cell, row, keepEditing = false) {
 
     // Optimistic local update so deferred renders show correct value
     item[field] = newValue;
+
+    const eventId = state.currentEventId;
+    pushUndo(`Edit ${field}`, async () => {
+        if (eventId !== state.currentEventId) { showToast('Nothing to undo', 'info'); return; }
+        const current = state.timeline.find(i => i.id === id);
+        if (current) current[field] = oldValue;
+        await collections.timeline.doc(id).update({ [field]: oldValue, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    });
 
     // Save to Firestore
     const updates = { [field]: newValue, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
@@ -5424,6 +5667,14 @@ function saveCueSheetCell(cell, row, keepEditing = false) {
     if (newValue === oldValue) return;
 
     item[field] = newValue;
+
+    const eventId = state.currentEventId;
+    pushUndo(`Edit ${field}`, async () => {
+        if (eventId !== state.currentEventId) { showToast('Nothing to undo', 'info'); return; }
+        const current = state.timeline.find(i => i.id === id);
+        if (current) current[field] = oldValue;
+        await collections.timeline.doc(id).update({ [field]: oldValue, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    });
 
     const updates = { [field]: newValue, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
     collections.timeline.doc(id).update(updates).catch(err => {
@@ -5580,6 +5831,149 @@ async function commitNewRow() {
 
     clearTimelineEditingFlag();
 }
+
+// Cmd/Ctrl+Enter — insert a new row right after wherever you last were,
+// instead of always appending at the bottom phantom row. Rows display in
+// manual `order`, so "right after" means an order value between the
+// reference row and whatever currently follows it.
+async function insertTimelineRowAfterCurrent() {
+    if (!state.currentEventId) return;
+
+    // "Where you are": the row containing focus right now, falling back to
+    // the last row you edited/clicked, even if focus has since moved away.
+    const focusedRow = document.activeElement?.closest?.('tr.tl-row:not(.tl-phantom-row)');
+    const afterId = focusedRow?.dataset.id || state.timelineLastActiveRowId;
+    const afterItem = afterId ? state.timeline.find(t => t.id === afterId && t.day === state.currentDay) : null;
+
+    // If a cell was mid-edit (its value was just saved via keepEditing=true,
+    // which deliberately leaves the render guard up so this function can run
+    // first), release the guard now so both that save and the new row below
+    // actually render instead of silently queuing behind timelineEditingRowId.
+    document.querySelectorAll('tr.tl-row.editing').forEach(r => r.classList.remove('editing'));
+    clearTimelineEditingFlag();
+
+    // No reference row yet this session — fall back to the old behavior.
+    if (!afterItem) {
+        const phantom = document.querySelector('.tl-phantom-row');
+        if (phantom) {
+            const firstCell = phantom.querySelector(`td[data-field="${TIMELINE_FIELD_ORDER[0]}"]`);
+            if (firstCell) editTimelineCell(firstCell);
+        }
+        return;
+    }
+
+    const data = {
+        day: state.currentDay,
+        time: afterItem.time || '',
+        order: nextTimelineOrderAfter(afterItem),
+        duration: '',
+        event: '',
+        responsible: '',
+        staff: '',
+        production: false,
+        tag: '',
+        notes: '',
+        completed: false,
+        status: 'not-started',
+        highlightColor: '',
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    };
+
+    try {
+        const ref = await collections.timeline.add(data);
+        state.timelineLastActiveRowId = ref.id;
+        // Render right off our own write instead of waiting on the listener's
+        // round-trip — setupCollectionListener replaces state.timeline wholesale
+        // on its next fire anyway, so this optimistic entry is just temporary.
+        state.timeline.push({ id: ref.id, ...data });
+        state.timelineAnimateRows = false;
+        renderTimeline();
+        const cell = document.querySelector(`tr[data-id="${ref.id}"] td[data-field="event"]`);
+        if (cell) editTimelineCell(cell);
+    } catch (error) {
+        console.error('Error inserting row:', error);
+        showToast('Error adding task', 'error');
+    }
+}
+
+// ── Timeline drag-and-drop reordering ────────────────────────────
+function handleTimelineDragStart(e, id) {
+    state.tlDragId = id;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', id);
+    const row = e.target.closest('tr');
+    if (row) row.classList.add('tl-dragging');
+}
+window.handleTimelineDragStart = handleTimelineDragStart;
+
+function handleTimelineDragOver(e, row) {
+    if (!state.tlDragId || row.dataset.id === state.tlDragId) return;
+    e.preventDefault();
+    const rect = row.getBoundingClientRect();
+    const isAfter = (e.clientY - rect.top) > rect.height / 2;
+    row.classList.toggle('tl-drag-over-bottom', isAfter);
+    row.classList.toggle('tl-drag-over-top', !isAfter);
+}
+window.handleTimelineDragOver = handleTimelineDragOver;
+
+function handleTimelineDragLeave(e, row) {
+    row.classList.remove('tl-drag-over-top', 'tl-drag-over-bottom');
+}
+window.handleTimelineDragLeave = handleTimelineDragLeave;
+
+async function handleTimelineDrop(e, targetId) {
+    e.preventDefault();
+    const row = e.currentTarget;
+    const dropAfter = row.classList.contains('tl-drag-over-bottom');
+    row.classList.remove('tl-drag-over-top', 'tl-drag-over-bottom');
+
+    const dragId = state.tlDragId;
+    state.tlDragId = null;
+    if (!dragId || dragId === targetId) return;
+
+    const dragItem = state.timeline.find(i => i.id === dragId);
+    const targetItem = state.timeline.find(i => i.id === targetId);
+    if (!dragItem || !targetItem || dragItem.day !== targetItem.day) return;
+
+    const dayItems = timelineSortedDayItems(targetItem.day).filter(i => i.id !== dragId);
+    const targetIdx = dayItems.findIndex(i => i.id === targetId);
+    const prevItem = dropAfter ? dayItems[targetIdx] : dayItems[targetIdx - 1];
+    const nextItem = dropAfter ? dayItems[targetIdx + 1] : dayItems[targetIdx];
+
+    const oldOrder = dragItem.order;
+    const newOrder = orderBetween(prevItem?.order, nextItem?.order);
+    if (newOrder === oldOrder) return;
+
+    dragItem.order = newOrder;
+    renderTimeline();
+
+    const eventId = state.currentEventId;
+    pushUndo('Reorder task', async () => {
+        if (eventId !== state.currentEventId) { showToast('Nothing to undo', 'info'); return; }
+        const current = state.timeline.find(i => i.id === dragId);
+        if (current) current.order = oldOrder;
+        renderTimeline();
+        await collections.timeline.doc(dragId).update({ order: oldOrder });
+    });
+
+    try {
+        await collections.timeline.doc(dragId).update({ order: newOrder, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    } catch (err) {
+        console.error('Error reordering task:', err);
+        dragItem.order = oldOrder;
+        renderTimeline();
+        showToast('Error reordering', 'error');
+    }
+}
+window.handleTimelineDrop = handleTimelineDrop;
+
+function handleTimelineDragEnd(e) {
+    state.tlDragId = null;
+    document.querySelectorAll('.tl-row.tl-dragging').forEach(r => r.classList.remove('tl-dragging'));
+    document.querySelectorAll('.tl-row.tl-drag-over-top, .tl-row.tl-drag-over-bottom').forEach(r => r.classList.remove('tl-drag-over-top', 'tl-drag-over-bottom'));
+}
+window.handleTimelineDragEnd = handleTimelineDragEnd;
 
 // Backward compat: makeRowEditable now just clicks the first cell
 function makeRowEditable(row) {
@@ -5859,6 +6253,14 @@ function saveSingleBudgetCell(cell, row) {
 
     // Only save if value changed
     if (String(newValue) === String(oldValue)) return;
+
+    const eventId = state.currentEventId;
+    pushUndo(`Edit ${field}`, async () => {
+        if (eventId !== state.currentEventId) { showToast('Nothing to undo', 'info'); return; }
+        const current = state.budget.find(i => i.id === id);
+        if (current) current[field] = oldValue;
+        await collections.budget.doc(id).update({ [field]: oldValue, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    });
 
     // Save to Firestore
     const updates = { [field]: newValue, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
@@ -6261,6 +6663,14 @@ function saveSingleStageCell(cell, row, collectionName) {
     const item = stageData.find(i => i.id === id);
     const oldValue = item ? (item[field] || '') : '';
     if (newValue === oldValue) return;
+
+    const eventId = state.currentEventId;
+    pushUndo(`Edit ${field}`, async () => {
+        if (eventId !== state.currentEventId) { showToast('Nothing to undo', 'info'); return; }
+        const current = stageData.find(i => i.id === id);
+        if (current) current[field] = oldValue;
+        await collections[collectionName].doc(id).update({ [field]: oldValue, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    });
 
     // Save to Firestore
     const updates = { [field]: newValue, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
@@ -12717,37 +13127,36 @@ function setupKeyboardShortcuts() {
             if (searchInput) searchInput.focus();
         }
 
-        // Timeline: N to focus phantom row
-        if (state.currentPage === 'timeline' && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA' && e.target.tagName !== 'SELECT') {
-            if (e.key === 'n' || e.key === 'N') {
-                e.preventDefault();
-                const phantom = document.querySelector('.tl-phantom-row');
-                if (phantom) {
-                    const firstCell = phantom.querySelector(`td[data-field="${TIMELINE_FIELD_ORDER[0]}"]`);
-                    if (firstCell) editTimelineCell(firstCell);
-                }
-                return;
-            }
+        // Timeline: Cmd/Ctrl+Enter inserts a new row right after wherever you
+        // last were, instead of always jumping to the bottom phantom row.
+        // (Plain "N" used to do this, but Cmd/Ctrl+Enter works from inside an
+        // active cell edit too, which is when "where you are" matters most.)
+        if (state.currentPage === 'timeline' && e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault();
+            insertTimelineRowAfterCurrent();
+            return;
         }
 
-        // Undo: Ctrl+Z or Cmd+Z (global)
+        // Undo: Ctrl+Z or Cmd+Z (global, regardless of focus)
         if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
-            if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
-                e.preventDefault();
-                if (state.currentPage === 'stage-plots') {
-                    undo();
-                } else {
-                    undoGlobalAction();
-                }
+            e.preventDefault();
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+                e.target.blur();
+            }
+            if (state.currentPage === 'stage-plots') {
+                undo();
+            } else {
+                undoGlobalAction();
             }
         }
 
         // Redo: Ctrl+Shift+Z or Cmd+Shift+Z
         if ((e.ctrlKey || e.metaKey) && e.key === 'z' && e.shiftKey) {
-            if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
-                e.preventDefault();
-                redo();
+            e.preventDefault();
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+                e.target.blur();
             }
+            redo();
         }
 
         // Delete or Backspace key
@@ -14319,22 +14728,24 @@ function setupVenueMap() {
     // Keyboard shortcuts for venue map
     document.addEventListener('keydown', (e) => {
         if (state.currentPage !== 'venue-map' || !state.vmCanvas) return;
-        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+        const inField = e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA';
 
-        if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (!inField && (e.key === 'Delete' || e.key === 'Backspace')) {
             if (state.vmCanvas.getActiveObject()?.isEditing) return;
             vmDeleteSelected();
             e.preventDefault();
         }
 
-        // Undo: Ctrl+Z / Cmd+Z
+        // Undo: Ctrl+Z / Cmd+Z (works regardless of focus)
         if (e.key === 'z' && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
             e.preventDefault();
+            if (inField) e.target.blur();
             vmUndo();
         }
         // Redo: Ctrl+Shift+Z / Cmd+Shift+Z
         if (e.key === 'z' && (e.ctrlKey || e.metaKey) && e.shiftKey) {
             e.preventDefault();
+            if (inField) e.target.blur();
             vmRedo();
         }
     });
@@ -17890,6 +18301,15 @@ function saveSingleSeatingCell(cell, row, keepEditing = false) {
     if (newValue === oldValue) return;
 
     item[field] = newValue;
+
+    const eventId = state.currentEventId;
+    pushUndo(`Edit ${field}`, async () => {
+        if (eventId !== state.currentEventId) { showToast('Nothing to undo', 'info'); return; }
+        const current = state.guests.find(g => g.id === id);
+        if (current) current[field] = oldValue;
+        await collections.guests.doc(id).update({ [field]: oldValue, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    });
+
     collections.guests.doc(id).update({
         [field]: newValue,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -18772,11 +19192,22 @@ function restoreGuestPhantomCell(cell, field) {
 
 async function saveGuestField(invId, field, value) {
     if (!state.currentEventId || !collections.invitees) return;
+    const item = (state.invitees || []).find(i => i.id === invId);
+    const oldValue = item ? (item[field] ?? '') : '';
     try {
         await collections.invitees.doc(invId).update({
             [field]: value,
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         });
+        if (oldValue !== value) {
+            const eventId = state.currentEventId;
+            pushUndo(`Edit ${field}`, async () => {
+                if (eventId !== state.currentEventId) { showToast('Nothing to undo', 'info'); return; }
+                const current = (state.invitees || []).find(i => i.id === invId);
+                if (current) current[field] = oldValue;
+                await collections.invitees.doc(invId).update({ [field]: oldValue, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+            });
+        }
     } catch(e) { console.error('saveGuestField:', e); }
 }
 

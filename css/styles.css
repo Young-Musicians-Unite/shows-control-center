@@ -2122,6 +2122,44 @@ body {
     animation: tl-row-in 0.35s ease both;
 }
 
+.timeline-table th.drag-col,
+.timeline-table td.drag-col {
+    width: 24px;
+    padding: 0.7rem 0 0.7rem 0.6rem;
+}
+
+.tl-drag-handle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 20px;
+    cursor: grab;
+    color: var(--text-tertiary, #a09e98);
+    font-size: 13px;
+    line-height: 1;
+    letter-spacing: -1px;
+    user-select: none;
+    border-radius: 4px;
+}
+
+.tl-drag-handle:hover {
+    color: var(--text-secondary, #6b6a64);
+    background: var(--bg-hover, #eeecea);
+}
+
+.tl-row.tl-dragging {
+    opacity: 0.4;
+}
+
+.tl-row.tl-drag-over-top {
+    box-shadow: inset 0 2px 0 0 #c9a961;
+}
+
+.tl-row.tl-drag-over-bottom {
+    box-shadow: inset 0 -2px 0 0 #c9a961;
+}
+
 /* Pastel highlight background for color-tagged rows */
 .timeline-table .tl-row.tl-highlighted {
     background-color: var(--row-accent) !important;
@@ -2391,6 +2429,17 @@ body {
 
 .color-swatch-dropdown.open {
     display: grid;
+}
+
+/* Timeline row swatches open upward by default, which clips against the
+   top edge of .table-container for the first couple of rows — its
+   overflow-x:auto computes overflow-y to auto too, so an absolutely
+   positioned child extending above the container's own top boundary gets
+   cut off there. Same issue solved the same way for the packing category
+   header below; open downward instead. */
+.timeline-table .color-swatch-dropdown {
+    bottom: auto;
+    top: calc(100% + 6px);
 }
 
 .color-swatch {
@@ -9761,6 +9810,9 @@ body.menu-open::after {
 }
 .hub-season-link:hover { background: rgba(255,255,255,0.07); color: #fff; }
 .hub-season-link.active { background: rgba(255,255,255,0.12); color: #fff; font-weight: 600; }
+.hub-season-link.hub-season-failed { color: rgba(224,85,85,0.75); }
+.hub-season-link.hub-season-failed:hover { background: rgba(224,85,85,0.12); color: #e05555; }
+.hub-season-link.hub-season-failed.active { background: rgba(224,85,85,0.18); color: #e05555; }
 .hub-season-add-btn {
     display: block;
     width: 100%;
@@ -11036,6 +11088,144 @@ table th,
     color: var(--ym-text-light, #e8e2d4);
     background: rgba(255,255,255,0.07);
 }
+
+/* Failure-reason subtitle under an event name */
+.hub-fail-reason {
+    font-size: 0.72rem;
+    font-style: italic;
+    font-weight: 400;
+    color: #e0a55e;
+    margin-top: 2px;
+    max-width: 260px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Archive / reactivate buttons — grouped with the row-color button, well
+   clear of Enter (a wide gap + divider) so a slip of the mouse can't
+   accidentally archive an event instead of opening it. */
+.hub-cell-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+}
+.hub-fail-btn, .hub-reactivate-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    visibility: hidden;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 5px 6px;
+    border-radius: 5px;
+    color: var(--ym-text-dim, #888);
+    transition: color 0.15s, background 0.15s;
+}
+.hub-event-row:hover .hub-fail-btn,
+.hub-event-row:hover .hub-reactivate-btn {
+    visibility: visible;
+}
+.hub-fail-btn:hover { color: #e05555; background: rgba(224,85,85,0.12); }
+.hub-reactivate-btn:hover { color: var(--ym-gold, #c8a356); background: rgba(200,163,86,0.15); }
+
+.hub-actions-divider {
+    display: inline-block;
+    width: 1px;
+    height: 16px;
+    margin: 0 10px;
+    background: rgba(255,255,255,0.12);
+}
+
+/* Failure-reason entry popover */
+#hub-fail-picker {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 280px;
+    box-sizing: border-box;
+    background: #1e1e1c;
+    border: 0.5px solid rgba(255,255,255,0.12);
+    border-radius: 8px;
+    padding: 14px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    font-family: var(--font-body, 'Inter', sans-serif);
+    text-transform: none;
+}
+.hub-fail-picker-heading {
+    font-size: 0.8rem;
+    color: rgba(255,255,255,0.8);
+    font-weight: 500;
+    font-family: inherit;
+    text-transform: none;
+}
+.hub-fail-picker-textarea {
+    width: 100%;
+    min-height: 52px;
+    resize: vertical;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 6px;
+    padding: 8px;
+    color: #e8e2d4;
+    font-family: inherit;
+    font-size: 0.82rem;
+    text-transform: none;
+    box-sizing: border-box;
+}
+.hub-fail-picker-textarea:focus { outline: none; border-color: var(--ym-gold, #c8a356); }
+
+/* Primary/secondary actions stack full-width so long labels never clip the
+   panel; the destructive delete lives below a divider, set apart from the
+   two everyday (and undoable) actions above it. */
+.hub-fail-picker-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.hub-fail-picker-cancel, .hub-fail-picker-confirm {
+    font-family: inherit;
+    text-transform: none;
+    font-size: 0.8rem;
+    padding: 8px 10px;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    width: 100%;
+    text-align: center;
+}
+/* Archiving is undoable (Cmd+Z), so it gets the neutral/gold treatment;
+   red is reserved for the one truly destructive, unrecoverable action. */
+.hub-fail-picker-confirm {
+    background: rgba(200,163,86,0.18);
+    color: var(--ym-gold, #c8a356);
+    font-weight: 600;
+}
+.hub-fail-picker-confirm:hover { background: rgba(200,163,86,0.28); }
+.hub-fail-picker-cancel {
+    background: transparent;
+    color: rgba(255,255,255,0.6);
+}
+.hub-fail-picker-cancel:hover { color: #fff; background: rgba(255,255,255,0.08); }
+
+.hub-fail-picker-danger-zone {
+    border-top: 1px solid rgba(255,255,255,0.1);
+    padding-top: 8px;
+    text-align: center;
+}
+.hub-fail-picker-delete {
+    font-family: inherit;
+    text-transform: none;
+    font-size: 0.72rem;
+    padding: 4px 8px;
+    border-radius: 5px;
+    border: none;
+    cursor: pointer;
+    background: transparent;
+    color: rgba(224,85,85,0.6);
+}
+.hub-fail-picker-delete:hover { color: #e05555; background: rgba(224,85,85,0.12); }
 
 /* Row color picker popover */
 #hub-row-color-picker {
