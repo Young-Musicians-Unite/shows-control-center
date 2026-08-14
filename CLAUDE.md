@@ -3,7 +3,7 @@
 Single-page event management app for the YMU 13th Fundraising Gala (April 25, 2026). Vanilla JS, Firebase Firestore, no build tools.
 
 ## Tech Stack
-Vanilla JS / HTML / CSS, Firebase Firestore (real-time), Fabric.js (stage plots), SheetJS (Excel export), GitHub Pages hosting
+Vanilla JS / HTML / CSS, Firebase Firestore (real-time), Fabric.js (venue map), SheetJS (Excel export), GitHub Pages hosting
 
 ## Structure
 - `index.html` — all 7 pages as `<div class="page">` sections toggled by `switchPage()`
@@ -20,7 +20,7 @@ cd scripts && python migrate_data.py  # Re-import data from Excel (destructive)
 ```
 
 ## Pages
-Dashboard, Vendors, Budget, Timeline (run-of-show), Input Lists (audio/tech), Staff, Stage Plots (Fabric.js canvas)
+Dashboard, Vendors, Budget, Timeline (run-of-show), Input Lists (audio/tech), Staff
 
 ## Key Patterns
 
@@ -35,7 +35,7 @@ Dashboard, Vendors, Budget, Timeline (run-of-show), Input Lists (audio/tech), St
 **Timeline dual-field:** Completion sets both `completed: true` and `status: 'complete'` (legacy). Reads check both: `item.completed === true || item.status === 'complete'`.
 
 ## Firestore Collections
-budget, timeline, mainStageInputs, cocktailStageInputs, staff, stagePlots
+budget, timeline, mainStageInputs, cocktailStageInputs, staff
 
 ## Repo Note
 Git repo is `gala-management/`. Parent dir (`Gala Manager App/`) has source Excel spreadsheets for data migration only.
