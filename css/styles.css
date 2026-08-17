@@ -12019,23 +12019,26 @@ tr:hover .gi-del-btn { color: rgba(255,255,255,0.35); }
     letter-spacing: 0.02em;
 }
 
-/* Print / PDF export */
+/* Print / PDF export — scoped to body.printing-quote (set by printQuote()
+   right before window.print()) so this doesn't hide every other page's
+   print output too. Was previously unscoped and fired on every print job
+   app-wide, which suppressed .container (i.e. every page except Quote,
+   which lives outside it) no matter which page's print button was used. */
 @media print {
-    /* Hide everything by default */
-    body > * { display: none !important; }
+    body.printing-quote > * { display: none !important; }
     /* Sidebar's reserved body padding is reset in ymu-overrides.css (which
        loads after this file, so a rule here can't win the cascade tie). */
 
     /* Show only the quote doc */
-    .page#quote { display: block !important; padding: 0 !important; }
-    .page#quote .page-header { display: none !important; }
-    .page#quote .quote-canvas {
+    body.printing-quote .page#quote { display: block !important; padding: 0 !important; }
+    body.printing-quote .page#quote .page-header { display: none !important; }
+    body.printing-quote .page#quote .quote-canvas {
         display: block !important;
         padding: 0 !important;
         box-shadow: none !important;
         background: none !important;
     }
-    .quote-doc {
+    body.printing-quote .quote-doc {
         width: 100% !important;
         box-shadow: none !important;
         border-radius: 0 !important;
@@ -12043,23 +12046,26 @@ tr:hover .gi-del-btn { color: rgba(255,255,255,0.35); }
     .no-print { display: none !important; }
     /* Rows explicitly marked as not-filled-out — the discount row and any
        blank/never-edited quote line item — are omitted from the export. */
-    .is-empty { display: none !important; }
+    body.printing-quote .is-empty { display: none !important; }
     /* A row that's partially filled out still prints — but any individual
        cell left blank inside it (e.g. Rate or Notes) was showing its
        editing-time placeholder ("0.00", "Notes…") as literal ghost text in
        the export. Blank should just look blank on a client-facing quote. */
-    .quote-cell-input::placeholder,
-    .quote-pct-input::placeholder,
-    .quote-detail-input::placeholder {
+    body.printing-quote .quote-cell-input::placeholder,
+    body.printing-quote .quote-pct-input::placeholder,
+    body.printing-quote .quote-detail-input::placeholder {
         color: transparent !important;
     }
-    .quote-detail-input { border-bottom: none !important; }
-    .quote-cell-input { -webkit-print-color-adjust: exact; }
-    .quote-th, .quote-total-row td, .quote-header-band, .quote-footer-band,
-    .quote-section-header td, .quote-subtotal-row td, .quote-event-details,
-    .quote-title-row::after {
+    body.printing-quote .quote-detail-input { border-bottom: none !important; }
+    body.printing-quote .quote-cell-input { -webkit-print-color-adjust: exact; }
+    body.printing-quote .quote-th, body.printing-quote .quote-total-row td,
+    body.printing-quote .quote-header-band, body.printing-quote .quote-footer-band,
+    body.printing-quote .quote-section-header td, body.printing-quote .quote-subtotal-row td,
+    body.printing-quote .quote-event-details, body.printing-quote .quote-title-row::after {
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
     }
+    /* @page can't be scoped to a body class, so this still applies to every
+       print job — unchanged from before this fix, not part of the bug. */
     @page { margin: 0; size: letter portrait; }
 }
