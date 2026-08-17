@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>YMU Gala 2026 Management</title>
-    <link rel="stylesheet" href="css/styles.css?v=2">
-    <link rel="stylesheet" href="css/ymu-overrides.css?v=2">
+    <link rel="stylesheet" href="css/styles.css?v=6">
+    <link rel="stylesheet" href="css/ymu-overrides.css?v=6">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -57,10 +57,6 @@
                         <a href="#input-lists" class="nav-link" data-page="input-lists">
                             <i class="ti ti-list-check nav-icon"></i>
                             <span class="nav-label">Input Lists</span>
-                        </a>
-                        <a href="#stage-plots" class="nav-link" data-page="stage-plots">
-                            <i class="ti ti-layout-board nav-icon"></i>
-                            <span class="nav-label">Stage Plots</span>
                         </a>
                         <a href="#set-lists" class="nav-link" data-page="set-lists">
                             <i class="ti ti-music nav-icon"></i>
@@ -318,6 +314,7 @@
                 <input type="hidden" id="bsm-selected-set" value="">
             </div>
             <div class="hub-modal-footer">
+                <button class="btn-secondary" onclick="skipBudgetSetup()">Not yet — ask me later</button>
                 <button class="btn-primary" onclick="saveBudgetSetup()">Set Up Budget</button>
             </div>
         </div>
@@ -484,6 +481,7 @@
                     <button class="btn btn-icon" id="export-budget-btn" title="Export to Excel">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                     </button>
+                    <button class="btn btn-secondary" onclick="openStaffIndex()">Staff Index</button>
                     <button class="btn btn-primary-gold" id="add-budget-item-btn">+ Add Item</button>
                 </div>
             </div>
@@ -574,8 +572,6 @@
                         <label class="col-toggle"><input type="checkbox" checked onchange="toggleTimelineCol('prod', this.checked)"> Prod</label>
                         <label class="col-toggle"><input type="checkbox" checked onchange="toggleTimelineCol('responsible', this.checked)"> Responsible</label>
                         <label class="col-toggle"><input type="checkbox" checked onchange="toggleTimelineCol('staff', this.checked)"> Staff</label>
-                        <label class="col-toggle"><input type="checkbox" checked onchange="toggleTimelineCol('setlist', this.checked)"> Set List</label>
-                        <label class="col-toggle"><input type="checkbox" checked onchange="toggleTimelineCol('stageplot', this.checked)"> Stage Plot</label>
                     </div>
                 </div>
             </div>
@@ -592,6 +588,7 @@
                     <table class="data-table timeline-table" id="timeline-table">
                         <thead>
                             <tr>
+                                <th class="drag-col no-print"></th>
                                 <th class="checkbox-col">✓</th>
                                 <th class="time-col">Time</th>
                                 <th class="duration-col">Duration</th>
@@ -599,14 +596,12 @@
                                 <th class="prod-col">Prod</th>
                                 <th class="responsible-col">Responsible</th>
                                 <th class="staff-col">Staff</th>
-                                <th class="setlist-col">Set List</th>
-                                <th class="stageplot-col">Stage Plot</th>
                                 <th class="actions-col no-print">Actions</th>
                             </tr>
                         </thead>
                         <tbody id="timeline-tbody">
                             <tr>
-                                <td colspan="10" class="empty-state">No tasks for this day</td>
+                                <td colspan="9" class="empty-state">No tasks for this day</td>
                             </tr>
                         </tbody>
                     </table>
@@ -620,7 +615,7 @@
                 <span><kbd>Tab</kbd> next cell</span>
                 <span><kbd>Enter</kbd> next row</span>
                 <span><kbd>Esc</kbd> cancel</span>
-                <span><kbd>N</kbd> new row</span>
+                <span><kbd>Ctrl</kbd>+<kbd>Enter</kbd> new row below</span>
                 <span><kbd>Ctrl</kbd>+<kbd>Z</kbd> undo</span>
             </div>
         </div>
@@ -1243,172 +1238,6 @@
             </div>
         </div>
 
-        <!-- Stage Plots Page -->
-        <div id="stage-plots" class="page">
-            <!-- Compact Header: Title + Stage Tabs + Print -->
-            <div class="sp-header">
-                <h1 class="sp-title">Stage Plots</h1>
-                <div class="sp-stage-tabs">
-                    <button class="sp-tab active" data-stage-type="main">Main Stage</button>
-                    <button class="sp-tab" data-stage-type="cocktail">Cocktail Stage</button>
-                </div>
-                <button class="sp-icon-btn" id="print-plot-btn" title="Print">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
-                </button>
-            </div>
-
-            <!-- Single Toolbar Row -->
-            <div class="sp-toolbar">
-                <div class="sp-toolbar-section">
-                    <select id="plot-select" class="sp-select">
-                        <option value="">Select a plot...</option>
-                    </select>
-                    <input type="text" id="plot-name-input" placeholder="Plot name..." class="sp-name-input">
-                    <button class="sp-tool-btn sp-primary" id="new-plot-btn" title="New Plot">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                    </button>
-                    <button class="sp-tool-btn" id="duplicate-plot-btn" title="Duplicate Plot">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                    </button>
-                    <button class="sp-tool-btn sp-danger" id="delete-plot-btn" title="Delete Plot">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                    </button>
-                </div>
-
-                <div class="sp-toolbar-divider"></div>
-
-                <div class="sp-toolbar-section">
-                    <div class="sp-toggle-group" id="tool-mode-container">
-                        <button class="sp-toggle active" id="draw-rect-tool-btn" title="Draw rectangles (D)">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg>
-                            Draw
-                        </button>
-                        <button class="sp-toggle" id="move-tool-btn" title="Move elements (V)">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3M2 12h20M12 2v20"></path></svg>
-                            Move
-                        </button>
-                    </div>
-                    <button class="sp-tool-btn" id="undo-btn" title="Undo (⌘Z)" disabled>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
-                    </button>
-                    <button class="sp-tool-btn" id="redo-btn" title="Redo (⌘⇧Z)" disabled>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
-                    </button>
-                    <button class="sp-tool-btn" id="toggle-dimensions-btn" title="Toggle dimensions">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 3H3v18h18V3z"></path><path d="M9 3v18M3 9h18"></path></svg>
-                    </button>
-                </div>
-
-                <div class="sp-toolbar-divider"></div>
-
-                <!-- Properties (inline, visibility-toggled) -->
-                <div class="sp-toolbar-section sp-props hidden" id="properties-panel">
-                    <input type="color" id="prop-stroke-color" value="#c9a961" title="Stroke color" class="sp-color-input">
-                    <span id="prop-fill-controls" class="sp-fill-group">
-                        <input type="checkbox" id="prop-fill-enabled" checked title="Enable fill" class="sp-checkbox">
-                        <input type="color" id="prop-fill-color" value="#c9a961" title="Fill color" class="sp-color-input">
-                        <select id="prop-fill-opacity" title="Fill opacity" class="sp-mini-select">
-                            <option value="0.2">Light</option>
-                            <option value="0.4">Med</option>
-                            <option value="0.6">Heavy</option>
-                            <option value="1.0">Solid</option>
-                        </select>
-                    </span>
-                    <button class="sp-tool-btn" id="prop-lock-btn" title="Lock/Unlock">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
-                    </button>
-                </div>
-
-                <div class="sp-toolbar-spacer"></div>
-
-                <div class="sp-toolbar-section">
-                    <button class="sp-tool-btn" id="zoom-out-btn" title="Zoom out">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg>
-                    </button>
-                    <span class="sp-zoom-level" id="zoom-level">100%</span>
-                    <button class="sp-tool-btn" id="zoom-in-btn" title="Zoom in">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="11" y1="8" x2="11" y2="14"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg>
-                    </button>
-                    <button class="sp-tool-btn" id="fit-screen-btn" title="Fit to screen">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>
-                    </button>
-                    <span class="sp-save-status" id="save-status"></span>
-                </div>
-            </div>
-
-            <!-- Main Content Area -->
-            <div class="stage-plot-container">
-                <!-- Element Library Sidebar -->
-                <div class="element-library" id="element-library">
-                    <h3>Element Library</h3>
-                    <div class="library-section">
-                        <h4>Audio</h4>
-                        <button class="element-btn" data-element="drum-kit">🥁 Drum Kit</button>
-                        <button class="element-btn" data-element="mic-stand">🎤 Mic Stand</button>
-                        <button class="element-btn" data-element="floor-monitor">🔊 Monitor</button>
-                        <button class="element-btn" data-element="di-box">📦 DI Box</button>
-                        <button class="element-btn" data-element="speaker-cab">🔈 Speaker</button>
-                    </div>
-                    <div class="library-section">
-                        <h4>Instruments</h4>
-                        <button class="element-btn" data-element="keyboard-88">🎹 Piano</button>
-                        <button class="element-btn" data-element="keyboard-61">🎹 Keyboard</button>
-                        <button class="element-btn" data-element="pedalboard">🎛️ Pedalboard</button>
-                        <button class="element-btn" data-element="guitar">🎸 Guitar</button>
-                        <button class="element-btn" data-element="bass">🎸 Bass</button>
-                        <button class="element-btn" data-element="guitar-amp">🔊 Guitar Amp</button>
-                        <button class="element-btn" data-element="bass-amp">🔊 Bass Amp</button>
-                        <button class="element-btn" data-element="music-stand">🎵 Music Stand</button>
-                    </div>
-                    <div class="library-section">
-                        <h4>Furniture</h4>
-                        <button class="element-btn" data-element="chair">💺 Chair</button>
-                        <button class="element-btn" data-element="stool">💺 Stool</button>
-                        <button class="element-btn" data-element="table">🟫 Table</button>
-                        <button class="element-btn" data-element="podium">🗣️ Podium</button>
-                    </div>
-                    <div class="library-section">
-                        <h4>Stage</h4>
-                        <button class="element-btn" data-element="riser">🔲 Riser</button>
-                        <button class="element-btn" data-element="stairs">🪜 Stairs</button>
-                        <button class="element-btn" data-element="backdrop">🎬 Backdrop</button>
-                    </div>
-                    <div class="library-section">
-                        <h4>Technical</h4>
-                        <button class="element-btn" data-element="spotlight">💡 Light</button>
-                        <button class="element-btn" data-element="camera">📹 Camera</button>
-                        <button class="element-btn" data-element="mixer">🎛️ Mixer</button>
-                    </div>
-                    <div class="library-section">
-                        <h4>Markers</h4>
-                        <button class="element-btn" data-element="plain-text">T Text</button>
-                        <button class="element-btn" data-element="performer">👤 Performer</button>
-                        <button class="element-btn" data-element="text-label">📝 Label</button>
-                        <button class="element-btn" data-element="rectangle">⬜ Rectangle</button>
-                    </div>
-                </div>
-
-                <!-- Canvas Area -->
-                <div class="canvas-area">
-                    <div class="canvas-wrapper" id="canvas-wrapper">
-                        <canvas id="stage-canvas"></canvas>
-                    </div>
-                    <div id="sp-context-menu" class="vm-context-menu" style="display:none;">
-                        <button onclick="spContextAction('bringForward')">Bring Forward</button>
-                        <button onclick="spContextAction('bringToFront')">Bring to Front</button>
-                        <button onclick="spContextAction('sendBackwards')">Send Backward</button>
-                        <button onclick="spContextAction('sendToBack')">Send to Back</button>
-                        <hr class="context-menu-divider">
-                        <button onclick="spContextAction('duplicate')">Duplicate</button>
-                        <button onclick="spContextAction('lock')">Lock / Unlock</button>
-                    </div>
-                    <div class="canvas-info">
-                        <p class="canvas-help">Click elements to add • Drag to move • Double-click to label • Alt+click or ⌘D to duplicate • Right-click for more</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-
         <!-- Performers Page -->
         <div id="set-lists" class="page">
             <div class="page-header">
@@ -1974,7 +1803,6 @@
                 <button class="btn btn-secondary no-print" onclick="printQuote()">
                     <i class="ti ti-printer"></i> Print / Export PDF
                 </button>
-                <button class="btn btn-primary-gold no-print" onclick="addQuoteLine()">+ Add Service</button>
             </div>
         </div>
         <div class="quote-canvas">
@@ -1983,12 +1811,7 @@
                 <div class="quote-header-band">
                     <div class="quote-header-inner">
                         <div class="quote-logo-block">
-                            <div class="quote-logo-letters">YMU</div>
-                            <div class="quote-logo-text">
-                                <div>YOUNG</div>
-                                <div>MUSICIANS</div>
-                                <div>UNITE</div>
-                            </div>
+                            <img class="quote-logo-img" src="ymu-logo.png" alt="Young Musicians Unite">
                         </div>
                         <div class="quote-org-address">
                             <strong>Young Musicians Unite</strong><br>
@@ -2004,7 +1827,7 @@
 
                 <!-- Document body -->
                 <div class="quote-body">
-                    <div class="quote-title-row">Quote</div>
+                    <input type="text" class="quote-title-row" id="quote-title-input" placeholder="Quote" onblur="saveQuoteMeta('quoteTitle', this.value)">
 
                     <!-- Client + event details -->
                     <div class="quote-event-details">
@@ -2052,8 +1875,25 @@
                         </thead>
                         <tbody id="quote-lines-body"></tbody>
                         <tfoot>
+                            <tr class="quote-discount-row" id="quote-discount-row">
+                                <td colspan="6" class="quote-discount-cell">
+                                    <div class="quote-discount-flex">
+                                        <div class="quote-discount-block">
+                                            <span class="quote-discount-block-label">Discount %</span>
+                                            <span class="quote-pct-input-wrap">
+                                                <input class="quote-pct-input" type="number" min="0" max="100" step="0.1" id="quote-discount-input" placeholder="0" onblur="saveQuoteMeta('quoteDiscountPct', parseFloat(this.value)||0)">
+                                                <span class="quote-pct-suffix">%</span>
+                                            </span>
+                                        </div>
+                                        <div class="quote-discount-block">
+                                            <span class="quote-discount-block-label">Total</span>
+                                            <span class="quote-discount-total-amount" id="quote-discount-total">$0.00</span>
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
                             <tr class="quote-total-row">
-                                <td class="quote-total-label" colspan="3">Services Grand Total</td>
+                                <td class="quote-total-label" colspan="3">Grand Total</td>
                                 <td class="quote-total-amount" id="quote-grand-total">$0.00</td>
                                 <td colspan="2" class="quote-total-notes"></td>
                             </tr>
@@ -2573,23 +2413,6 @@
                             <textarea id="timeline-notes" rows="3"></textarea>
                         </div>
                     </div>
-                    <div class="form-group form-section-divider">
-                        <label class="form-section-label">Linked Resources</label>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="timeline-performer">Performer (Set List)</label>
-                            <select id="timeline-performer">
-                                <option value="">— None —</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="timeline-stage-plot">Stage Plot</label>
-                            <select id="timeline-stage-plot">
-                                <option value="">— None —</option>
-                            </select>
-                        </div>
-                    </div>
                     <div class="form-actions">
                         <button type="button" class="btn btn-secondary cancel-btn">Cancel</button>
                         <button type="submit" class="btn btn-primary">Save Task</button>
@@ -2664,7 +2487,7 @@
     <!-- SheetJS for Excel Export -->
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
 
-    <!-- Fabric.js for Stage Plot Canvas -->
+    <!-- Fabric.js for Venue Map Canvas -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.0/fabric.min.js"></script>
 
     <!-- PDF.js for rendering PDF venue maps -->

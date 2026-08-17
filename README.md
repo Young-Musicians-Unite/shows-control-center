@@ -8,7 +8,7 @@ Web application for managing the 2026 Young Musicians Unite Gala event.
 - **Frontend:** Vanilla JavaScript, HTML5, CSS3
 - **Database:** Firebase Firestore (Project: ymu-gala-2026)
 - **Hosting:** GitHub Pages (auto-deploys from main branch)
-- **Canvas:** Fabric.js for stage plot builder
+- **Canvas:** Fabric.js for venue map builder
 
 ## Quick Deployment
 ```bash
@@ -43,17 +43,6 @@ Stage-specific equipment lists for Main Stage and Cocktail Stage
 
 ### 👥 Staff
 Staff assignments and role management
-
-### 🎭 Stage Plots (Advanced)
-Visual stage layout builder with:
-- Custom stage drawing with measurements
-- Drag-and-drop audio equipment (drums, mics, monitors, DI boxes, speakers)
-- Instrument placement (piano, keyboard, pedalboard, guitar, bass)
-- Rotate and label elements
-- Snap-to-align for precision
-- Undo/redo functionality
-- Duplicate plots
-- Professional print output
 
 ## Project Structure
 ```

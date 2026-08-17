@@ -2122,6 +2122,44 @@ body {
     animation: tl-row-in 0.35s ease both;
 }
 
+.timeline-table th.drag-col,
+.timeline-table td.drag-col {
+    width: 24px;
+    padding: 0.7rem 0 0.7rem 0.6rem;
+}
+
+.tl-drag-handle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 20px;
+    cursor: grab;
+    color: var(--text-tertiary, #a09e98);
+    font-size: 13px;
+    line-height: 1;
+    letter-spacing: -1px;
+    user-select: none;
+    border-radius: 4px;
+}
+
+.tl-drag-handle:hover {
+    color: var(--text-secondary, #6b6a64);
+    background: var(--bg-hover, #eeecea);
+}
+
+.tl-row.tl-dragging {
+    opacity: 0.4;
+}
+
+.tl-row.tl-drag-over-top {
+    box-shadow: inset 0 2px 0 0 #c9a961;
+}
+
+.tl-row.tl-drag-over-bottom {
+    box-shadow: inset 0 -2px 0 0 #c9a961;
+}
+
 /* Pastel highlight background for color-tagged rows */
 .timeline-table .tl-row.tl-highlighted {
     background-color: var(--row-accent) !important;
@@ -2197,48 +2235,6 @@ body {
 .action-icon.action-icon-danger:hover {
     background: rgba(220, 53, 69, 0.08);
     color: #c0392b;
-}
-
-.action-icon.action-icon-link {
-    color: #3498db;
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    white-space: nowrap;
-}
-
-.action-icon.action-icon-link:hover {
-    background: rgba(52, 152, 219, 0.1);
-    color: #2980b9;
-}
-
-.action-icon.action-icon-link .link-label {
-    font-size: 0.75rem;
-    max-width: 100px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.action-icon.action-icon-assign {
-    color: #aaa;
-    border: 1px dashed #ccc;
-    border-radius: 4px;
-    width: 24px;
-    height: 24px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.action-icon.action-icon-assign:hover {
-    color: #3498db;
-    border-color: #3498db;
-    background: rgba(52, 152, 219, 0.05);
-}
-
-.setlist-col, .stageplot-col {
-    text-align: center;
-    white-space: nowrap;
 }
 
 /* Form section divider for modals */
@@ -2361,8 +2357,6 @@ body {
 .timeline-table.hide-responsible .responsible-col { display: none; }
 .timeline-table.hide-staff .staff-col { display: none; }
 .timeline-table.hide-screencue .screencue-col { display: none; }
-.timeline-table.hide-setlist .setlist-col { display: none; }
-.timeline-table.hide-stageplot .stageplot-col { display: none; }
 
 .filter-btn {
     padding: 0.4rem 1rem;
@@ -2435,6 +2429,17 @@ body {
 
 .color-swatch-dropdown.open {
     display: grid;
+}
+
+/* Timeline row swatches open upward by default, which clips against the
+   top edge of .table-container for the first couple of rows — its
+   overflow-x:auto computes overflow-y to auto too, so an absolutely
+   positioned child extending above the container's own top boundary gets
+   cut off there. Same issue solved the same way for the packing category
+   header below; open downward instead. */
+.timeline-table .color-swatch-dropdown {
+    bottom: auto;
+    top: calc(100% + 6px);
 }
 
 .color-swatch {
@@ -2950,8 +2955,6 @@ body.printing-timeline .timeline-table .prod-col,
 body.printing-timeline .timeline-table .andi-col,
 body.printing-timeline .timeline-table .pedro-col,
 body.printing-timeline .timeline-table .runner-col,
-body.printing-timeline .timeline-table .setlist-col,
-body.printing-timeline .timeline-table .stageplot-col,
 body.printing-timeline .timeline-table .actions-col {
     display: none !important;
 }
@@ -6480,320 +6483,6 @@ body.menu-open::after {
     }
 }
 
-/* =============================================
-   STAGE PLOTS PAGE
-   Canvas-based stage plot builder
-   ============================================= */
-
-/* Header: Title + Stage Tabs + Print */
-.sp-header {
-    display: flex;
-    align-items: center;
-    gap: 1.5rem;
-    margin-bottom: 0.5rem;
-}
-
-.sp-title {
-    font-size: 1.5rem;
-    font-weight: 700;
-    color: #1a2332;
-    margin: 0;
-    white-space: nowrap;
-}
-
-.sp-stage-tabs {
-    display: flex;
-    background: #e8eaed;
-    border-radius: 6px;
-    padding: 3px;
-    gap: 2px;
-}
-
-.sp-tab {
-    padding: 0.4rem 1.25rem;
-    border: none;
-    background: transparent;
-    border-radius: 4px;
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: #5f6368;
-    cursor: pointer;
-    transition: all 0.15s ease;
-    white-space: nowrap;
-}
-
-.sp-tab:hover {
-    color: #1a2332;
-    background: rgba(255,255,255,0.5);
-}
-
-.sp-tab.active {
-    background: #1a3a2a;
-    color: #fff;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.15);
-}
-
-.sp-icon-btn {
-    margin-left: auto;
-    padding: 6px;
-    border: 1px solid #ddd;
-    background: #fff;
-    border-radius: 6px;
-    cursor: pointer;
-    color: #5f6368;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.15s ease;
-}
-
-.sp-icon-btn:hover {
-    border-color: #c9a961;
-    color: #c9a961;
-}
-
-/* Single Toolbar Row */
-.sp-toolbar {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 5px 8px;
-    background: #f5f6f7;
-    border: 1px solid #e0e2e6;
-    border-radius: 8px;
-    margin-bottom: 0.5rem;
-    min-height: 38px;
-}
-
-.sp-toolbar-section {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    flex-shrink: 0;
-}
-
-.sp-toolbar-divider {
-    width: 1px;
-    height: 22px;
-    background: #d0d3d8;
-    flex-shrink: 0;
-    margin: 0 2px;
-}
-
-.sp-toolbar-spacer {
-    flex: 1;
-    min-width: 4px;
-}
-
-/* Plot selector & name */
-.sp-select {
-    padding: 4px 24px 4px 8px;
-    border: 1px solid #d0d3d8;
-    border-radius: 5px;
-    font-size: 0.8rem;
-    background: #fff;
-    color: #1a2332;
-    max-width: 180px;
-    height: 28px;
-    appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%235f6368' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 8px center;
-}
-
-.sp-select:focus {
-    outline: none;
-    border-color: #c9a961;
-    box-shadow: 0 0 0 2px rgba(201,169,97,0.15);
-}
-
-.sp-name-input {
-    padding: 4px 8px;
-    border: 1px solid #d0d3d8;
-    border-radius: 5px;
-    font-size: 0.8rem;
-    color: #1a2332;
-    width: 140px;
-    height: 28px;
-}
-
-.sp-name-input:focus {
-    outline: none;
-    border-color: #c9a961;
-    box-shadow: 0 0 0 2px rgba(201,169,97,0.15);
-}
-
-.sp-name-input:disabled {
-    background: #f0f0f0;
-    color: #999;
-}
-
-/* Tool buttons (icon-only) */
-.sp-tool-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 28px;
-    height: 28px;
-    padding: 0;
-    border: 1px solid #d0d3d8;
-    background: #fff;
-    border-radius: 5px;
-    cursor: pointer;
-    color: #5f6368;
-    transition: all 0.12s ease;
-    flex-shrink: 0;
-}
-
-.sp-tool-btn:hover:not(:disabled) {
-    border-color: #b0b3b8;
-    color: #1a2332;
-    background: #ecedef;
-}
-
-.sp-tool-btn:disabled {
-    opacity: 0.35;
-    cursor: not-allowed;
-}
-
-.sp-tool-btn.active {
-    background: #e8d5a3;
-    border-color: #c9a961;
-    color: #6b5620;
-}
-
-.sp-tool-btn.sp-primary {
-    background: #c9a961;
-    border-color: #b8963d;
-    color: #fff;
-}
-
-.sp-tool-btn.sp-primary:hover {
-    background: #b8963d;
-    border-color: #a6852e;
-    color: #fff;
-}
-
-.sp-tool-btn.sp-danger:hover {
-    border-color: #e74c3c;
-    color: #e74c3c;
-    background: #fdf0ef;
-}
-
-/* Draw/Move toggle group */
-.sp-toggle-group {
-    display: flex;
-    background: #e8eaed;
-    border-radius: 5px;
-    padding: 2px;
-    gap: 1px;
-}
-
-.sp-toggle {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 3px 10px;
-    border: none;
-    background: transparent;
-    border-radius: 4px;
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: #5f6368;
-    cursor: pointer;
-    transition: all 0.12s ease;
-    white-space: nowrap;
-    height: 24px;
-}
-
-.sp-toggle:hover {
-    color: #1a2332;
-}
-
-.sp-toggle.active {
-    background: #fff;
-    color: #1a2332;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
-}
-
-/* Inline properties */
-.sp-props {
-    transition: opacity 0.15s ease;
-}
-
-.sp-props.hidden {
-    visibility: hidden;
-    pointer-events: none;
-    opacity: 0;
-    width: 0;
-    overflow: hidden;
-    gap: 0;
-    margin: 0;
-    padding: 0;
-}
-
-.sp-color-input {
-    width: 24px;
-    height: 24px;
-    padding: 0;
-    border: 2px solid #d0d3d8;
-    border-radius: 4px;
-    cursor: pointer;
-    background: none;
-}
-
-.sp-color-input::-webkit-color-swatch-wrapper {
-    padding: 1px;
-}
-
-.sp-color-input::-webkit-color-swatch {
-    border: none;
-    border-radius: 2px;
-}
-
-.sp-fill-group {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-}
-
-.sp-checkbox {
-    margin: 0;
-    cursor: pointer;
-}
-
-.sp-mini-select {
-    padding: 2px 4px;
-    border: 1px solid #d0d3d8;
-    border-radius: 4px;
-    font-size: 0.75rem;
-    background: #fff;
-    height: 24px;
-}
-
-/* Zoom */
-.sp-zoom-level {
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: #5f6368;
-    min-width: 38px;
-    text-align: center;
-}
-
-/* Save status */
-.sp-save-status {
-    font-size: 0.75rem;
-    color: #5f6368;
-    white-space: nowrap;
-    min-width: 50px;
-    text-align: right;
-}
-
-.save-status-saved { color: #38a169; }
-.save-status-saving { color: #d69e2e; }
-.save-status-error { color: #e53e3e; font-weight: 600; }
-.save-status-draft { color: #718096; font-style: italic; }
-
 /* ========================================
    Venue Map Page
    ======================================== */
@@ -7248,242 +6937,6 @@ body.menu-open::after {
         min-width: 32px;
         height: 32px;
         padding: 4px;
-    }
-}
-
-/* ========================================
-   Stage Plots Page
-   ======================================== */
-
-/* Main Container */
-.stage-plot-container {
-    display: flex;
-    gap: 1.5rem;
-    height: calc(100vh - 400px);
-    min-height: 600px;
-}
-
-/* Element Library Sidebar */
-.element-library {
-    width: 220px;
-    background: white;
-    border-radius: 8px;
-    padding: 1.5rem 1rem;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    overflow-y: auto;
-    flex-shrink: 0;
-}
-
-.element-library h3 {
-    margin: 0 0 1rem 0;
-    font-size: 1.1rem;
-    color: #2c3e50;
-    border-bottom: 2px solid #c9a961;
-    padding-bottom: 0.5rem;
-}
-
-.library-section {
-    margin-bottom: 1.5rem;
-}
-
-.library-section h4 {
-    font-size: 0.85rem;
-    color: #7f8c8d;
-    text-transform: uppercase;
-    margin: 0 0 0.5rem 0;
-    letter-spacing: 0.5px;
-}
-
-.element-btn {
-    display: block;
-    width: 100%;
-    padding: 0.6rem 0.8rem;
-    margin-bottom: 0.4rem;
-    background: #f8f9fa;
-    border: 1px solid #e0e0e0;
-    border-radius: 4px;
-    text-align: left;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    font-size: 0.9rem;
-}
-
-.element-btn:hover {
-    background: #e8f4f8;
-    border-color: #3498db;
-    transform: translateX(3px);
-}
-
-.element-btn:active {
-    background: #d4e9f3;
-}
-
-/* Canvas Area */
-.canvas-area {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    background: white;
-    border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    overflow: hidden;
-}
-
-.canvas-wrapper {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: #fafafa;
-    padding: 2rem;
-    overflow: hidden; /* Changed from auto to prevent scrollbars */
-    min-height: 500px; /* Ensure minimum height */
-}
-
-#stage-canvas {
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    background: white;
-}
-
-.canvas-info {
-    padding: 1rem 1.5rem;
-    background: #f8f9fa;
-    border-top: 1px solid #e0e0e0;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-#canvas-dimensions {
-    font-weight: 600;
-    color: #2c3e50;
-    margin: 0;
-}
-
-.canvas-help {
-    font-size: 0.85rem;
-    color: #7f8c8d;
-    margin: 0;
-}
-
-/* Mobile Optimization */
-@media (max-width: 768px) {
-    .plot-controls {
-        flex-direction: column;
-        align-items: stretch;
-        gap: 1rem;
-    }
-
-    .controls-left,
-    .controls-center,
-    .controls-right {
-        flex-direction: column;
-        width: 100%;
-        margin-left: 0;
-    }
-
-    .plot-selector {
-        flex-direction: column;
-        align-items: stretch;
-        width: 100%;
-    }
-
-    .plot-dropdown {
-        width: 100%;
-    }
-
-    .save-status {
-        text-align: center;
-    }
-
-    .stage-plot-container {
-        flex-direction: column;
-        height: auto;
-        min-height: 500px;
-    }
-
-    .element-library {
-        width: 100%;
-        max-height: 0;
-        padding: 0 1rem;
-        overflow: hidden;
-        transition: max-height 0.3s ease, padding 0.3s ease;
-    }
-
-    .element-library.mobile-expanded {
-        max-height: 250px;
-        padding: 1rem;
-        overflow-y: auto;
-    }
-
-    .element-library h3 {
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-    }
-
-    .element-library h3::after {
-        content: 'Tap to show elements';
-        font-size: 0.75rem;
-        font-weight: 400;
-        color: #999;
-    }
-
-    .element-library.mobile-expanded h3::after {
-        content: 'Tap to hide';
-    }
-
-    .library-section {
-        margin-bottom: 1rem;
-    }
-
-    .element-btn {
-        padding: 0.5rem;
-        font-size: 0.85rem;
-    }
-
-    .canvas-wrapper {
-        padding: 0.5rem;
-        min-height: 300px;
-    }
-
-    .canvas-info {
-        flex-direction: column;
-        gap: 0.5rem;
-        text-align: center;
-    }
-
-    /* Simplify controls layout */
-    .controls-center .btn-group {
-        flex-direction: row;
-        flex-wrap: wrap;
-    }
-}
-
-
-/* Print Styles for Stage Plots */
-@media print {
-    .element-library,
-    .plot-controls,
-    .properties-panel,
-    .canvas-info,
-    .page-header {
-        display: none !important;
-    }
-
-    .stage-plot-container {
-        display: block;
-    }
-
-    .canvas-wrapper {
-        padding: 0;
-        background: white;
-    }
-
-    #stage-canvas {
-        box-shadow: none;
-        max-width: 100%;
     }
 }
 
@@ -9807,6 +9260,9 @@ body.menu-open::after {
 }
 .hub-season-link:hover { background: rgba(255,255,255,0.07); color: #fff; }
 .hub-season-link.active { background: rgba(255,255,255,0.12); color: #fff; font-weight: 600; }
+.hub-season-link.hub-season-failed { color: rgba(224,85,85,0.75); }
+.hub-season-link.hub-season-failed:hover { background: rgba(224,85,85,0.12); color: #e05555; }
+.hub-season-link.hub-season-failed.active { background: rgba(224,85,85,0.18); color: #e05555; }
 .hub-season-add-btn {
     display: block;
     width: 100%;
@@ -11083,6 +10539,144 @@ table th,
     background: rgba(255,255,255,0.07);
 }
 
+/* Failure-reason subtitle under an event name */
+.hub-fail-reason {
+    font-size: 0.72rem;
+    font-style: italic;
+    font-weight: 400;
+    color: #e0a55e;
+    margin-top: 2px;
+    max-width: 260px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Archive / reactivate buttons — grouped with the row-color button, well
+   clear of Enter (a wide gap + divider) so a slip of the mouse can't
+   accidentally archive an event instead of opening it. */
+.hub-cell-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+}
+.hub-fail-btn, .hub-reactivate-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    visibility: hidden;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 5px 6px;
+    border-radius: 5px;
+    color: var(--ym-text-dim, #888);
+    transition: color 0.15s, background 0.15s;
+}
+.hub-event-row:hover .hub-fail-btn,
+.hub-event-row:hover .hub-reactivate-btn {
+    visibility: visible;
+}
+.hub-fail-btn:hover { color: #e05555; background: rgba(224,85,85,0.12); }
+.hub-reactivate-btn:hover { color: var(--ym-gold, #c8a356); background: rgba(200,163,86,0.15); }
+
+.hub-actions-divider {
+    display: inline-block;
+    width: 1px;
+    height: 16px;
+    margin: 0 10px;
+    background: rgba(255,255,255,0.12);
+}
+
+/* Failure-reason entry popover */
+#hub-fail-picker {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 280px;
+    box-sizing: border-box;
+    background: #1e1e1c;
+    border: 0.5px solid rgba(255,255,255,0.12);
+    border-radius: 8px;
+    padding: 14px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    font-family: var(--font-body, 'Inter', sans-serif);
+    text-transform: none;
+}
+.hub-fail-picker-heading {
+    font-size: 0.8rem;
+    color: rgba(255,255,255,0.8);
+    font-weight: 500;
+    font-family: inherit;
+    text-transform: none;
+}
+.hub-fail-picker-textarea {
+    width: 100%;
+    min-height: 52px;
+    resize: vertical;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 6px;
+    padding: 8px;
+    color: #e8e2d4;
+    font-family: inherit;
+    font-size: 0.82rem;
+    text-transform: none;
+    box-sizing: border-box;
+}
+.hub-fail-picker-textarea:focus { outline: none; border-color: var(--ym-gold, #c8a356); }
+
+/* Primary/secondary actions stack full-width so long labels never clip the
+   panel; the destructive delete lives below a divider, set apart from the
+   two everyday (and undoable) actions above it. */
+.hub-fail-picker-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.hub-fail-picker-cancel, .hub-fail-picker-confirm {
+    font-family: inherit;
+    text-transform: none;
+    font-size: 0.8rem;
+    padding: 8px 10px;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    width: 100%;
+    text-align: center;
+}
+/* Archiving is undoable (Cmd+Z), so it gets the neutral/gold treatment;
+   red is reserved for the one truly destructive, unrecoverable action. */
+.hub-fail-picker-confirm {
+    background: rgba(200,163,86,0.18);
+    color: var(--ym-gold, #c8a356);
+    font-weight: 600;
+}
+.hub-fail-picker-confirm:hover { background: rgba(200,163,86,0.28); }
+.hub-fail-picker-cancel {
+    background: transparent;
+    color: rgba(255,255,255,0.6);
+}
+.hub-fail-picker-cancel:hover { color: #fff; background: rgba(255,255,255,0.08); }
+
+.hub-fail-picker-danger-zone {
+    border-top: 1px solid rgba(255,255,255,0.1);
+    padding-top: 8px;
+    text-align: center;
+}
+.hub-fail-picker-delete {
+    font-family: inherit;
+    text-transform: none;
+    font-size: 0.72rem;
+    padding: 4px 8px;
+    border-radius: 5px;
+    border: none;
+    cursor: pointer;
+    background: transparent;
+    color: rgba(224,85,85,0.6);
+}
+.hub-fail-picker-delete:hover { color: #e05555; background: rgba(224,85,85,0.12); }
+
 /* Row color picker popover */
 #hub-row-color-picker {
     display: flex;
@@ -12016,8 +11610,8 @@ tr:hover .gi-del-btn { color: rgba(255,255,255,0.35); }
     width: 820px;
     max-width: 100%;
     background: #ffffff;
-    box-shadow: 0 8px 48px rgba(0,0,0,0.35);
-    border-radius: 6px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.08), 0 20px 48px rgba(0,0,0,0.28);
+    border-radius: 8px;
     overflow: hidden;
     font-family: 'DM Sans', 'Inter', sans-serif;
     color: #1a1a1a;
@@ -12040,25 +11634,15 @@ tr:hover .gi-del-btn { color: rgba(255,255,255,0.35); }
 .quote-logo-block {
     display: flex;
     align-items: center;
-    gap: 10px;
-    color: #ffffff;
 }
 
-.quote-logo-letters {
-    font-size: 2.4rem;
-    font-weight: 800;
-    letter-spacing: -0.04em;
-    line-height: 1;
-    color: #fff;
-}
-
-.quote-logo-text {
-    font-size: 9px;
-    font-weight: 600;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    line-height: 1.5;
-    color: rgba(255,255,255,0.8);
+.quote-logo-img {
+    display: block;
+    height: 40px;
+    width: auto;
+    /* Source file is solid blue on transparent — recolor to white so it
+       reads against the blue header band instead of needing a white chip. */
+    filter: brightness(0) invert(1);
 }
 
 .quote-org-address {
@@ -12079,28 +11663,56 @@ tr:hover .gi-del-btn { color: rgba(255,255,255,0.35); }
 
 /* Body */
 .quote-body {
-    padding: 8px 40px 32px;
+    padding: 10px 40px 24px;
 }
 
 .quote-title-row {
+    display: block;
+    width: 100%;
+    border: none;
+    outline: none;
+    background: transparent;
+    font-family: inherit;
     text-align: center;
-    font-size: 1.1rem;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    padding: 12px 0 20px;
-    color: #1a1a1a;
+    font-size: 1.6rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 12px 0 6px;
+    color: #1a2540;
+    border-radius: 6px;
+    transition: background-color 0.12s ease;
+}
+
+.quote-title-row:hover { background: rgba(59,91,219,0.04); }
+.quote-title-row:focus { background: rgba(59,91,219,0.07); }
+
+.quote-title-row::after {
+    content: '';
+    display: block;
+    width: 46px;
+    height: 3px;
+    margin: 10px auto 0;
+    background: #3B5BDB;
+    border-radius: 2px;
 }
 
 /* Event details */
 .quote-event-details {
-    margin-bottom: 24px;
+    margin-bottom: 20px;
+    background: #f7f8fc;
+    border: 1px solid #e6e9f5;
+    border-radius: 8px;
+    padding: 10px 16px;
 }
 
 .quote-event-label {
     font-weight: 700;
-    font-size: 13px;
-    color: #1a1a1a;
-    margin-bottom: 4px;
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #6b7bb8;
+    margin-bottom: 5px;
 }
 
 .quote-detail-grid { display: flex; flex-direction: column; gap: 2px; }
@@ -12167,7 +11779,13 @@ tr:hover .gi-del-btn { color: rgba(255,255,255,0.35); }
     border-bottom: 0.5px solid #e0e4f0;
     padding: 7px 10px;
     vertical-align: middle;
+    font-size: 14px;
+    transition: background-color 0.12s ease;
 }
+
+.quote-line-row:hover td:not(.quote-td-cost):not(.quote-td-sub) { background: #f7f8fc; }
+.quote-line-row:hover td.quote-td-cost,
+.quote-line-row:hover td.quote-td-sub { background: #e4e9fa; }
 
 .quote-td-desc { padding-left: 14px !important; }
 
@@ -12181,7 +11799,7 @@ tr:hover .gi-del-btn { color: rgba(255,255,255,0.35); }
     width: 100%;
     border: none;
     background: transparent;
-    font-size: 12.5px;
+    font-size: 14px;
     font-family: inherit;
     color: #1a1a1a;
     padding: 2px 4px;
@@ -12198,10 +11816,73 @@ tr:hover .gi-del-btn { color: rgba(255,255,255,0.35); }
 
 .quote-empty-row td {
     text-align: center;
-    padding: 28px;
+    padding: 16px;
     color: #888;
-    font-size: 13px;
+    font-size: 12.5px;
+    font-style: italic;
     border-bottom: 0.5px solid #e0e4f0;
+}
+
+/* Section header row — groups line items under Talent / Equipment / Labor */
+.quote-section-header td {
+    background: #eef1fb;
+    color: #2d4fc4;
+    font-weight: 700;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 7px 14px !important;
+    padding-left: 11px !important;
+    border-top: 1px solid #d7ddf3;
+    border-bottom: 1px solid #d7ddf3;
+    border-left: 3px solid #3B5BDB;
+}
+
+/* Inline "+ Add" row per section */
+.quote-add-row td {
+    padding: 6px 14px !important;
+    border-bottom: 0.5px solid #e0e4f0;
+}
+
+.quote-add-line-btn {
+    background: none;
+    border: 1px dashed rgba(59,91,219,0.4);
+    border-radius: 6px;
+    color: #3B5BDB;
+    font-family: inherit;
+    font-size: 11.5px;
+    font-weight: 600;
+    padding: 5px 12px;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.quote-add-line-btn:hover {
+    background: rgba(59,91,219,0.07);
+    border-color: rgba(59,91,219,0.65);
+}
+
+/* Section subtotal row — lighter weight than the final grand total */
+.quote-subtotal-row td {
+    background: #f4f6fc;
+    border-bottom: 1px solid #d7ddf3;
+}
+
+.quote-subtotal-label {
+    color: #2d3f8f;
+    font-weight: 600;
+    font-size: 11.5px;
+    text-align: right;
+    padding: 7px 14px !important;
+}
+
+.quote-subtotal-amount {
+    color: #2d3f8f;
+    font-weight: 700;
+    font-size: 12px;
+    text-align: center;
+    padding: 7px 10px !important;
+    background: #e3e7f7 !important;
 }
 
 /* Grand total row */
@@ -12226,6 +11907,92 @@ tr:hover .gi-del-btn { color: rgba(255,255,255,0.35); }
 }
 
 .quote-total-notes { padding: 0 !important; }
+
+/* Optional discount row — editable on screen; hidden on export/print when
+   left blank (see the generic .is-empty rule in the print media block).
+   Two sections side by side: the % you fill in, and the resulting total
+   with that discount applied. */
+.quote-discount-row td.quote-discount-cell {
+    background: #f4f6fc;
+    border-bottom: 1px solid #d7ddf3;
+    padding: 8px 14px !important;
+}
+
+.quote-discount-flex {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 28px;
+}
+
+.quote-discount-block {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.quote-discount-block-label {
+    color: #2d3f8f;
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.quote-pct-input-wrap {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    background: #ffffff;
+    border: 1px solid #c7cef0;
+    border-radius: 5px;
+    padding: 3px 8px;
+}
+
+.quote-pct-input {
+    width: 36px;
+    border: none;
+    outline: none;
+    background: transparent;
+    text-align: right;
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: #2d3f8f;
+    /* Remove native number-input spinner arrows */
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
+.quote-pct-input::-webkit-outer-spin-button,
+.quote-pct-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.quote-pct-suffix {
+    font-size: 12px;
+    font-weight: 600;
+    color: #2d3f8f;
+}
+
+.quote-discount-total-amount {
+    font-size: 13px;
+    font-weight: 700;
+    color: #2d3f8f;
+}
+
+/* Same spinner-arrow cleanup for the QTY/Rate line-item inputs */
+.quote-cell-num {
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
+.quote-cell-num::-webkit-outer-spin-button,
+.quote-cell-num::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
 
 /* Footer band */
 .quote-footer-band {
@@ -12256,6 +12023,8 @@ tr:hover .gi-del-btn { color: rgba(255,255,255,0.35); }
 @media print {
     /* Hide everything by default */
     body > * { display: none !important; }
+    /* Sidebar's reserved body padding is reset in ymu-overrides.css (which
+       loads after this file, so a rule here can't win the cascade tie). */
 
     /* Show only the quote doc */
     .page#quote { display: block !important; padding: 0 !important; }
@@ -12272,9 +12041,23 @@ tr:hover .gi-del-btn { color: rgba(255,255,255,0.35); }
         border-radius: 0 !important;
     }
     .no-print { display: none !important; }
+    /* Rows explicitly marked as not-filled-out — the discount row and any
+       blank/never-edited quote line item — are omitted from the export. */
+    .is-empty { display: none !important; }
+    /* A row that's partially filled out still prints — but any individual
+       cell left blank inside it (e.g. Rate or Notes) was showing its
+       editing-time placeholder ("0.00", "Notes…") as literal ghost text in
+       the export. Blank should just look blank on a client-facing quote. */
+    .quote-cell-input::placeholder,
+    .quote-pct-input::placeholder,
+    .quote-detail-input::placeholder {
+        color: transparent !important;
+    }
     .quote-detail-input { border-bottom: none !important; }
     .quote-cell-input { -webkit-print-color-adjust: exact; }
-    .quote-th, .quote-total-row td, .quote-header-band, .quote-footer-band {
+    .quote-th, .quote-total-row td, .quote-header-band, .quote-footer-band,
+    .quote-section-header td, .quote-subtotal-row td, .quote-event-details,
+    .quote-title-row::after {
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
     }

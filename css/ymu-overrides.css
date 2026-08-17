@@ -151,15 +151,24 @@ h1, h2, h3 {
   color: #6BA3F0 !important;
 }
 
-/* Tabler icon sizing inside nav */
+/* Tabler icon sizing inside nav — some glyphs in the webfont carry a taller
+   internal line-box than others, which can visually spill into the row
+   above/below even though the layout box is sized correctly. Pinning
+   line-height and clipping overflow keeps every icon confined to its row. */
 .nav-link .ti.nav-icon,
 .nav-group-toggle .ti.nav-icon {
   font-size: 12px !important;
+  line-height: 1 !important;
   width: 13px !important;
-  height: auto !important;
+  height: 13px !important;
+  overflow: hidden !important;
   text-align: center !important;
   flex-shrink: 0 !important;
   opacity: 0.55 !important;
+}
+.nav-link,
+.nav-group-toggle {
+  min-height: 26px !important;
 }
 .nav-link.active .ti.nav-icon,
 .nav-link:hover .ti.nav-icon {
@@ -648,6 +657,24 @@ label {
 }
 
 /* ── 12. FILTER / TAB PILLS ────────────────────────────────────────────*/
+
+/* Container was a hardcoded white pill-track from the pre-dark-mode pass.
+   The active .filter-btn gets its own white background so it still reads
+   fine, but the inactive ones use light text meant for a dark backdrop —
+   sitting on white instead, they read as barely-visible white-on-white. */
+.timeline-filters {
+  background: var(--bg-page) !important;
+  border-color: var(--border-medium) !important;
+}
+
+/* Same bug, same fix — .vendor-view-btn's inactive text is also forced
+   light by the shared rule below, and was sitting on this same kind of
+   light cream track. .staff-view-btn keeps its own warm-toned text
+   unaffected either way, but shares this container so it comes along too. */
+.staff-view-toggle,
+.vendor-view-toggle {
+  background: var(--bg-page) !important;
+}
 
 .filter-btn,
 .vendor-view-btn,
@@ -2332,5 +2359,74 @@ select.intake-field-input ~ .intake-field-edit {
   justify-content: center;
 }
 .ical-extra-email-remove:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+/* ── QUOTE DOCUMENT — opt out of dark-mode inputs ───────────────────────
+   The quote is a fixed white printed letterhead, not a themed app page —
+   it should look the same regardless of dark mode. §11's generic
+   input[type=...] rule forces a dark background/border/padding onto every
+   text input site-wide (including these), so it has to be beaten with an
+   equally-!important, scoped rule rather than left to fall through. */
+#quote .quote-detail-input {
+  background: transparent !important;
+  border: none !important;
+  border-bottom: 1px dashed #ccc !important;
+  border-radius: 0 !important;
+  color: #1a1a1a !important;
+  font-family: 'DM Sans', 'Inter', sans-serif !important;
+  font-size: 12.5px !important;
+  padding: 1px 4px !important;
+}
+#quote .quote-detail-input:focus {
+  border-bottom-color: #3B5BDB !important;
+  background: rgba(59,91,219,0.04) !important;
+}
+
+#quote .quote-cell-input {
+  background: transparent !important;
+  border: none !important;
+  border-radius: 3px !important;
+  color: #1a1a1a !important;
+  font-family: 'DM Sans', 'Inter', sans-serif !important;
+  font-size: 14px !important;
+  padding: 2px 4px !important;
+}
+#quote .quote-cell-input:focus {
+  background: rgba(59,91,219,0.07) !important;
+  outline: 1px solid #3B5BDB !important;
+  border: none !important;
+}
+
+#quote .quote-pct-input {
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  color: #2d3f8f !important;
+  font-family: 'DM Sans', 'Inter', sans-serif !important;
+  font-size: 12.5px !important;
+  padding: 0 !important;
+  width: 36px !important;
+}
+
+#quote .quote-title-row {
+  background: transparent !important;
+  border: none !important;
+  border-radius: 6px !important;
+  color: #1a2540 !important;
+  font-family: inherit !important;
+  font-size: 1.6rem !important;
+  padding: 12px 0 6px !important;
+}
+#quote .quote-title-row:hover { background: rgba(59,91,219,0.04) !important; }
+#quote .quote-title-row:focus { background: rgba(59,91,219,0.07) !important; }
+
+/* §15's 210px sidebar-reserved body padding survives into print (the
+   sidebar itself is hidden, but this file loads after styles.css, so its
+   unconditional !important rule always wins that cascade tie regardless of
+   media query — the fix has to live here, not in styles.css's print
+   block). Squeezes the printed quote into a much narrower column than the
+   page actually has, forcing extra wrapping/height. */
+@media print {
+  body { padding-left: 0 !important; }
+}
 
 /* ── END ───────────────────────────────────────────────────────────────*/

@@ -1,10 +1,3 @@
-// Custom Fabric.js properties that must be included in toJSON()/toObject() calls
-const CUSTOM_FABRIC_PROPS = [
-    'objectId', 'rectId', 'isRectDimension', 'dimensionType',
-    'isStageElement', 'elementType', 'pixelsPerFoot', 'gridLine',
-    'fillEnabled', 'fillColor', 'fillOpacity', 'locked'
-];
-
 // Generate a unique client session ID for multi-user collaboration
 if (!sessionStorage.getItem('clientId')) {
     sessionStorage.setItem('clientId', 'client_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9));
@@ -30,7 +23,6 @@ const state = {
     performerDirectory: [],
     roleCategoryMap: {},      // role (lowercase) → budget category string (derived from jobTemplates)
     jobTemplates: [],         // [{id, name, category}] global reusable role → budget mappings
-    stagePlots: [],
     setLists: [],
     setListSearch: '',
     setListStageFilter: 'all',
@@ -53,32 +45,6 @@ const state = {
     staffView: 'team',
     staffDay: 'saturday',
     currentStage: 'main',  // For stage input filtering
-    currentStagePlotType: 'main',  // For stage plot tabs
-    currentPlotId: null,  // Currently selected plot
-    isDraftPlot: false,  // Whether current plot is a local draft (not yet in Firestore)
-    canvas: null,  // Fabric.js canvas instance
-    autoSaveTimeout: null,  // For debounced auto-save
-    isDrawingStage: false,  // Drawing mode flag
-    isEditingStage: false,  // Edit/drag mode flag
-    currentTool: null,  // 'draw' or 'move' - which tool is active
-    stageRectangles: [],  // Array of stage rectangle objects {id, rect, widthLabel, heightLabel}
-    currentDrawingRect: null,  // Rectangle being drawn
-    drawingStartPoint: null,  // Starting point for rectangle draw
-    stageLocked: false,  // Whether stage is locked
-    snapDistance: 10,  // Pixels for snap-to-align
-    zoom: 1.0,  // Current zoom level (1.0 = 100%)
-    isPanning: false,  // Whether user is panning the canvas
-    panStart: null,  // Starting point for panning
-    undoStack: [],  // History of canvas states for undo
-    redoStack: [],  // History of undone states for redo
-    isUndoRedoing: false,  // Flag to prevent history recording during undo/redo
-    isInteracting: false,  // Flag to prevent canvas resize during user interaction
-    dimensionsVisible: true,  // Whether stage dimension labels are shown
-    // Real-time collaboration state
-    dirtyObjectIds: new Set(),    // Object IDs that need saving
-    deletedObjectIds: new Set(),  // Object IDs that were deleted
-    isReceivingRemote: false,     // Flag to suppress re-saving during remote updates
-    plotObjectsUnsubscribe: null, // Firestore listener unsubscribe function
     vmUndoStack: [],  // Undo history for venue map canvas
     vmRedoStack: [],  // Redo history for venue map canvas
     vmIsUndoRedoing: false,  // Flag to prevent history recording during undo/redo
@@ -87,6 +53,7 @@ const state = {
     timelineAnimateRows: true,  // Only animate rows on day/filter switch, not data updates
     timelineEditingRowId: null,  // Row ID currently being inline-edited (blocks re-render)
     timelineRenderPending: false,  // True if a Firestore snapshot arrived during editing
+    tlDragId: null,  // ID of the timeline row currently being dragged
     cueSheetEditingRowId: null,
     cueSheetRenderPending: false,
     cueSheetShowHidden: false,
@@ -305,6 +272,10 @@ const eventDate = new Date('2026-04-25T18:00:00-04:00');
 
 // --- Multi-event system ---
 
+// Pseudo-season used to archive events that didn't move forward, rather
+// than deleting them — keeps the reason on file for future reference.
+const FAILED_INQUIRIES_SEASON = 'Failed Inquiries';
+
 const PHASES = [
     { id: 'phase-0', label: 'Phase 0 (Idea)',                                         color: '#9e9e9e', text: '#fff' },
     { id: 'phase-1', label: 'Phase 1 (Talks w/Client)',                               color: '#9c6fe4', text: '#fff' },
@@ -325,7 +296,6 @@ const ALL_PAGES = [
     { id: 'timeline',            label: 'Timeline' },
     { id: 'technical-cue-sheet', label: 'Technical Cue Sheet' },
     { id: 'input-lists',         label: 'Input Lists' },
-    { id: 'stage-plots',         label: 'Stage Plots' },
     { id: 'set-lists',           label: 'Performers' },
     { id: 'vendors',             label: 'Vendors' },
     { id: 'budget',              label: 'Budget' },
@@ -460,7 +430,6 @@ function setActiveEvent(eventId) {
         cocktailStageInputs:   ref.collection('cocktailStageInputs'),
         staff:                 ref.collection('staff'),
         eventInfo:             ref.collection('event-info'),
-        stagePlots:            ref.collection('stagePlots'),
         venueMapLayers:        ref.collection('venueMapLayers'),
         setLists:              ref.collection('setLists'),
         packingList:           ref.collection('packingList'),
@@ -493,59 +462,9 @@ function initializeApp() {
     _setup('setupVendorFilters', setupVendorFilters);
     _setup('setupStageTabs', setupStageTabs);
     _setup('setupExportAndPrint', setupExportAndPrint);
-    _setup('setupStagePlotTabs', setupStagePlotTabs);
-    _setup('setupStagePlotControls', setupStagePlotControls);
-    _setup('setupZoomControls', setupZoomControls);
-    _setup('setupUndoRedo', setupUndoRedo);
     _setup('setupKeyboardShortcuts', setupKeyboardShortcuts);
-    _setup('setupPlotNameInput', setupPlotNameInput);
-    _setup('setupPropertiesPanel', setupPropertiesPanel);
     _setup('setupVenueMap', setupVenueMap);
     _setup('setupSetListPage', setupSetListPage);
-
-    // Flush pending saves on page unload
-    window.addEventListener('beforeunload', () => {
-        if (state.autoSaveTimeout) {
-            clearTimeout(state.autoSaveTimeout);
-            state.autoSaveTimeout = null;
-        }
-
-        // Save draft canvas to localStorage for recovery
-        if (state.isDraftPlot && state.canvas) {
-            const nonGridObjects = state.canvas.getObjects().filter(o => !o.gridLine);
-            if (nonGridObjects.length > 0) {
-                try {
-                    const canvasJSON = state.canvas.toJSON(CUSTOM_FABRIC_PROPS);
-                    localStorage.setItem('stagePlot_draftCanvas', JSON.stringify(canvasJSON));
-                    localStorage.setItem('stagePlot_draftStageType', state.currentStagePlotType);
-                    const plotNameInput = document.getElementById('plot-name-input');
-                    localStorage.setItem('stagePlot_draftName', plotNameInput?.value || 'Untitled Plot');
-                } catch (e) {
-                    console.error('Error saving draft to localStorage:', e);
-                }
-            }
-        }
-
-        // For saved plots with dirty objects, flush the save
-        if (!state.isDraftPlot && state.currentPlotId &&
-            (state.dirtyObjectIds.size > 0 || state.deletedObjectIds.size > 0)) {
-            savePlot();
-        }
-    });
-
-    // Also flush on visibility change (more reliable on mobile)
-    document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'hidden') {
-            if (state.autoSaveTimeout) {
-                clearTimeout(state.autoSaveTimeout);
-                state.autoSaveTimeout = null;
-            }
-            if (!state.isDraftPlot && state.currentPlotId &&
-                (state.dirtyObjectIds.size > 0 || state.deletedObjectIds.size > 0)) {
-                savePlot();
-            }
-        }
-    });
 
     // Read saved session before anything else runs
     const savedEventId = localStorage.getItem('lastEventId');
@@ -798,7 +717,6 @@ function switchPage(pageName) {
             document.querySelectorAll('.menu-cat-tab').forEach(b => b.classList.toggle('active', b.dataset.cat === 'all'));
             renderMenu();
         }
-        if (pageName === 'stage-plots') initializeStagePlots();
         if (pageName === 'venue-map') {
             if (state.vmCanvas) {
                 // Re-fit canvas to container in case viewport changed, then render
@@ -878,11 +796,10 @@ function setupCollectionListener(collectionKey, stateKey, renderCallbacks = []) 
 function loadAllData() {
     teardownListeners();
     setupCollectionListener('budget', 'budget', [renderBudget, renderVendors, updateDashboard, renderStaff, backfillLinkedContactInfo]);
-    setupCollectionListener('timeline', 'timeline', [renderTimeline, renderCueSheet, updateDashboard]);
+    setupCollectionListener('timeline', 'timeline', [backfillTimelineOrder, renderTimeline, renderCueSheet, updateDashboard]);
     setupCollectionListener('mainStageInputs', 'mainStageInputs', [renderStageInputs]);
     setupCollectionListener('cocktailStageInputs', 'cocktailStageInputs', [renderStageInputs]);
     setupCollectionListener('staff', 'staff', [renderStaff, renderVendors, backfillLinkedContactInfo]);
-    setupCollectionListener('stagePlots', 'stagePlots', [updatePlotSelector, renderTimeline]);
     setupCollectionListener('setLists', 'setLists', [renderSetLists, updateDashboard, renderTimeline]);
     setupCollectionListener('packingList', 'packingList', [renderPackingList]);
     setupCollectionListener('packingCategoryColors', 'packingCategoryColors', [renderPackingList]);
@@ -902,7 +819,7 @@ function loadAllData() {
 
 const LEGACY_COLLECTIONS = [
     'vendors', 'budget', 'timeline', 'mainStageInputs', 'cocktailStageInputs',
-    'staff', 'stagePlots', 'venueMapLayers', 'setLists', 'packingList',
+    'staff', 'venueMapLayers', 'setLists', 'packingList',
     'packingCategoryColors', 'menuItems', 'printedMaterials', 'digitalAssets',
     'guests', 'seatingTables', 'event-info',
 ];
@@ -946,19 +863,6 @@ async function migrateToMultiEvent() {
             await batch.commit();
         }
 
-        // For stage plots, also migrate the nested objects subcollection (v2 schema)
-        if (collName === 'stagePlots') {
-            for (const plotDoc of snap.docs) {
-                const objSnap = await db.collection('stagePlots').doc(plotDoc.id).collection('objects').get();
-                if (objSnap.empty) continue;
-                const destObjects = dest.doc(plotDoc.id).collection('objects');
-                for (let i = 0; i < objSnap.docs.length; i += 499) {
-                    const batch = db.batch();
-                    objSnap.docs.slice(i, i + 499).forEach(doc => batch.set(destObjects.doc(doc.id), doc.data()));
-                    await batch.commit();
-                }
-            }
-        }
     }
 
     await eventRef.update({ migratedAt: firebase.firestore.FieldValue.serverTimestamp() });
@@ -976,6 +880,12 @@ async function loadSeasons() {
             await db.collection('config').doc('seasons').set({ list: state.seasons });
         }
     } catch (e) { /* use defaults */ }
+    // The failed-inquiries archive is always available, even on installs
+    // that predate the feature.
+    if (!state.seasons.includes(FAILED_INQUIRIES_SEASON)) {
+        state.seasons.push(FAILED_INQUIRIES_SEASON);
+        try { await db.collection('config').doc('seasons').set({ list: state.seasons }); } catch (e) { /* use defaults */ }
+    }
     renderSeasonNav();
 }
 
@@ -983,7 +893,7 @@ function renderSeasonNav() {
     const list = document.getElementById('hub-seasons-list');
     if (!list) return;
     list.innerHTML = state.seasons.map(s =>
-        `<button class="hub-season-link ${s === state.currentSeason ? 'active' : ''}" data-season="${escapeHtml(s)}">${escapeHtml(s)}</button>`
+        `<button class="hub-season-link ${s === state.currentSeason ? 'active' : ''}${s === FAILED_INQUIRIES_SEASON ? ' hub-season-failed' : ''}" data-season="${escapeHtml(s)}">${escapeHtml(s)}</button>`
     ).join('');
     list.querySelectorAll('button[data-season]').forEach(btn => {
         btn.addEventListener('click', () => window.switchSeason(btn.dataset.season));
@@ -993,8 +903,10 @@ function renderSeasonNav() {
 window.switchSeason = async function(season) {
     const previousSeason = state.currentSeason;
     state.currentSeason = season;
-    // If this season's staff directory is empty, copy from the previous season
-    if (previousSeason && previousSeason !== season) {
+    // Failed Inquiries is just an archive bin, not a working season — skip
+    // the staff/performer directory carry-forward that real seasons get.
+    const isArchive = season === FAILED_INQUIRIES_SEASON || previousSeason === FAILED_INQUIRIES_SEASON;
+    if (previousSeason && previousSeason !== season && !isArchive) {
         const check = await db.collection('seasons').doc(season).collection('staffDirectory').limit(1).get();
         if (check.empty) await copySeasonData(previousSeason, season);
     }
@@ -1148,11 +1060,15 @@ function renderHub() {
             `<option value="${ph.id}" ${ph.id === ev.phase ? 'selected' : ''}>${ph.label}</option>`
         ).join('');
         const rowAccent = ev.rowColor || '';
+        const isFailed = ev.season === FAILED_INQUIRIES_SEASON;
         return {
             sortKey: ev.date || '',
             html: `<tr class="hub-event-row" style="${rowAccent ? 'box-shadow:inset 2px 0 0 ' + rowAccent : ''}">
                 <td class="hub-cell-date hub-cell-editable" onclick="editHubCell(this,'${ev.id}','date')" data-value="${escapeHtml(ev.date || '')}" title="Click to edit">${fmtDate(ev.date)}</td>
-                <td class="hub-cell-name hub-cell-editable" onclick="editHubCell(this,'${ev.id}','name')" data-value="${escapeHtml(ev.name || '')}" title="Click to edit">${escapeHtml(ev.name || '—')}</td>
+                <td class="hub-cell-name hub-cell-editable" onclick="editHubCell(this,'${ev.id}','name')" data-value="${escapeHtml(ev.name || '')}" title="Click to edit">
+                    ${escapeHtml(ev.name || '—')}
+                    ${ev.failureReason ? `<div class="hub-fail-reason" title="${escapeHtml(ev.failureReason)}">${escapeHtml(ev.failureReason)}</div>` : ''}
+                </td>
                 <td class="hub-cell-groups hub-cell-editable" onclick="editHubCell(this,'${ev.id}','performingGroups')" data-value="${escapeHtml(ev.performingGroups || '')}" title="Click to edit">${escapeHtml(ev.performingGroups || '—')}</td>
                 <td class="hub-cell-phase">
                     <select class="phase-select" style="background:${phase.color};color:${phase.text}"
@@ -1162,6 +1078,13 @@ function renderHub() {
                 </td>
                 <td class="hub-cell-actions">
                     <button class="hub-row-color-btn" onclick="openRowColorPicker(event,'event','${ev.id}')" title="Row color">&#9681;</button>
+                    <button class="hub-fail-btn" onclick="openFailInquiryPanel(event,'${ev.id}')" title="${isFailed ? 'Edit failure reason, or delete' : "Didn't move forward — archive or delete"}">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"></polyline><rect x="1" y="3" width="22" height="5"></rect><line x1="10" y1="12" x2="14" y2="12"></line></svg>
+                    </button>
+                    ${isFailed ? `<button class="hub-reactivate-btn" onclick="reactivateEvent('${ev.id}')" title="Move back to an active season">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
+                    </button>` : ''}
+                    <span class="hub-actions-divider"></span>
                     <button class="hub-enter-btn" onclick="enterEvent('${ev.id}')">Enter &rarr;</button>
                 </td>
             </tr>`
@@ -1301,6 +1224,133 @@ window.applyRowColor = async function(type, id, color) {
 };
 // ─────────────────────────────────────────────────────────────────
 
+// ── Failed Inquiries ────────────────────────────────────────────
+window.openFailInquiryPanel = function(e, eventId) {
+    e.stopPropagation();
+    const existing = document.getElementById('hub-fail-picker');
+    if (existing) {
+        const isSame = existing.dataset.id === eventId;
+        existing.remove();
+        if (isSame) return;
+    }
+
+    const ev = state.events.find(ev => ev.id === eventId);
+    if (!ev) return;
+
+    const btn = e.currentTarget;
+    const rect = btn.getBoundingClientRect();
+
+    const panel = document.createElement('div');
+    panel.id = 'hub-fail-picker';
+    panel.dataset.id = eventId;
+    panel.innerHTML = `
+        <div class="hub-fail-picker-heading">This event isn't moving forward?</div>
+        <textarea class="hub-fail-picker-textarea" placeholder="Reason (optional)">${escapeHtml(ev.failureReason || '')}</textarea>
+        <div class="hub-fail-picker-actions">
+            <button type="button" class="hub-fail-picker-confirm">Move to Failed Inquiries</button>
+            <button type="button" class="hub-fail-picker-cancel">Cancel</button>
+        </div>
+        <div class="hub-fail-picker-danger-zone">
+            <button type="button" class="hub-fail-picker-delete">Delete permanently</button>
+        </div>
+    `;
+    panel.style.cssText = `position:fixed;top:${rect.bottom + 6}px;right:${window.innerWidth - rect.right}px;z-index:9999`;
+    document.body.appendChild(panel);
+
+    const textarea = panel.querySelector('.hub-fail-picker-textarea');
+    textarea.focus();
+
+    panel.querySelector('.hub-fail-picker-cancel').addEventListener('click', () => panel.remove());
+    panel.querySelector('.hub-fail-picker-confirm').addEventListener('click', () => {
+        markEventFailed(eventId, textarea.value.trim());
+        panel.remove();
+    });
+    panel.querySelector('.hub-fail-picker-delete').addEventListener('click', () => {
+        panel.remove();
+        window.deleteEvent(eventId, ev.name || 'this event');
+    });
+
+    setTimeout(() => document.addEventListener('click', _closeFailPicker, { once: true }), 0);
+};
+
+function _closeFailPicker(e) {
+    const panel = document.getElementById('hub-fail-picker');
+    if (panel && !panel.contains(e.target)) panel.remove();
+}
+
+async function markEventFailed(eventId, reason) {
+    const ev = state.events.find(e => e.id === eventId);
+    if (!ev) return;
+
+    const prevSeason = ev.season || state.currentSeason;
+    const prevReason = ev.failureReason || '';
+    if (prevSeason === FAILED_INQUIRIES_SEASON && reason === prevReason) return;
+
+    ev.season = FAILED_INQUIRIES_SEASON;
+    ev.previousSeason = prevSeason;
+    ev.failureReason = reason;
+    renderHub();
+
+    try {
+        await eventsCollection.doc(eventId).update({
+            season: FAILED_INQUIRIES_SEASON,
+            previousSeason: prevSeason,
+            failureReason: reason,
+            failedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        });
+        showToast(`"${ev.name || 'Event'}" moved to Failed Inquiries — Cmd+Z to undo`);
+        pushUndo('Mark event failed', async () => {
+            const current = state.events.find(e => e.id === eventId);
+            if (current) { current.season = prevSeason; current.failureReason = prevReason; }
+            renderHub();
+            await eventsCollection.doc(eventId).update({
+                season: prevSeason,
+                failureReason: prevReason,
+                failedAt: firebase.firestore.FieldValue.delete(),
+            });
+        });
+    } catch (err) {
+        console.error('Error marking event failed:', err);
+        ev.season = prevSeason;
+        ev.failureReason = prevReason;
+        renderHub();
+        showToast('Error updating event', 'error');
+    }
+}
+
+window.reactivateEvent = async function(eventId) {
+    const ev = state.events.find(e => e.id === eventId);
+    if (!ev) return;
+
+    const targetSeason = ev.previousSeason || state.currentSeason;
+    const prevReason = ev.failureReason || '';
+
+    ev.season = targetSeason;
+    ev.failureReason = '';
+    renderHub();
+
+    try {
+        await eventsCollection.doc(eventId).update({
+            season: targetSeason,
+            failureReason: firebase.firestore.FieldValue.delete(),
+        });
+        showToast(`"${ev.name || 'Event'}" reactivated — Cmd+Z to undo`);
+        pushUndo('Reactivate event', async () => {
+            const current = state.events.find(e => e.id === eventId);
+            if (current) { current.season = FAILED_INQUIRIES_SEASON; current.failureReason = prevReason; }
+            renderHub();
+            await eventsCollection.doc(eventId).update({ season: FAILED_INQUIRIES_SEASON, failureReason: prevReason });
+        });
+    } catch (err) {
+        console.error('Error reactivating event:', err);
+        ev.season = FAILED_INQUIRIES_SEASON;
+        ev.failureReason = prevReason;
+        renderHub();
+        showToast('Error reactivating event', 'error');
+    }
+};
+// ─────────────────────────────────────────────────────────────────
+
 window.editHubCell = function(cell, eventId, field) {
     const currentValue = cell.dataset.value || '';
     if (cell.querySelector('input')) return; // already editing
@@ -1431,7 +1481,6 @@ async function enterEvent(eventId) {
     const event = { id: snap.id, ...snap.data() };
     state.activeEvent = event;
     state.globalUndoStack = [];
-    await flushStagePlotAutosave();
     // Reset timeline days — will be initialized lazily on first renderTimeline()
     state.timelineDays = null;
     state.currentDay = 'Thursday';
@@ -1465,7 +1514,7 @@ async function enterEvent(eventId) {
     // restored page never briefly shows the previous event's rows.
     [
         'budget', 'timeline', 'mainStageInputs', 'cocktailStageInputs',
-        'staff', 'stagePlots', 'setLists', 'packingList', 'packingCategoryColors',
+        'staff', 'setLists', 'packingList', 'packingCategoryColors',
         'menuItems', 'printedMaterials', 'digitalAssets', 'guests', 'seatingTables',
         'invitees',
     ].forEach(k => { state[k] = []; });
@@ -1485,7 +1534,6 @@ async function enterEvent(eventId) {
 }
 
 async function backToHub() {
-    await flushStagePlotAutosave();
     teardownListeners();
     state.currentEventId = null;
     state.activeEvent = null;
@@ -1682,7 +1730,7 @@ window.confirmDuplicateEvent = async function() {
 
     const SUBCOLLECTIONS = [
         'budget', 'timeline', 'mainStageInputs', 'cocktailStageInputs',
-        'staff', 'stagePlots', 'setLists', 'packingList', 'packingCategoryColors',
+        'staff', 'setLists', 'packingList', 'packingCategoryColors',
         'menuItems', 'printedMaterials', 'digitalAssets', 'guests', 'seatingTables',
         'invitees', 'vendors', 'venueMapLayers', 'event-info',
     ];
@@ -1716,20 +1764,6 @@ window.confirmDuplicateEvent = async function() {
                     batch.set(destRef.collection(collName).doc(doc.id), doc.data())
                 );
                 await batch.commit();
-            }
-
-            // stagePlots has nested objects subcollection per plot doc
-            if (collName === 'stagePlots') {
-                for (const plotDoc of snap.docs) {
-                    const objSnap = await sourceRef.collection('stagePlots').doc(plotDoc.id).collection('objects').get();
-                    if (objSnap.empty) continue;
-                    const destObjects = destRef.collection('stagePlots').doc(plotDoc.id).collection('objects');
-                    for (let i = 0; i < objSnap.docs.length; i += 499) {
-                        const batch = db.batch();
-                        objSnap.docs.slice(i, i + 499).forEach(doc => batch.set(destObjects.doc(doc.id), doc.data()));
-                        await batch.commit();
-                    }
-                }
             }
         }
 
@@ -3017,6 +3051,8 @@ async function saveVendorScheduleCell(cell, row, afterSave) {
     const linkedStaffId = budgetItem && budgetItem.linkedStaffId;
 
     try {
+        const targetColl = linkedStaffId ? collections.staff : collections.budget;
+        const targetId = linkedStaffId || id;
         if (linkedStaffId) {
             await collections.staff.doc(linkedStaffId).update({
                 [`schedule.${day}`]: writeValue,
@@ -3028,6 +3064,15 @@ async function saveVendorScheduleCell(cell, row, afterSave) {
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp()
             });
         }
+        const eventId = state.currentEventId;
+        pushUndo('Edit schedule', async () => {
+            if (eventId !== state.currentEventId) { showToast('Nothing to undo', 'info'); return; }
+            const revertValue = original === '' ? firebase.firestore.FieldValue.delete() : original;
+            await targetColl.doc(targetId).update({
+                [`schedule.${day}`]: revertValue,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+        });
         cell.dataset.original = newValue;
         restoreVendorScheduleCellDisplay(cell);
         showToast('Updated');
@@ -3280,12 +3325,22 @@ function populateBudgetCategorySelect() {
 }
 
 function renderBudget() {
-    if (state.activeEvent && !state.activeEvent.budgetSetup) {
+    if (state.currentPage !== 'budget') return;
+    const skippedThisEvent = state.budgetSetupSkippedEventId === state.currentEventId;
+    if (state.activeEvent && !state.activeEvent.budgetSetup && !skippedThisEvent) {
         openBudgetSetupModal();
         return;
     }
     renderBudgetGrouped();
 }
+
+window.skipBudgetSetup = function() {
+    // Not persisted — nothing is configured, so the setup modal will prompt
+    // again on a fresh visit. Just defers it for the rest of this session.
+    state.budgetSetupSkippedEventId = state.currentEventId;
+    document.getElementById('budget-setup-modal').classList.remove('is-open');
+    renderBudgetGrouped();
+};
 
 window.resetBudgetSetup = async function() {
     if (!state.currentEventId) return;
@@ -3294,6 +3349,7 @@ window.resetBudgetSetup = async function() {
             budgetSetup: firebase.firestore.FieldValue.delete()
         });
         state.activeEvent.budgetSetup = null;
+        if (state.budgetSetupSkippedEventId === state.currentEventId) state.budgetSetupSkippedEventId = null;
         switchPage('budget');
     } catch(e) {
         console.error('Failed to reset budget setup:', e);
@@ -3496,18 +3552,20 @@ function renderBudgetGrouped() {
     const clearBtn = document.getElementById('budget-search-clear');
     if (clearBtn) clearBtn.style.display = isSearching ? '' : 'none';
 
-    if (state.budget.length === 0) {
-        container.innerHTML = '<div class="card"><div class="card-body"><p class="empty-state">No budget items</p></div></div>';
-        return;
-    }
-
     if (isSearching && filteredBudget.length === 0) {
         container.innerHTML = `<div class="card"><div class="card-body"><p class="empty-state">No items match "${escapeHtml(searchQuery)}"</p></div></div>`;
         return;
     }
 
-    // Group filtered items by category
+    // Group filtered items by category. Seed every configured letter first
+    // (A–G or A/B, per the event's budget setup) so each always shows as its
+    // own section with a phantom "+ add" row, even with zero items yet —
+    // skip this seeding while searching, since a text search should only
+    // surface matching results, not invite adding to unrelated categories.
     const categorized = {};
+    if (!isSearching) {
+        getBudgetCategories().forEach(c => { categorized[c.value] = []; });
+    }
     filteredBudget.forEach(item => {
         const cat = item.category || 'Uncategorized';
         if (!categorized[cat]) {
@@ -3650,6 +3708,69 @@ function renderBudgetGrouped() {
 }
 
 // Timeline
+// ── Manual ordering ──────────────────────────────────────────────
+// Rows display in an explicit `order` (number) rather than being sorted by
+// time — this lets rows with the same/no time be arranged manually via drag
+// and drop. Ties or missing values fall back to time so behavior stays sane
+// until backfillTimelineOrder() has assigned every row a real value.
+function timelineOrderComparator(a, b) {
+    const aHas = typeof a.order === 'number';
+    const bHas = typeof b.order === 'number';
+    if (aHas && bHas) return a.order - b.order;
+    if (aHas) return -1;
+    if (bHas) return 1;
+    if (!a.time && !b.time) return 0;
+    if (!a.time) return 1;
+    if (!b.time) return -1;
+    return a.time.localeCompare(b.time);
+}
+
+function timelineSortedDayItems(day) {
+    return state.timeline.filter(i => i.day === day).sort(timelineOrderComparator);
+}
+
+// Midpoint ordering: new value always sits strictly between its neighbors.
+function orderBetween(prevOrder, nextOrder) {
+    const hasPrev = typeof prevOrder === 'number';
+    const hasNext = typeof nextOrder === 'number';
+    if (hasPrev && hasNext) return (prevOrder + nextOrder) / 2;
+    if (hasPrev) return prevOrder + 1000;
+    if (hasNext) return nextOrder - 1000;
+    return 1000;
+}
+
+function nextTimelineOrderAfter(afterItem) {
+    const dayItems = timelineSortedDayItems(afterItem.day);
+    const idx = dayItems.findIndex(i => i.id === afterItem.id);
+    const nextItem = idx >= 0 ? dayItems[idx + 1] : null;
+    return orderBetween(afterItem.order, nextItem?.order);
+}
+
+// One-time-per-row migration: assigns every timeline row missing an `order`
+// a value that preserves today's time-sorted position, so introducing manual
+// ordering doesn't reshuffle anything on first load.
+function backfillTimelineOrder() {
+    const items = state.timeline;
+    if (!items || items.length === 0) return;
+    if (!items.some(i => typeof i.order !== 'number')) return;
+
+    const days = [...new Set(items.map(i => i.day))];
+    const batch = firebase.firestore().batch();
+    let hasWrites = false;
+    days.forEach(day => {
+        let next = 1000;
+        items.filter(i => i.day === day).sort(timelineOrderComparator).forEach(item => {
+            if (typeof item.order !== 'number') {
+                item.order = next;
+                batch.update(collections.timeline.doc(item.id), { order: next });
+                hasWrites = true;
+            }
+            next = item.order + 1000;
+        });
+    });
+    if (hasWrites) batch.commit().catch(err => console.error('Error backfilling timeline order:', err));
+}
+
 function renderTimeline() {
     // Guard: don't rebuild DOM if user is editing a cell
     if (state.timelineEditingRowId) {
@@ -3702,6 +3823,7 @@ function renderTimeline() {
     if (filteredTimeline.length === 0) {
         const phantomOnly = `
             <tr class="tl-row tl-phantom-row no-anim" data-phantom="true">
+                <td class="drag-col no-print"></td>
                 <td class="checkbox-col"></td>
                 <td class="time-col" data-field="time" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ time</span></td>
                 <td class="duration-col" data-field="duration" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ duration</span></td>
@@ -3709,8 +3831,6 @@ function renderTimeline() {
                 <td class="prod-col"></td>
                 <td class="responsible-col" data-field="responsible" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ responsible</span></td>
                 <td class="staff-col" data-field="staff" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ staff</span></td>
-                <td class="setlist-col"></td>
-                <td class="stageplot-col"></td>
                 <td class="actions-col no-print"></td>
             </tr>
         `;
@@ -3719,12 +3839,7 @@ function renderTimeline() {
         return;
     }
 
-    // Sort by time
-    const sorted = [...filteredTimeline].sort((a, b) => {
-        if (!a.time) return 1;
-        if (!b.time) return -1;
-        return a.time.localeCompare(b.time);
-    });
+    const sorted = [...filteredTimeline].sort(timelineOrderComparator);
 
     const rowsHtml = sorted.map((item, idx) => {
         const isComplete = item.completed === true || item.status === 'complete';
@@ -3738,7 +3853,16 @@ function renderTimeline() {
         return `
             <tr class="tl-row ${isComplete ? 'task-completed' : ''} ${hasHighlight ? 'tl-highlighted' : ''} ${skipAnim ? 'no-anim' : ''}"
                 data-id="${item.id}"
-                style="--row-accent: ${borderColor}; ${animDelay}">
+                style="--row-accent: ${borderColor}; ${animDelay}"
+                ondragover="handleTimelineDragOver(event, this)"
+                ondragleave="handleTimelineDragLeave(event, this)"
+                ondrop="handleTimelineDrop(event, '${item.id}')">
+                <td class="drag-col no-print">
+                    <span class="tl-drag-handle" draggable="true"
+                          ondragstart="handleTimelineDragStart(event, '${item.id}')"
+                          ondragend="handleTimelineDragEnd(event)"
+                          title="Drag to reorder">⋮⋮</span>
+                </td>
                 <td class="checkbox-col">
                     <input type="checkbox" class="tl-checkbox"
                            ${isComplete ? 'checked' : ''}
@@ -3750,26 +3874,6 @@ function renderTimeline() {
                 <td class="prod-col"><input type="checkbox" class="tl-checkbox" ${item.production === true || item.tag === 'production' ? 'checked' : ''} onchange="toggleTimelineField('${item.id}', 'production', this.checked)"></td>
                 <td class="responsible-col" data-field="responsible" data-original="${escapeHtml(item.responsible || '')}" onclick="editTimelineCell(this)">${escapeHtml(item.responsible || '')}</td>
                 <td class="staff-col" data-field="staff" data-original="${escapeHtml(item.staff || '')}" onclick="editTimelineCell(this)">${escapeHtml(item.staff || '')}</td>
-                <td class="setlist-col">
-                    ${item.performer && state.setLists.some(sl => sl.performer && sl.performer.toLowerCase() === item.performer.toLowerCase()) ? `
-                    <button class="action-icon action-icon-link" onclick="goToLinkedSetList('${escapeHtml(item.performer).replace(/'/g, "\\'")}')" title="Go to set list: ${escapeHtml(item.performer)}">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>
-                        <span class="link-label">${escapeHtml(item.performer)}</span>
-                    </button>` : `
-                    <button class="action-icon action-icon-assign" onclick="assignTimelineLink('${item.id}', 'performer')" title="Assign set list">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                    </button>`}
-                </td>
-                <td class="stageplot-col">
-                    ${item.stagePlotId && state.stagePlots.some(sp => sp.id === item.stagePlotId) ? `
-                    <button class="action-icon action-icon-link" onclick="goToLinkedStagePlot('${item.stagePlotId}')" title="Go to stage plot: ${escapeHtml((state.stagePlots.find(sp => sp.id === item.stagePlotId) || {}).name || '')}">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
-                        <span class="link-label">${escapeHtml((state.stagePlots.find(sp => sp.id === item.stagePlotId) || {}).name || '')}</span>
-                    </button>` : `
-                    <button class="action-icon action-icon-assign" onclick="assignTimelineLink('${item.id}', 'stagePlotId')" title="Assign stage plot">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                    </button>`}
-                </td>
                 <td class="actions-col no-print">
                     <div class="actions-row">
                         <div class="color-swatch-wrapper">
@@ -3810,8 +3914,6 @@ function renderTimeline() {
             <td class="prod-col"></td>
             <td class="responsible-col" data-field="responsible" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ responsible</span></td>
             <td class="staff-col" data-field="staff" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ staff</span></td>
-            <td class="setlist-col"></td>
-            <td class="stageplot-col"></td>
             <td class="actions-col no-print"></td>
         </tr>
     `;
@@ -4218,9 +4320,7 @@ function openTimelineModal(itemId = null) {
             'timeline-responsible': 'responsible',
             'timeline-staff': 'staff',
             'timeline-production': 'production',
-            'timeline-notes': 'notes',
-            'timeline-performer': 'performer',
-            'timeline-stage-plot': 'stagePlotId'
+            'timeline-notes': 'notes'
         },
         defaultValues: {
             'timeline-day': state.currentDay
@@ -4229,40 +4329,6 @@ function openTimelineModal(itemId = null) {
     // Show the current day in the read-only display field
     document.getElementById('timeline-day-display').value =
         document.getElementById('timeline-day').value || state.currentDay;
-    populateTimelineLinkedDropdowns();
-}
-
-function populateTimelineLinkedDropdowns() {
-    // Populate performer dropdown from set lists
-    const performerSelect = document.getElementById('timeline-performer');
-    if (performerSelect) {
-        const currentVal = performerSelect.value;
-        const performers = [...new Set(state.setLists.map(sl => sl.performer).filter(Boolean))].sort();
-        performerSelect.innerHTML = '<option value="">— None —</option>' +
-            performers.map(p => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join('');
-        performerSelect.value = currentVal;
-    }
-
-    // Populate stage plot dropdown grouped by stage type
-    const plotSelect = document.getElementById('timeline-stage-plot');
-    if (plotSelect) {
-        const currentVal = plotSelect.value;
-        const mainPlots = state.stagePlots.filter(p => p.stageType === 'main').sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-        const cocktailPlots = state.stagePlots.filter(p => p.stageType === 'cocktail').sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-        let html = '<option value="">— None —</option>';
-        if (mainPlots.length) {
-            html += '<optgroup label="Main Stage">' +
-                mainPlots.map(p => `<option value="${p.id}">${escapeHtml(p.name || 'Untitled')}</option>`).join('') +
-                '</optgroup>';
-        }
-        if (cocktailPlots.length) {
-            html += '<optgroup label="Cocktail Stage">' +
-                cocktailPlots.map(p => `<option value="${p.id}">${escapeHtml(p.name || 'Untitled')}</option>`).join('') +
-                '</optgroup>';
-        }
-        plotSelect.innerHTML = html;
-        plotSelect.value = currentVal;
-    }
 }
 
 // Form Handlers
@@ -4441,9 +4507,7 @@ async function handleTimelineSubmit(e) {
             'timeline-responsible': 'responsible',
             'timeline-staff': 'staff',
             'timeline-production': 'production',
-            'timeline-notes': 'notes',
-            'timeline-performer': 'performer',
-            'timeline-stage-plot': 'stagePlotId'
+            'timeline-notes': 'notes'
         },
         numericFields: []
     });
@@ -4454,65 +4518,6 @@ async function handleTimelineSubmit(e) {
 // CRUD Operations
 window.editBudgetItem = (id) => openBudgetModal(id);
 window.editTimelineItem = (id) => openTimelineModal(id);
-
-function updateNavActiveState(pageName) {
-    const navLinks = document.querySelectorAll('.nav-link');
-    navLinks.forEach(l => l.classList.toggle('active', l.dataset.page === pageName));
-    updateNavGroupIndicators();
-}
-
-window.goToLinkedSetList = function(performer) {
-    switchPage('set-lists');
-    updateNavActiveState('set-lists');
-    // Find and highlight the matching accordion item after switchPage renders
-    setTimeout(() => {
-        const items = document.querySelectorAll('.setlist-accordion-item');
-        for (const item of items) {
-            const perfEl = item.querySelector('.setlist-performer');
-            if (perfEl && perfEl.textContent.toLowerCase() === performer.toLowerCase()) {
-                // Expand the accordion body
-                const body = item.querySelector('.setlist-accordion-body');
-                const icon = item.querySelector('.setlist-toggle-icon');
-                if (body) body.style.display = '';
-                if (icon) icon.innerHTML = '&#9660;';
-                item.classList.add('expanded');
-                item.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                item.classList.add('setlist-accordion-highlight');
-                setTimeout(() => item.classList.remove('setlist-accordion-highlight'), 2000);
-                break;
-            }
-        }
-    }, 100);
-};
-
-window.goToLinkedStagePlot = function(plotId) {
-    const plot = state.stagePlots.find(p => p.id === plotId);
-    if (!plot) return;
-    // Pre-set state so initializeStagePlots (called by switchPage) picks up the right tab and plot
-    state.currentStagePlotType = plot.stageType || 'main';
-    state.currentPlotId = plotId;
-    switchPage('stage-plots');
-    updateNavActiveState('stage-plots');
-    // Set the correct stage type tab visually
-    const tabs = document.querySelectorAll('.stage-plot-tab');
-    tabs.forEach(t => t.classList.toggle('active', t.dataset.stageType === state.currentStagePlotType));
-    updatePlotSelector();
-    // Load the specific plot
-    const plotSelect = document.getElementById('plot-select');
-    if (plotSelect) plotSelect.value = plotId;
-    loadPlot(plotId);
-};
-
-window.assignTimelineLink = function(itemId, fieldType) {
-    // Open the timeline modal for this item so the user can pick from the dropdowns
-    openTimelineModal(itemId);
-    // Auto-focus the relevant dropdown
-    setTimeout(() => {
-        const selectId = fieldType === 'performer' ? 'timeline-performer' : 'timeline-stage-plot';
-        const el = document.getElementById(selectId);
-        if (el) el.focus();
-    }, 100);
-};
 
 window.duplicateBudgetItem = async (id) => {
     const item = state.budget.find(i => i.id === id);
@@ -4682,6 +4687,7 @@ window.duplicateTimelineItem = async (id) => {
 
     const { id: _id, createdAt, updatedAt, ...data } = item;
     data.event = (data.event || '') + ' (copy)';
+    data.order = nextTimelineOrderAfter(item);
     data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
     data.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
 
@@ -5094,12 +5100,7 @@ function exportTimelineToExcel() {
         // Filter by day
         const filteredTimeline = state.timeline.filter(item => item.day === day);
 
-        // Sort by time
-        const sorted = [...filteredTimeline].sort((a, b) => {
-            if (!a.time) return 1;
-            if (!b.time) return -1;
-            return a.time.localeCompare(b.time);
-        });
+        const sorted = [...filteredTimeline].sort(timelineOrderComparator);
 
         // Prepare data for Excel
         const data = sorted.map(item => ({
@@ -5218,6 +5219,10 @@ function editTimelineCell(cell) {
 
     // Set editing guard (use 'phantom' for phantom row)
     state.timelineEditingRowId = isPhantom ? 'phantom' : rowId;
+    // Unlike timelineEditingRowId, this isn't cleared when editing stops —
+    // it's "where you last were," used by Cmd/Ctrl+Enter to insert a new
+    // row right after it instead of always at the bottom.
+    if (!isPhantom) state.timelineLastActiveRowId = rowId;
 
     row.classList.add('editing');
 
@@ -5285,6 +5290,11 @@ function handleCellKeydown(e, cell, row) {
             saveSingleCell(cell, row, true);
         }
         navigateToAdjacentCell(row, field, direction);
+    } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+        // Handled globally by setupKeyboardShortcuts (insert a new row right
+        // after this one) — just save what's currently being typed first.
+        e.preventDefault();
+        if (!isPhantom) saveSingleCell(cell, row, true);
     } else if (e.key === 'Enter') {
         e.preventDefault();
         if (isPhantom) {
@@ -5382,6 +5392,14 @@ function saveSingleCell(cell, row, keepEditing = false) {
 
     // Optimistic local update so deferred renders show correct value
     item[field] = newValue;
+
+    const eventId = state.currentEventId;
+    pushUndo(`Edit ${field}`, async () => {
+        if (eventId !== state.currentEventId) { showToast('Nothing to undo', 'info'); return; }
+        const current = state.timeline.find(i => i.id === id);
+        if (current) current[field] = oldValue;
+        await collections.timeline.doc(id).update({ [field]: oldValue, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    });
 
     // Save to Firestore
     const updates = { [field]: newValue, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
@@ -5533,6 +5551,14 @@ function saveCueSheetCell(cell, row, keepEditing = false) {
 
     item[field] = newValue;
 
+    const eventId = state.currentEventId;
+    pushUndo(`Edit ${field}`, async () => {
+        if (eventId !== state.currentEventId) { showToast('Nothing to undo', 'info'); return; }
+        const current = state.timeline.find(i => i.id === id);
+        if (current) current[field] = oldValue;
+        await collections.timeline.doc(id).update({ [field]: oldValue, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    });
+
     const updates = { [field]: newValue, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
     collections.timeline.doc(id).update(updates).catch(err => {
         console.error('Error saving cue cell:', err);
@@ -5673,8 +5699,6 @@ async function commitNewRow() {
     data.tag = '';
     data.notes = '';
     data.highlightColor = '';
-    data.performer = '';
-    data.stagePlotId = '';
     data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
     data.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
 
@@ -5690,6 +5714,149 @@ async function commitNewRow() {
 
     clearTimelineEditingFlag();
 }
+
+// Cmd/Ctrl+Enter — insert a new row right after wherever you last were,
+// instead of always appending at the bottom phantom row. Rows display in
+// manual `order`, so "right after" means an order value between the
+// reference row and whatever currently follows it.
+async function insertTimelineRowAfterCurrent() {
+    if (!state.currentEventId) return;
+
+    // "Where you are": the row containing focus right now, falling back to
+    // the last row you edited/clicked, even if focus has since moved away.
+    const focusedRow = document.activeElement?.closest?.('tr.tl-row:not(.tl-phantom-row)');
+    const afterId = focusedRow?.dataset.id || state.timelineLastActiveRowId;
+    const afterItem = afterId ? state.timeline.find(t => t.id === afterId && t.day === state.currentDay) : null;
+
+    // If a cell was mid-edit (its value was just saved via keepEditing=true,
+    // which deliberately leaves the render guard up so this function can run
+    // first), release the guard now so both that save and the new row below
+    // actually render instead of silently queuing behind timelineEditingRowId.
+    document.querySelectorAll('tr.tl-row.editing').forEach(r => r.classList.remove('editing'));
+    clearTimelineEditingFlag();
+
+    // No reference row yet this session — fall back to the old behavior.
+    if (!afterItem) {
+        const phantom = document.querySelector('.tl-phantom-row');
+        if (phantom) {
+            const firstCell = phantom.querySelector(`td[data-field="${TIMELINE_FIELD_ORDER[0]}"]`);
+            if (firstCell) editTimelineCell(firstCell);
+        }
+        return;
+    }
+
+    const data = {
+        day: state.currentDay,
+        time: afterItem.time || '',
+        order: nextTimelineOrderAfter(afterItem),
+        duration: '',
+        event: '',
+        responsible: '',
+        staff: '',
+        production: false,
+        tag: '',
+        notes: '',
+        completed: false,
+        status: 'not-started',
+        highlightColor: '',
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    };
+
+    try {
+        const ref = await collections.timeline.add(data);
+        state.timelineLastActiveRowId = ref.id;
+        // Render right off our own write instead of waiting on the listener's
+        // round-trip — setupCollectionListener replaces state.timeline wholesale
+        // on its next fire anyway, so this optimistic entry is just temporary.
+        state.timeline.push({ id: ref.id, ...data });
+        state.timelineAnimateRows = false;
+        renderTimeline();
+        const cell = document.querySelector(`tr[data-id="${ref.id}"] td[data-field="event"]`);
+        if (cell) editTimelineCell(cell);
+    } catch (error) {
+        console.error('Error inserting row:', error);
+        showToast('Error adding task', 'error');
+    }
+}
+
+// ── Timeline drag-and-drop reordering ────────────────────────────
+function handleTimelineDragStart(e, id) {
+    state.tlDragId = id;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', id);
+    const row = e.target.closest('tr');
+    if (row) row.classList.add('tl-dragging');
+}
+window.handleTimelineDragStart = handleTimelineDragStart;
+
+function handleTimelineDragOver(e, row) {
+    if (!state.tlDragId || row.dataset.id === state.tlDragId) return;
+    e.preventDefault();
+    const rect = row.getBoundingClientRect();
+    const isAfter = (e.clientY - rect.top) > rect.height / 2;
+    row.classList.toggle('tl-drag-over-bottom', isAfter);
+    row.classList.toggle('tl-drag-over-top', !isAfter);
+}
+window.handleTimelineDragOver = handleTimelineDragOver;
+
+function handleTimelineDragLeave(e, row) {
+    row.classList.remove('tl-drag-over-top', 'tl-drag-over-bottom');
+}
+window.handleTimelineDragLeave = handleTimelineDragLeave;
+
+async function handleTimelineDrop(e, targetId) {
+    e.preventDefault();
+    const row = e.currentTarget;
+    const dropAfter = row.classList.contains('tl-drag-over-bottom');
+    row.classList.remove('tl-drag-over-top', 'tl-drag-over-bottom');
+
+    const dragId = state.tlDragId;
+    state.tlDragId = null;
+    if (!dragId || dragId === targetId) return;
+
+    const dragItem = state.timeline.find(i => i.id === dragId);
+    const targetItem = state.timeline.find(i => i.id === targetId);
+    if (!dragItem || !targetItem || dragItem.day !== targetItem.day) return;
+
+    const dayItems = timelineSortedDayItems(targetItem.day).filter(i => i.id !== dragId);
+    const targetIdx = dayItems.findIndex(i => i.id === targetId);
+    const prevItem = dropAfter ? dayItems[targetIdx] : dayItems[targetIdx - 1];
+    const nextItem = dropAfter ? dayItems[targetIdx + 1] : dayItems[targetIdx];
+
+    const oldOrder = dragItem.order;
+    const newOrder = orderBetween(prevItem?.order, nextItem?.order);
+    if (newOrder === oldOrder) return;
+
+    dragItem.order = newOrder;
+    renderTimeline();
+
+    const eventId = state.currentEventId;
+    pushUndo('Reorder task', async () => {
+        if (eventId !== state.currentEventId) { showToast('Nothing to undo', 'info'); return; }
+        const current = state.timeline.find(i => i.id === dragId);
+        if (current) current.order = oldOrder;
+        renderTimeline();
+        await collections.timeline.doc(dragId).update({ order: oldOrder });
+    });
+
+    try {
+        await collections.timeline.doc(dragId).update({ order: newOrder, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    } catch (err) {
+        console.error('Error reordering task:', err);
+        dragItem.order = oldOrder;
+        renderTimeline();
+        showToast('Error reordering', 'error');
+    }
+}
+window.handleTimelineDrop = handleTimelineDrop;
+
+function handleTimelineDragEnd(e) {
+    state.tlDragId = null;
+    document.querySelectorAll('.tl-row.tl-dragging').forEach(r => r.classList.remove('tl-dragging'));
+    document.querySelectorAll('.tl-row.tl-drag-over-top, .tl-row.tl-drag-over-bottom').forEach(r => r.classList.remove('tl-drag-over-top', 'tl-drag-over-bottom'));
+}
+window.handleTimelineDragEnd = handleTimelineDragEnd;
 
 // Backward compat: makeRowEditable now just clicks the first cell
 function makeRowEditable(row) {
@@ -5969,6 +6136,14 @@ function saveSingleBudgetCell(cell, row) {
 
     // Only save if value changed
     if (String(newValue) === String(oldValue)) return;
+
+    const eventId = state.currentEventId;
+    pushUndo(`Edit ${field}`, async () => {
+        if (eventId !== state.currentEventId) { showToast('Nothing to undo', 'info'); return; }
+        const current = state.budget.find(i => i.id === id);
+        if (current) current[field] = oldValue;
+        await collections.budget.doc(id).update({ [field]: oldValue, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    });
 
     // Save to Firestore
     const updates = { [field]: newValue, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
@@ -6371,6 +6546,14 @@ function saveSingleStageCell(cell, row, collectionName) {
     const item = stageData.find(i => i.id === id);
     const oldValue = item ? (item[field] || '') : '';
     if (newValue === oldValue) return;
+
+    const eventId = state.currentEventId;
+    pushUndo(`Edit ${field}`, async () => {
+        if (eventId !== state.currentEventId) { showToast('Nothing to undo', 'info'); return; }
+        const current = stageData.find(i => i.id === id);
+        if (current) current[field] = oldValue;
+        await collections[collectionName].doc(id).update({ [field]: oldValue, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    });
 
     // Save to Firestore
     const updates = { [field]: newValue, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
@@ -11285,1539 +11468,7 @@ function exportStaffToExcel() {
     XLSX.writeFile(wb, 'Staff_List_' + today + '.xlsx');
 }
 
-// =============================================
-// STAGE PLOTS FUNCTIONS
-// =============================================
-
-// Load Stage Plots from Firestore
-
-// Initialize Stage Plots page
-function initializeStagePlots() {
-    console.log('initializeStagePlots called. Canvas exists:', !!state.canvas);
-    if (!state.canvas) {
-        setupCanvas();
-    }
-
-    // Mobile: make element library collapsible
-    if (window.innerWidth <= 768) {
-        const lib = document.querySelector('.element-library');
-        if (lib && !lib.dataset.mobileInit) {
-            lib.dataset.mobileInit = 'true';
-            const h3 = lib.querySelector('h3');
-            if (h3) {
-                h3.addEventListener('click', () => {
-                    lib.classList.toggle('mobile-expanded');
-                });
-            }
-        }
-    }
-
-    // Restore persisted stage type and plot from localStorage
-    const persistedPlotId = localStorage.getItem('stagePlot_currentPlotId');
-    const persistedStageType = localStorage.getItem('stagePlot_currentStagePlotType');
-
-    if (persistedStageType) {
-        state.currentStagePlotType = persistedStageType;
-        // Update tab UI to match
-        const tabs = document.querySelectorAll('.sp-tab[data-stage-type]');
-        tabs.forEach(tab => {
-            tab.classList.toggle('active', tab.dataset.stageType === persistedStageType);
-        });
-    }
-
-    updatePlotSelector();
-
-    // Check for draft recovery from localStorage
-    const draftCanvas = localStorage.getItem('stagePlot_draftCanvas');
-    if (draftCanvas) {
-        try {
-            state.isDraftPlot = true;
-            state.currentPlotId = null;
-            const draftStageType = localStorage.getItem('stagePlot_draftStageType') || 'main';
-            const draftName = localStorage.getItem('stagePlot_draftName') || 'Untitled Plot';
-            state.currentStagePlotType = draftStageType;
-
-            // Update tab UI
-            const tabs = document.querySelectorAll('.sp-tab[data-stage-type]');
-            tabs.forEach(tab => {
-                tab.classList.toggle('active', tab.dataset.stageType === draftStageType);
-            });
-
-            state.isReceivingRemote = true;
-            state.canvas.loadFromJSON(JSON.parse(draftCanvas), () => {
-                state.canvas.renderAll();
-                drawGrid();
-                rebuildStageRectangles();
-                sendStageRectsToBack();
-                state.isReceivingRemote = false;
-
-                const plotNameInput = document.getElementById('plot-name-input');
-                if (plotNameInput) {
-                    plotNameInput.value = draftName;
-                    plotNameInput.disabled = false;
-                }
-                updateSaveStatus('Draft recovered - make an edit to save');
-                saveCanvasState();
-            });
-
-            localStorage.removeItem('stagePlot_draftCanvas');
-            localStorage.removeItem('stagePlot_draftStageType');
-            localStorage.removeItem('stagePlot_draftName');
-            updatePlotSelector();
-            return;
-        } catch (e) {
-            console.error('Error recovering draft:', e);
-            localStorage.removeItem('stagePlot_draftCanvas');
-            localStorage.removeItem('stagePlot_draftStageType');
-            localStorage.removeItem('stagePlot_draftName');
-        }
-    }
-
-    // If we have a persisted plot ID, wait for Firestore data and load it
-    if (persistedPlotId) {
-        waitForPlotAndLoad(persistedPlotId);
-        return;
-    }
-
-    // No persisted plot - wait for Firestore data then create a draft
-    let attempts = 0;
-    const interval = setInterval(() => {
-        attempts++;
-        if (state.stagePlots.length > 0 || attempts > 20) {
-            clearInterval(interval);
-            if (!state.currentPlotId) {
-                console.log('No plot selected - creating local draft');
-                createDraftPlot();
-            }
-        }
-    }, 100);
-}
-
-// Wait for a specific plot to appear in state.stagePlots, then load it
-function waitForPlotAndLoad(plotId) {
-    if (state.stagePlots.find(p => p.id === plotId)) {
-        updatePlotSelector();
-        const plotSelect = document.getElementById('plot-select');
-        if (plotSelect) plotSelect.value = plotId;
-        loadPlot(plotId);
-        return;
-    }
-    let attempts = 0;
-    const interval = setInterval(() => {
-        attempts++;
-        if (state.stagePlots.find(p => p.id === plotId)) {
-            clearInterval(interval);
-            updatePlotSelector();
-            const plotSelect = document.getElementById('plot-select');
-            if (plotSelect) plotSelect.value = plotId;
-            loadPlot(plotId);
-        } else if (attempts > 20) {
-            clearInterval(interval);
-            localStorage.removeItem('stagePlot_currentPlotId');
-            createDraftPlot();
-        }
-    }, 100);
-}
-
-// Setup Fabric.js Canvas
-function setupCanvas() {
-    console.log('setupCanvas called');
-    const canvasElement = document.getElementById('stage-canvas');
-    if (!canvasElement) {
-        console.log('ERROR: Canvas element not found!');
-        return;
-    }
-
-    console.log('Canvas element found, initializing Fabric.js canvas');
-    console.log('fabric object exists:', typeof fabric !== 'undefined');
-
-    // Calculate responsive canvas size based on available space
-    const canvasWrapper = document.querySelector('.canvas-wrapper');
-    const maxWidth = canvasWrapper ? canvasWrapper.clientWidth - 80 : 1000; // Subtract padding
-    const maxHeight = canvasWrapper ? canvasWrapper.clientHeight - 80 : 700; // Subtract padding
-
-    // Use responsive size, but with reasonable limits
-    const canvasWidth = Math.min(maxWidth, 1200);
-    const canvasHeight = Math.min(maxHeight, 900);
-
-    console.log('Calculated canvas size:', canvasWidth, 'x', canvasHeight);
-
-    // Initialize Fabric.js canvas with responsive size
-    state.canvas = new fabric.Canvas('stage-canvas', {
-        width: canvasWidth,
-        height: canvasHeight,
-        backgroundColor: '#ffffff',
-        selection: true
-    });
-
-    console.log('Fabric.js canvas created:', !!state.canvas);
-
-    // Draw grid background
-    drawGrid();
-
-    // Initialize zoom display
-    updateZoomDisplay();
-
-    // Add event listeners for dirty tracking and auto-save
-    state.canvas.on('object:modified', (e) => {
-        if (state.isReceivingRemote) return;
-        const obj = e.target;
-        if (obj && !obj.gridLine) {
-            trackDirtyObject(obj);
-            triggerAutoSave();
-        }
-    });
-
-    state.canvas.on('object:added', (e) => {
-        if (state.isReceivingRemote) return;
-        const obj = e.target;
-        if (obj && !obj.gridLine) {
-            assignObjectId(obj);
-            trackDirtyObject(obj);
-            triggerAutoSave();
-        }
-    });
-
-    state.canvas.on('object:removed', (e) => {
-        if (state.isReceivingRemote) return;
-        const obj = e.target;
-        if (obj && !obj.gridLine && obj.objectId) {
-            state.deletedObjectIds.add(obj.objectId);
-            state.dirtyObjectIds.delete(obj.objectId);
-            triggerAutoSave();
-        }
-    });
-
-    // Add double-click handler for editing element labels and dimension labels
-    state.canvas.on('mouse:dblclick', (e) => {
-        // Plain text IText objects handle their own editing natively
-        if (e.target && e.target.elementType === 'plain-text') {
-            return;  // Fabric.js IText enters edit mode automatically on dblclick
-        }
-        if (e.target && e.target.isStageElement) {
-            editElementLabel(e.target);
-        } else if (e.target && e.target.isRectDimension) {
-            editRectangleDimension(e.target);
-        }
-    });
-
-    // Alt-click to duplicate objects
-    state.canvas.on('mouse:down', (e) => {
-        if (e.e.altKey && e.target && !e.target.gridLine && !e.target.isRectDimension) {
-            e.e.preventDefault();
-            duplicateObject(e.target);
-        }
-    });
-
-    // Setup undo/redo canvas event listeners
-    state.canvas.on('object:added', (e) => {
-        if (!state.isUndoRedoing && !state.isReceivingRemote) saveCanvasState();
-    });
-    state.canvas.on('object:modified', (e) => {
-        if (!state.isUndoRedoing && !state.isReceivingRemote) saveCanvasState();
-    });
-    state.canvas.on('object:removed', (e) => {
-        if (!state.isUndoRedoing && !state.isReceivingRemote) saveCanvasState();
-    });
-
-    // Properties panel: show/hide on selection
-    state.canvas.on('selection:created', (e) => { showPropertiesPanel(e.selected); updateLockButton(e.selected?.[0]); });
-    state.canvas.on('selection:updated', (e) => { showPropertiesPanel(e.selected); updateLockButton(e.selected?.[0]); });
-    state.canvas.on('selection:cleared', () => { hidePropertiesPanel(); updateLockButton(null); });
-
-    // Track user interaction to prevent canvas resize during mouse operations
-    state.canvas.on('mouse:down', () => {
-        state.isInteracting = true;
-    });
-    state.canvas.on('mouse:up', () => {
-        state.isInteracting = false;
-    });
-
-    // Add window resize handler for responsive canvas
-    let resizeTimeout;
-    window.addEventListener('resize', () => {
-        clearTimeout(resizeTimeout);
-        resizeTimeout = setTimeout(() => {
-            resizeCanvas();
-        }, 250); // Debounce resize events
-    });
-
-    // Initialize with draw tool active
-    setTool('draw');
-}
-
-// Resize Canvas to Fit Viewport
-function resizeCanvas() {
-    if (!state.canvas) return;
-
-    // Don't resize while user is actively interacting with canvas
-    if (state.isInteracting) {
-        console.log('Skipping canvas resize - user is interacting');
-        return;
-    }
-
-    const canvasWrapper = document.querySelector('.canvas-wrapper');
-    if (!canvasWrapper) return;
-
-    const maxWidth = canvasWrapper.clientWidth - 80;
-    const maxHeight = canvasWrapper.clientHeight - 80;
-
-    const newWidth = Math.min(maxWidth, 1200);
-    const newHeight = Math.min(maxHeight, 900);
-
-    // Only resize if dimensions actually changed significantly
-    if (Math.abs(state.canvas.width - newWidth) > 50 ||
-        Math.abs(state.canvas.height - newHeight) > 50) {
-
-        console.log('Resizing canvas to:', newWidth, 'x', newHeight);
-
-        state.canvas.setDimensions({
-            width: newWidth,
-            height: newHeight
-        });
-
-        // Redraw grid with new size
-        drawGrid();
-        state.canvas.renderAll();
-    }
-}
-
-// Draw grid on canvas
-function drawGrid() {
-    if (!state.canvas) return;
-
-    // Use fixed dimensions for grid scale calculation
-    const width = 40;  // Default width in feet
-    const height = 30; // Default height in feet
-
-    // Calculate pixels per foot (scale to fit canvas)
-    const canvasWidth = state.canvas.width;
-    const canvasHeight = state.canvas.height;
-    const pixelsPerFoot = Math.min(
-        canvasWidth / width,
-        canvasHeight / height
-    );
-
-    // Clear existing grid lines
-    const objects = state.canvas.getObjects();
-    objects.forEach(obj => {
-        if (obj.gridLine) {
-            state.canvas.remove(obj);
-        }
-    });
-
-    // Account for zoom level - draw more grid lines when zoomed out
-    const zoom = state.zoom || 1.0;
-    const viewportWidth = canvasWidth / zoom;
-    const viewportHeight = canvasHeight / zoom;
-
-    // Calculate how many grid lines we need to cover the visible viewport
-    const numVerticalLines = Math.ceil(viewportWidth / pixelsPerFoot) + 2;
-    const numHorizontalLines = Math.ceil(viewportHeight / pixelsPerFoot) + 2;
-
-    // Get viewport transform to know where we're viewing
-    const vpt = state.canvas.viewportTransform;
-    const viewportLeft = -vpt[4] / zoom;
-    const viewportTop = -vpt[5] / zoom;
-
-    // Calculate starting grid position (aligned to grid)
-    const startX = Math.floor(viewportLeft / pixelsPerFoot) * pixelsPerFoot;
-    const startY = Math.floor(viewportTop / pixelsPerFoot) * pixelsPerFoot;
-
-    // Draw vertical grid lines
-    for (let i = 0; i <= numVerticalLines; i++) {
-        const x = startX + (i * pixelsPerFoot);
-        const line = new fabric.Line([
-            x, startY,
-            x, startY + (numHorizontalLines * pixelsPerFoot)
-        ], {
-            stroke: '#e0e0e0',
-            strokeWidth: 1 / zoom, // Adjust stroke width for zoom
-            selectable: false,
-            evented: false,
-            gridLine: true
-        });
-        state.canvas.add(line);
-        state.canvas.sendToBack(line);
-    }
-
-    // Draw horizontal grid lines
-    for (let i = 0; i <= numHorizontalLines; i++) {
-        const y = startY + (i * pixelsPerFoot);
-        const line = new fabric.Line([
-            startX, y,
-            startX + (numVerticalLines * pixelsPerFoot), y
-        ], {
-            stroke: '#e0e0e0',
-            strokeWidth: 1 / zoom, // Adjust stroke width for zoom
-            selectable: false,
-            evented: false,
-            gridLine: true
-        });
-        state.canvas.add(line);
-        state.canvas.sendToBack(line);
-    }
-
-    state.canvas.renderAll();
-}
-
-// Setup Stage Plot Tab Switching
-function setupStagePlotTabs() {
-    const stagePlotTabs = document.querySelectorAll('.sp-tab[data-stage-type]');
-
-    stagePlotTabs.forEach(tab => {
-        tab.addEventListener('click', () => {
-            const stageType = tab.dataset.stageType;
-
-            // Update active state
-            stagePlotTabs.forEach(t => t.classList.remove('active'));
-            tab.classList.add('active');
-
-            // Update state
-            state.currentStagePlotType = stageType;
-
-            // Detach previous listener
-            if (state.plotObjectsUnsubscribe) {
-                state.plotObjectsUnsubscribe();
-                state.plotObjectsUnsubscribe = null;
-            }
-
-            // Reset plot selection and update selector
-            state.currentPlotId = null;
-            localStorage.removeItem('stagePlot_currentPlotId');
-            state.dirtyObjectIds.clear();
-            state.deletedObjectIds.clear();
-            updatePlotSelector();
-
-            // Clear canvas
-            if (state.canvas) {
-                state.canvas.clear();
-                state.canvas.backgroundColor = '#ffffff';
-                drawGrid();
-            }
-        });
-    });
-}
-
-// Setup Stage Plot Controls
-function setupStagePlotControls() {
-    // Plot selector dropdown
-    const plotSelect = document.getElementById('plot-select');
-    if (plotSelect) {
-        plotSelect.addEventListener('change', (e) => {
-            const plotId = e.target.value;
-            if (plotId) {
-                // Discard draft silently when switching to an existing plot
-                state.isDraftPlot = false;
-                loadPlot(plotId);
-            } else {
-                // Detach listener
-                if (state.plotObjectsUnsubscribe) {
-                    state.plotObjectsUnsubscribe();
-                    state.plotObjectsUnsubscribe = null;
-                }
-
-                // Clear canvas if no plot selected
-                if (state.canvas) {
-                    deleteStage();  // Clean up stage first
-                    state.canvas.clear();
-                    state.canvas.backgroundColor = '#ffffff';
-                    drawGrid();
-                }
-                state.currentPlotId = null;
-                state.dirtyObjectIds.clear();
-                state.deletedObjectIds.clear();
-
-                // Clear and disable plot name input
-                const plotNameInput = document.getElementById('plot-name-input');
-                if (plotNameInput) {
-                    plotNameInput.value = '';
-                    plotNameInput.disabled = true;
-                }
-            }
-        });
-    }
-
-    // New plot button
-    const newPlotBtn = document.getElementById('new-plot-btn');
-    if (newPlotBtn) {
-        newPlotBtn.addEventListener('click', createDraftPlot);
-    }
-
-    // Delete plot button
-    const deletePlotBtn = document.getElementById('delete-plot-btn');
-    if (deletePlotBtn) {
-        deletePlotBtn.addEventListener('click', deletePlot);
-    }
-
-    // Duplicate plot button
-    const duplicatePlotBtn = document.getElementById('duplicate-plot-btn');
-    if (duplicatePlotBtn) {
-        duplicatePlotBtn.addEventListener('click', duplicatePlot);
-    }
-
-    // Print button
-    const printPlotBtn = document.getElementById('print-plot-btn');
-    if (printPlotBtn) {
-        printPlotBtn.addEventListener('click', printPlot);
-    }
-
-    // Element library buttons
-    const elementButtons = document.querySelectorAll('.element-btn');
-    elementButtons.forEach(btn => {
-        btn.addEventListener('click', () => {
-            const elementType = btn.dataset.element;
-            addElementToCanvas(elementType);
-        });
-    });
-
-    // Tool mode buttons
-    const drawToolBtn = document.getElementById('draw-rect-tool-btn');
-    const moveToolBtn = document.getElementById('move-tool-btn');
-
-    if (drawToolBtn) {
-        console.log('Draw tool button found, adding listener');
-        drawToolBtn.addEventListener('click', () => {
-            console.log('Draw tool button clicked');
-            setTool('draw');
-        });
-    } else {
-        console.log('WARNING: Draw tool button NOT found!');
-    }
-
-    if (moveToolBtn) {
-        console.log('Move tool button found, adding listener');
-        moveToolBtn.addEventListener('click', () => {
-            console.log('Move tool button clicked');
-            setTool('move');
-        });
-    } else {
-        console.log('WARNING: Move tool button NOT found!');
-    }
-
-    // Toggle dimensions button
-    const toggleDimsBtn = document.getElementById('toggle-dimensions-btn');
-    if (toggleDimsBtn) {
-        toggleDimsBtn.addEventListener('click', () => {
-            state.dimensionsVisible = !state.dimensionsVisible;
-            toggleDimsBtn.classList.toggle('active', state.dimensionsVisible);
-            state.stageRectangles.forEach(rectData => {
-                rectData.widthLabel.set({ visible: state.dimensionsVisible });
-                rectData.heightLabel.set({ visible: state.dimensionsVisible });
-            });
-            if (state.canvas) state.canvas.renderAll();
-        });
-    }
-}
-
-// Update Plot Selector Dropdown
-function updatePlotSelector() {
-    const plotSelect = document.getElementById('plot-select');
-    if (!plotSelect) return;
-
-    // Filter plots by current stage type
-    const filteredPlots = state.stagePlots.filter(
-        plot => plot.stageType === state.currentStagePlotType
-    );
-
-    // Sort alphabetically by name
-    filteredPlots.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-
-    // Update dropdown
-    plotSelect.innerHTML = '<option value="">Select a plot...</option>' +
-        filteredPlots.map(plot =>
-            `<option value="${plot.id}">${escapeHtml(plot.name)}</option>`
-        ).join('');
-
-    // Select current plot if any
-    if (state.currentPlotId) {
-        plotSelect.value = state.currentPlotId;
-    }
-}
-
-// Create a local-only draft plot (no Firestore write until first meaningful action)
-function createDraftPlot() {
-    // Detach any existing plot listener
-    if (state.plotObjectsUnsubscribe) {
-        state.plotObjectsUnsubscribe();
-        state.plotObjectsUnsubscribe = null;
-    }
-
-    state.currentPlotId = null;
-    localStorage.removeItem('stagePlot_currentPlotId');
-    state.isDraftPlot = true;
-    state.undoStack = [];
-    state.redoStack = [];
-    state.dirtyObjectIds.clear();
-    state.deletedObjectIds.clear();
-    updateUndoRedoButtons();
-
-    // Clear canvas and draw grid
-    if (state.canvas) {
-        state.canvas.clear();
-        state.canvas.backgroundColor = '#ffffff';
-        drawGrid();
-    }
-
-    // Set up plot name input
-    const plotNameInput = document.getElementById('plot-name-input');
-    if (plotNameInput) {
-        plotNameInput.value = 'Untitled Plot';
-        plotNameInput.disabled = false;
-        setTimeout(() => {
-            plotNameInput.focus();
-            plotNameInput.select();
-        }, 100);
-    }
-
-    // Reset plot selector to "Select a plot..."
-    const plotSelect = document.getElementById('plot-select');
-    if (plotSelect) {
-        plotSelect.value = '';
-    }
-
-    updateSaveStatus('Draft (not saved)');
-    console.log('Draft plot created locally');
-}
-
-// Promote a draft plot to a real Firestore document
-async function promoteDraftPlot() {
-    if (!state.isDraftPlot) return;
-
-    const plotNameInput = document.getElementById('plot-name-input');
-    const plotName = (plotNameInput && plotNameInput.value.trim()) || 'Untitled Plot';
-
-    const plotData = {
-        name: plotName,
-        stageType: state.currentStagePlotType,
-        width: 40,
-        height: 30,
-        schemaVersion: 2,
-        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    };
-
-    try {
-        const docRef = await collections.stagePlots.add(plotData);
-        state.currentPlotId = docRef.id;
-        state.isDraftPlot = false;
-        localStorage.setItem('stagePlot_currentPlotId', docRef.id);
-        localStorage.setItem('stagePlot_currentStagePlotType', state.currentStagePlotType);
-
-        // Reload data to update dropdown
-        await loadAllData();
-
-        // Select the new plot in dropdown
-        const plotSelect = document.getElementById('plot-select');
-        if (plotSelect) {
-            plotSelect.value = docRef.id;
-        }
-
-        // Setup real-time listener
-        setupPlotObjectsListener(docRef.id);
-
-        console.log('Draft promoted to Firestore plot:', docRef.id);
-        showToast('Plot saved');
-    } catch (error) {
-        console.error('Error promoting draft plot:', error);
-        showToast('Error saving plot. Please try again.', 'error');
-    }
-}
-
-// Create New Plot
-async function createNewPlot() {
-    // Create plot with default "Untitled Plot" name
-    const plotName = 'Untitled Plot';
-
-    // Use fixed dimensions
-    const width = 40;
-    const height = 30;
-
-    const plotData = {
-        name: plotName,
-        stageType: state.currentStagePlotType,
-        width: width,
-        height: height,
-        schemaVersion: 2,
-        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    };
-
-    try {
-        const docRef = await collections.stagePlots.add(plotData);
-        state.currentPlotId = docRef.id;
-        localStorage.setItem('stagePlot_currentPlotId', docRef.id);
-        localStorage.setItem('stagePlot_currentStagePlotType', state.currentStagePlotType);
-
-        // Reload all data to update the dropdown
-        await loadAllData();
-
-        // Select the new plot in dropdown
-        const plotSelect = document.getElementById('plot-select');
-        if (plotSelect) {
-            plotSelect.value = docRef.id;
-        }
-
-        // Update plot name input and focus it for easy renaming
-        const plotNameInput = document.getElementById('plot-name-input');
-        if (plotNameInput) {
-            plotNameInput.value = plotName;
-            plotNameInput.disabled = false;
-            // Focus and select all text so user can immediately type new name
-            setTimeout(() => {
-                plotNameInput.focus();
-                plotNameInput.select();
-            }, 100);
-        }
-
-        // Clear canvas and redraw grid
-        if (state.canvas) {
-            state.canvas.clear();
-            state.canvas.backgroundColor = '#ffffff';
-            drawGrid();
-        }
-
-        // Clear undo/redo stacks for new plot
-        state.undoStack = [];
-        state.redoStack = [];
-        state.dirtyObjectIds.clear();
-        state.deletedObjectIds.clear();
-        updateUndoRedoButtons();
-
-        // Setup real-time listener for new plot
-        setupPlotObjectsListener(docRef.id);
-
-        // Save initial state
-        setTimeout(() => {
-            saveCanvasState();
-        }, 100);
-
-        updateSaveStatus('New plot created');
-        showToast('New plot created');
-    } catch (error) {
-        console.error('Error creating plot:', error);
-        showToast('Error creating plot. Please try again.', 'error');
-    }
-}
-
-// Delete Plot
-async function deletePlot() {
-    if (!state.currentPlotId) {
-        alert('Please select a plot to delete.');
-        return;
-    }
-
-    const plot = state.stagePlots.find(p => p.id === state.currentPlotId);
-    if (!plot) return;
-
-    if (!confirm(`Are you sure you want to delete "${plot.name}"?`)) {
-        return;
-    }
-
-    try {
-        // Detach listener
-        if (state.plotObjectsUnsubscribe) {
-            state.plotObjectsUnsubscribe();
-            state.plotObjectsUnsubscribe = null;
-        }
-
-        // Delete subcollection objects
-        const objectsSnap = await collections.stagePlots.doc(state.currentPlotId).collection('objects').get();
-        const batch = firebase.firestore().batch();
-        objectsSnap.docs.forEach(doc => batch.delete(doc.ref));
-        await batch.commit();
-
-        await collections.stagePlots.doc(state.currentPlotId).delete();
-
-        // Clear current plot
-        state.currentPlotId = null;
-
-        // Clear canvas
-        if (state.canvas) {
-            state.canvas.clear();
-            state.canvas.backgroundColor = '#ffffff';
-            drawGrid();
-        }
-
-        updateSaveStatus('Deleted');
-        showToast('Plot deleted');
-    } catch (error) {
-        console.error('Error deleting plot:', error);
-        showToast('Error deleting plot. Please try again.', 'error');
-    }
-}
-
-// Duplicate Plot
-async function duplicatePlot() {
-    if (!state.currentPlotId) {
-        alert('Please select a plot to duplicate.');
-        return;
-    }
-
-    const originalPlot = state.stagePlots.find(p => p.id === state.currentPlotId);
-    if (!originalPlot) return;
-
-    const newName = prompt('Enter a name for the duplicated plot:', `${originalPlot.name} (Copy)`);
-    if (!newName) return;
-
-    try {
-        // Create new plot with same data
-        const duplicatedPlotData = {
-            name: newName,
-            stageType: originalPlot.stageType,
-            width: originalPlot.width || 40,
-            height: originalPlot.height || 30,
-            schemaVersion: 2,
-            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        };
-
-        const docRef = await collections.stagePlots.add(duplicatedPlotData);
-
-        // Copy subcollection objects from original to new plot
-        const objectsSnap = await collections.stagePlots.doc(originalPlot.id).collection('objects').get();
-        if (objectsSnap.docs.length > 0) {
-            const batch = firebase.firestore().batch();
-            objectsSnap.docs.forEach(doc => {
-                const newObjRef = collections.stagePlots.doc(docRef.id).collection('objects').doc();
-                const data = doc.data();
-                data.objectId = newObjRef.id;
-                batch.set(newObjRef, data);
-            });
-            await batch.commit();
-        } else if (originalPlot.canvasData) {
-            // Old format: copy canvasData for migration on load
-            await collections.stagePlots.doc(docRef.id).update({
-                canvasData: originalPlot.canvasData,
-                schemaVersion: null
-            });
-        }
-
-        // Load the new duplicated plot
-        state.currentPlotId = docRef.id;
-        localStorage.setItem('stagePlot_currentPlotId', docRef.id);
-        localStorage.setItem('stagePlot_currentStagePlotType', state.currentStagePlotType);
-
-        // Reload all plots to update dropdown
-        await loadAllData();
-
-        // Select the new plot in dropdown
-        const plotSelect = document.getElementById('plot-select');
-        if (plotSelect) {
-            plotSelect.value = docRef.id;
-        }
-
-        // Load the plot
-        loadPlot(docRef.id);
-
-        updateSaveStatus('Duplicated');
-        showToast('Plot duplicated');
-    } catch (error) {
-        console.error('Error duplicating plot:', error);
-        showToast('Error duplicating plot. Please try again.', 'error');
-    }
-}
-
-// Load Plot from Firestore
-async function loadPlot(plotId) {
-    const plot = state.stagePlots.find(p => p.id === plotId);
-    if (!plot) return;
-
-    // Detach previous listener
-    if (state.plotObjectsUnsubscribe) {
-        state.plotObjectsUnsubscribe();
-        state.plotObjectsUnsubscribe = null;
-    }
-
-    state.currentPlotId = plotId;
-    localStorage.setItem('stagePlot_currentPlotId', plotId);
-    localStorage.setItem('stagePlot_currentStagePlotType', state.currentStagePlotType);
-
-    // Clear undo/redo stacks when loading a different plot
-    state.undoStack = [];
-    state.redoStack = [];
-    state.dirtyObjectIds.clear();
-    state.deletedObjectIds.clear();
-    updateUndoRedoButtons();
-
-    // Update plot name input
-    const plotNameInput = document.getElementById('plot-name-input');
-    if (plotNameInput) {
-        plotNameInput.value = plot.name || '';
-        plotNameInput.disabled = false;
-    }
-
-    // Clear canvas and delete existing stage
-    if (state.canvas) {
-        // Disable interactions during load to prevent accidental edits
-        state.canvas.selection = false;
-        state.canvas.forEachObject(obj => { obj.evented = false; });
-        updateSaveStatus('Loading...');
-
-        deleteStage();
-        state.canvas.clear();
-        state.canvas.backgroundColor = '#ffffff';
-        drawGrid();
-
-        if (plot.schemaVersion === 2) {
-            // New format: load from subcollection
-            await loadPlotFromSubcollection(plotId);
-        } else if (plot.canvasData) {
-            // Old format: migrate to subcollection
-            await migrateOldPlotFormat(plotId, plot.canvasData);
-        } else {
-            // Empty plot
-            setTool('draw');
-            setTimeout(() => saveCanvasState(), 100);
-        }
-
-        // Re-enable interactions after load
-        state.canvas.selection = true;
-        state.canvas.forEachObject(obj => { obj.evented = true; });
-
-        // Setup real-time listener
-        setupPlotObjectsListener(plotId);
-    }
-
-    updateSaveStatus('Loaded');
-}
-
-// Load plot objects from Firestore subcollection
-async function loadPlotFromSubcollection(plotId) {
-    const objectsSnap = await collections.stagePlots.doc(plotId).collection('objects').get();
-
-    if (objectsSnap.empty) {
-        setTool('draw');
-        setTimeout(() => saveCanvasState(), 100);
-        return;
-    }
-
-    const fabricObjects = [];
-    objectsSnap.docs.forEach(doc => {
-        const data = doc.data();
-        if (data.fabricData) {
-            // Merge custom props back onto the fabric data
-            const objData = { ...data.fabricData };
-            objData.objectId = data.objectId;
-            objData._zIndex = data.zIndex ?? 0;
-            if (data.rectId) objData.rectId = data.rectId;
-            fabricObjects.push(objData);
-        }
-    });
-
-    // Sort by zIndex to preserve layer ordering across clients
-    fabricObjects.sort((a, b) => a._zIndex - b._zIndex);
-
-    if (fabricObjects.length === 0) {
-        setTool('draw');
-        setTimeout(() => saveCanvasState(), 100);
-        return;
-    }
-
-    // Use enlivenObjects to deserialize
-    state.isReceivingRemote = true;
-    fabric.util.enlivenObjects(fabricObjects, (objects) => {
-        objects.forEach(obj => {
-            state.canvas.add(obj);
-            applyLockState(obj);
-        });
-        state.canvas.renderAll();
-        drawGrid();
-        rebuildStageRectangles();
-        sendStageRectsToBack();
-        setTool('draw');
-        state.isReceivingRemote = false;
-        setTimeout(() => saveCanvasState(), 100);
-    });
-}
-
-// Migrate old canvasData blob to per-object subcollection
-async function migrateOldPlotFormat(plotId, canvasData) {
-    return new Promise((resolve) => {
-        state.isReceivingRemote = true;
-        state.canvas.loadFromJSON(canvasData, async () => {
-            state.canvas.renderAll();
-            drawGrid();
-            rebuildStageRectangles();
-            sendStageRectsToBack();
-
-            // Assign objectIds and batch-write to subcollection
-            const objects = state.canvas.getObjects().filter(o => !o.gridLine);
-            const batch = firebase.firestore().batch();
-
-            objects.forEach((obj, index) => {
-                assignObjectId(obj);
-                const objData = obj.toObject(CUSTOM_FABRIC_PROPS);
-                const docRef = collections.stagePlots.doc(plotId).collection('objects').doc(obj.objectId);
-                batch.set(docRef, {
-                    objectId: obj.objectId,
-                    fabricType: obj.type,
-                    fabricData: objData,
-                    rectId: obj.rectId || null,
-                    zIndex: index,
-                    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                    updatedBy: CLIENT_ID
-                });
-            });
-
-            // Update plot document to mark as migrated
-            const plotRef = collections.stagePlots.doc(plotId);
-            batch.update(plotRef, {
-                schemaVersion: 2,
-                canvasData: firebase.firestore.FieldValue.delete()
-            });
-
-            await batch.commit();
-            console.log(`Migrated plot ${plotId} to schema v2 with ${objects.length} objects`);
-
-            setTool('draw');
-            state.isReceivingRemote = false;
-            setTimeout(() => saveCanvasState(), 100);
-            resolve();
-        });
-    });
-}
-
-// Cancel pending autosave and flush any dirty objects synchronously.
-// Must be called before collections is replaced (backToHub / enterEvent).
-async function flushStagePlotAutosave() {
-    if (state.autoSaveTimeout) {
-        clearTimeout(state.autoSaveTimeout);
-        state.autoSaveTimeout = null;
-    }
-    if (state.isDraftPlot) {
-        // Only promote if there are unsaved changes — avoids creating empty plot docs
-        if (state.dirtyObjectIds?.size || state.deletedObjectIds?.size) {
-            await promoteDraftPlot();
-            await savePlot();
-        }
-    } else {
-        await savePlot();
-    }
-    state.currentPlotId = null;
-    state.isDraftPlot = false;
-}
-
-// Trigger Auto-Save (debounced)
-function triggerAutoSave() {
-    // Clear existing timeout
-    if (state.autoSaveTimeout) {
-        clearTimeout(state.autoSaveTimeout);
-    }
-
-    // If this is a draft plot, promote it first then save
-    if (state.isDraftPlot) {
-        updateSaveStatus('Saving...');
-        state.autoSaveTimeout = setTimeout(async () => {
-            await promoteDraftPlot();
-            savePlot();
-        }, 500);
-        return;
-    }
-
-    // Set new timeout for 500ms
-    state.autoSaveTimeout = setTimeout(() => {
-        savePlot();
-    }, 500);
-
-    updateSaveStatus('Saving...');
-}
-
-// Save Plot to Firestore (per-object batch write)
-let isSavingPlot = false;
-
-async function savePlot() {
-    if (state.isDraftPlot || !state.currentPlotId || !state.canvas) return;
-    if (isSavingPlot) return;
-
-    isSavingPlot = true;
-
-    const dirtyIds = new Set(state.dirtyObjectIds);
-    const deletedIds = new Set(state.deletedObjectIds);
-    state.dirtyObjectIds.clear();
-    state.deletedObjectIds.clear();
-
-    if (dirtyIds.size === 0 && deletedIds.size === 0) {
-        updateSaveStatus('Saved');
-        isSavingPlot = false;
-        return;
-    }
-
-    try {
-        const batch = firebase.firestore().batch();
-        const plotRef = collections.stagePlots.doc(state.currentPlotId);
-
-        // Save dirty objects
-        const allObjects = state.canvas.getObjects();
-        const nonGridObjects = allObjects.filter(o => !o.gridLine);
-        dirtyIds.forEach(objectId => {
-            const obj = allObjects.find(o => o.objectId === objectId);
-            if (obj && !obj.gridLine) {
-                const objData = obj.toObject(CUSTOM_FABRIC_PROPS);
-                const zIndex = nonGridObjects.indexOf(obj);
-                const docRef = plotRef.collection('objects').doc(objectId);
-                batch.set(docRef, {
-                    objectId: objectId,
-                    fabricType: obj.type,
-                    fabricData: objData,
-                    rectId: obj.rectId || null,
-                    zIndex: zIndex,
-                    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                    updatedBy: CLIENT_ID
-                });
-            }
-        });
-
-        // Delete removed objects
-        deletedIds.forEach(objectId => {
-            const docRef = plotRef.collection('objects').doc(objectId);
-            batch.delete(docRef);
-        });
-
-        // Update plot timestamp
-        batch.update(plotRef, {
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-
-        await batch.commit();
-        updateSaveStatus('Saved');
-    } catch (error) {
-        console.error('Error saving plot:', error);
-        // Re-add failed items for retry
-        dirtyIds.forEach(id => state.dirtyObjectIds.add(id));
-        deletedIds.forEach(id => state.deletedObjectIds.add(id));
-        updateSaveStatus('Error saving');
-    } finally {
-        isSavingPlot = false;
-    }
-}
-
-// Update Save Status Indicator
-function updateSaveStatus(status) {
-    const saveStatus = document.getElementById('save-status');
-    if (!saveStatus) return;
-
-    saveStatus.textContent = status;
-    saveStatus.className = 'sp-save-status';
-
-    if (status === 'Saved' || status === 'Loaded') {
-        saveStatus.classList.add('save-status-saved');
-    } else if (status === 'Saving...') {
-        saveStatus.classList.add('save-status-saving');
-    } else if (status === 'Loading...') {
-        saveStatus.classList.add('save-status-saving');
-    } else if (status && status.includes('Error')) {
-        saveStatus.classList.add('save-status-error');
-    } else if (status && (status.includes('Draft') || status.includes('draft'))) {
-        saveStatus.classList.add('save-status-draft');
-    }
-
-    // Auto-clear transient messages after 3 seconds (keep draft/error visible)
-    if (status === 'Saved' || status === 'Loaded') {
-        setTimeout(() => {
-            if (saveStatus.textContent === status) {
-                saveStatus.textContent = '';
-            }
-        }, 3000);
-    }
-}
-
-// Update Canvas Info - removed (dimension display no longer shown)
-
-// Add Element to Canvas
-function addElementToCanvas(elementType) {
-    if (!state.canvas) return;
-
-    const element = createStageElement(elementType);
-    if (element) {
-        // Position in center of canvas
-        element.set({
-            left: state.canvas.width / 2,
-            top: state.canvas.height / 2,
-            originX: 'center',
-            originY: 'center'
-        });
-
-        // If in draw mode, add locked; otherwise add selectable
-        if (state.currentTool === 'draw') {
-            element.set({ selectable: false, evented: false });
-            state.canvas.add(element);
-        } else {
-            state.canvas.add(element);
-            state.canvas.setActiveObject(element);
-        }
-        sendStageRectsToBack();
-    }
-}
-
-// Duplicate a canvas object
-function duplicateObject(obj) {
-    if (!obj || obj.gridLine || obj.isRectDimension) return;
-    obj.clone((cloned) => {
-        cloned.set({
-            left: obj.left + 20,
-            top: obj.top + 20,
-            objectId: null  // Will get new ID from assignObjectId via object:added event
-        });
-        // Copy custom properties that clone might miss
-        CUSTOM_FABRIC_PROPS.forEach(prop => {
-            if (obj[prop] !== undefined && prop !== 'objectId') {
-                cloned[prop] = obj[prop];
-            }
-        });
-        cloned.locked = false;  // Duplicates start unlocked
-        cloned.lockMovementX = false;
-        cloned.lockMovementY = false;
-        cloned.lockScalingX = false;
-        cloned.lockScalingY = false;
-        cloned.lockRotation = false;
-        cloned.hasControls = true;
-        cloned.borderDashArray = null;
-        cloned.borderColor = '#c9a961';
-        state.canvas.add(cloned);
-        // Defer selection to after Fabric.js finishes its mouse:down selection
-        setTimeout(() => {
-            state.canvas.setActiveObject(cloned);
-            state.canvas.renderAll();
-        }, 0);
-    }, CUSTOM_FABRIC_PROPS);
-}
-window.duplicateObject = duplicateObject;
-
-// Create Stage Element (Factory Function) - Using Emojis
-function createStageElement(type) {
-    // Special case: plain text element (no icon)
-    if (type === 'plain-text') {
-        const textObj = new fabric.IText('Text', {
-            fontSize: 20,
-            fontFamily: 'Arial, sans-serif',
-            fill: '#2c3e50',
-            textAlign: 'center',
-            originX: 'center',
-            originY: 'center',
-            isStageElement: true,
-            elementType: 'plain-text',
-            cornerStyle: 'circle',
-            transparentCorners: false,
-            cornerColor: '#c9a961',
-            cornerStrokeColor: '#000',
-            borderColor: '#c9a961',
-            editable: true
-        });
-        return textObj;
-    }
-
-    const elementDefinitions = {
-        // Audio
-        'drum-kit': { emoji: '🥁', label: 'Drums' },
-        'mic-stand': { emoji: '🎤', label: 'Mic' },
-        'floor-monitor': { emoji: '🔊', label: 'Monitor' },
-        'di-box': { emoji: '📦', label: 'DI' },
-        'speaker-cab': { emoji: '🔈', label: 'Speaker' },
-
-        // Instruments
-        'keyboard-88': { emoji: '🎹', label: 'Piano' },
-        'keyboard-61': { emoji: '🎹', label: 'Keyboard' },
-        'pedalboard': { emoji: '🎛️', label: 'Pedalboard' },
-        'guitar': { emoji: '🎸', label: 'Guitar' },
-        'bass': { emoji: '🎸', label: 'Bass' },
-        'guitar-amp': { emoji: '🔊', label: 'Guitar Amp' },
-        'bass-amp': { emoji: '🔊', label: 'Bass Amp' },
-        'music-stand': { emoji: '🎵', label: 'Stand' },
-
-        // Furniture
-        'table-round': { emoji: '⭕', label: 'Table' },
-        'table-rect': { emoji: '🟫', label: 'Table' },
-        'table': { emoji: '🟫', label: 'Table' },
-        'chair': { emoji: '💺', label: 'Chair' },
-        'stool': { emoji: '💺', label: 'Stool' },
-        'podium': { emoji: '🗣️', label: 'Podium' },
-
-        // Stage
-        'riser': { emoji: '🔲', label: 'Riser' },
-        'stage-riser': { emoji: '🔲', label: 'Riser' },
-        'stairs': { emoji: '🪜', label: 'Stairs' },
-        'backdrop': { emoji: '🎬', label: 'Backdrop' },
-
-        // Technical
-        'pa-speaker': { emoji: '📢', label: 'PA' },
-        'spotlight': { emoji: '💡', label: 'Light' },
-        'camera': { emoji: '📹', label: 'Camera' },
-        'projection-screen': { emoji: '🖥️', label: 'Screen' },
-        'mixer': { emoji: '🎚️', label: 'Mixer' },
-        'mixer-console': { emoji: '🎚️', label: 'Mixer' },
-
-        // Markers
-        'performer': { emoji: '🧍', label: 'Person' },
-        'text-label': { emoji: '📝', label: 'Label' },
-        'rectangle': { emoji: '▭', label: 'Rectangle' },
-        'arrow-marker': { emoji: '➡️', label: 'Arrow' },
-        'x-marker': { emoji: '❌', label: 'X' },
-        'star-marker': { emoji: '⭐', label: 'Star' }
-    };
-
-    const def = elementDefinitions[type];
-    if (!def) return null;
-
-    // Create emoji text with larger size and comprehensive font fallbacks
-    const emojiText = new fabric.Text(def.emoji, {
-        fontSize: 50,
-        fontFamily: '"Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", "Android Emoji", "EmojiSymbols", Arial, sans-serif',
-        fill: '#000000',
-        textAlign: 'center',
-        originX: 'center',
-        originY: 'center'
-    });
-
-    // Create label text with background for better readability
-    const labelText = new fabric.Text(def.label, {
-        fontSize: 13,
-        fontFamily: 'Arial, sans-serif',
-        fontWeight: 'bold',
-        fill: '#2c3e50',
-        textAlign: 'center',
-        backgroundColor: 'rgba(255, 255, 255, 0.9)',
-        padding: 4,
-        top: 45,  // Increased spacing to prevent overlap
-        originX: 'center',
-        originY: 'center'
-    });
-
-    // Group emoji and label together
-    const group = new fabric.Group([emojiText, labelText], {
-        left: 0,
-        top: 0,
-        lockScalingFlip: true,
-        hasRotatingPoint: true,
-        cornerStyle: 'circle',
-        transparentCorners: false,
-        cornerColor: '#c9a961',
-        cornerStrokeColor: '#000',
-        borderColor: '#c9a961',
-        isStageElement: true,  // Mark as editable element
-        elementType: type  // Store element type
-    });
-
-    return group;
-}
-
-// Setup Zoom Controls
-function setupZoomControls() {
-    const zoomInBtn = document.getElementById('zoom-in-btn');
-    const zoomOutBtn = document.getElementById('zoom-out-btn');
-    const fitScreenBtn = document.getElementById('fit-screen-btn');
-
-    if (!zoomInBtn || !zoomOutBtn || !fitScreenBtn) return;
-
-    // Zoom In
-    zoomInBtn.addEventListener('click', () => {
-        zoomCanvas(1.2); // Zoom in by 20%
-    });
-
-    // Zoom Out
-    zoomOutBtn.addEventListener('click', () => {
-        zoomCanvas(0.8); // Zoom out by 20%
-    });
-
-    // Fit to Screen
-    fitScreenBtn.addEventListener('click', () => {
-        fitCanvasToScreen();
-    });
-
-    // Mouse wheel zoom (hold Ctrl/Cmd to zoom)
-    if (state.canvas) {
-        state.canvas.on('mouse:wheel', (opt) => {
-            const e = opt.e;
-
-            // Only zoom if Ctrl (Windows/Linux) or Cmd (Mac) is pressed
-            if (e.ctrlKey || e.metaKey) {
-                e.preventDefault();
-                e.stopPropagation();
-
-                const delta = e.deltaY;
-                let zoom = state.canvas.getZoom();
-
-                // Zoom in or out based on scroll direction
-                zoom *= 0.999 ** delta;
-
-                // Limit zoom range
-                if (zoom > 5) zoom = 5;
-                if (zoom < 0.1) zoom = 0.1;
-
-                // Zoom towards mouse pointer
-                const point = new fabric.Point(opt.e.offsetX, opt.e.offsetY);
-                state.canvas.zoomToPoint(point, zoom);
-
-                state.zoom = zoom;
-                updateZoomDisplay();
-                drawGrid(); // Redraw grid for new zoom level
-            }
-        });
-
-        // Pan/drag canvas when zoomed in (using Space + drag or middle mouse button)
-        state.canvas.on('mouse:down', (opt) => {
-            const e = opt.e;
-
-            // Enable panning with Space key or middle mouse button
-            if (e.button === 1 || e.code === 'Space' || state.zoom > 1) {
-                state.isPanning = true;
-                state.panStart = { x: e.clientX, y: e.clientY };
-                state.canvas.selection = false; // Disable selection while panning
-            }
-        });
-
-        state.canvas.on('mouse:move', (opt) => {
-            if (state.isPanning && state.panStart) {
-                const e = opt.e;
-                const vpt = state.canvas.viewportTransform;
-
-                vpt[4] += e.clientX - state.panStart.x;
-                vpt[5] += e.clientY - state.panStart.y;
-
-                state.canvas.requestRenderAll();
-                state.panStart = { x: e.clientX, y: e.clientY };
-            }
-        });
-
-        state.canvas.on('mouse:up', () => {
-            if (state.isPanning) {
-                drawGrid(); // Redraw grid after panning
-            }
-            state.isPanning = false;
-            state.panStart = null;
-            state.canvas.selection = true; // Re-enable selection
-        });
-    }
-}
-
-// Zoom Canvas
-function zoomCanvas(factor) {
-    if (!state.canvas) return;
-
-    let zoom = state.canvas.getZoom();
-    zoom *= factor;
-
-    // Limit zoom range
-    if (zoom > 5) zoom = 5;
-    if (zoom < 0.1) zoom = 0.1;
-
-    // Zoom to center of canvas
-    const center = state.canvas.getCenter();
-    state.canvas.zoomToPoint(new fabric.Point(center.left, center.top), zoom);
-
-    state.zoom = zoom;
-    updateZoomDisplay();
-    drawGrid(); // Redraw grid for new zoom level
-}
-
-// Fit Canvas to Screen
-function fitCanvasToScreen() {
-    if (!state.canvas) return;
-
-    // Reset zoom to 1.0 and center viewport
-    state.canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
-    state.zoom = 1.0;
-    updateZoomDisplay();
-    drawGrid(); // Redraw grid for reset zoom
-    state.canvas.renderAll();
-}
-
-// Update Zoom Level Display
-function updateZoomDisplay() {
-    const zoomDisplay = document.getElementById('zoom-level');
-    if (zoomDisplay) {
-        const percentage = Math.round(state.zoom * 100);
-        zoomDisplay.textContent = `${percentage}%`;
-    }
-}
-
-// Undo/Redo Functionality
-function saveCanvasState() {
-    if (state.isUndoRedoing || state.isReceivingRemote || !state.canvas || !state.currentPlotId) return;
-
-    const canvasState = state.canvas.toJSON(CUSTOM_FABRIC_PROPS);
-    state.undoStack.push(JSON.stringify(canvasState));
-
-    // Limit history to 30 states
-    if (state.undoStack.length > 30) {
-        state.undoStack.shift();
-    }
-
-    // Clear redo stack when new action is performed
-    state.redoStack = [];
-    updateUndoRedoButtons();
-}
-
-function undo() {
-    if (state.undoStack.length === 0 || !state.canvas) return;
-
-    // Save current state to redo stack
-    const currentState = state.canvas.toJSON(CUSTOM_FABRIC_PROPS);
-    state.redoStack.push(JSON.stringify(currentState));
-
-    // Restore previous state
-    const previousState = state.undoStack.pop();
-    state.isUndoRedoing = true;
-
-    state.canvas.loadFromJSON(previousState, () => {
-        state.canvas.renderAll();
-        drawGrid(); // Redraw grid
-        rebuildStageRectangles();
-        state.isUndoRedoing = false;
-        updateUndoRedoButtons();
-        syncAfterUndoRedo();
-    });
-}
-
-function redo() {
-    if (state.redoStack.length === 0 || !state.canvas) return;
-
-    // Save current state to undo stack
-    const currentState = state.canvas.toJSON(CUSTOM_FABRIC_PROPS);
-    state.undoStack.push(JSON.stringify(currentState));
-
-    // Restore next state
-    const nextState = state.redoStack.pop();
-    state.isUndoRedoing = true;
-
-    state.canvas.loadFromJSON(nextState, () => {
-        state.canvas.renderAll();
-        drawGrid(); // Redraw grid
-        rebuildStageRectangles();
-        state.isUndoRedoing = false;
-        updateUndoRedoButtons();
-        syncAfterUndoRedo();
-    });
-}
-
-function updateUndoRedoButtons() {
-    const undoBtn = document.getElementById('undo-btn');
-    const redoBtn = document.getElementById('redo-btn');
-
-    if (undoBtn) {
-        undoBtn.disabled = state.undoStack.length === 0;
-    }
-    if (redoBtn) {
-        redoBtn.disabled = state.redoStack.length === 0;
-    }
-}
-
-function setupUndoRedo() {
-    const undoBtn = document.getElementById('undo-btn');
-    const redoBtn = document.getElementById('redo-btn');
-
-    if (undoBtn) {
-        undoBtn.addEventListener('click', undo);
-    }
-    if (redoBtn) {
-        redoBtn.addEventListener('click', redo);
-    }
-
-    // Canvas event listeners are set up in canvas initialization
-    // so they're attached when canvas is actually created
-}
-
-// Setup Keyboard Shortcuts (Delete key)
+// Setup Keyboard Shortcuts
 function setupKeyboardShortcuts() {
     document.addEventListener('keydown', (e) => {
         // Focus budget search with '/' key
@@ -12827,1459 +11478,25 @@ function setupKeyboardShortcuts() {
             if (searchInput) searchInput.focus();
         }
 
-        // Timeline: N to focus phantom row
-        if (state.currentPage === 'timeline' && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA' && e.target.tagName !== 'SELECT') {
-            if (e.key === 'n' || e.key === 'N') {
-                e.preventDefault();
-                const phantom = document.querySelector('.tl-phantom-row');
-                if (phantom) {
-                    const firstCell = phantom.querySelector(`td[data-field="${TIMELINE_FIELD_ORDER[0]}"]`);
-                    if (firstCell) editTimelineCell(firstCell);
-                }
-                return;
-            }
-        }
-
-        // Undo: Ctrl+Z or Cmd+Z (global)
-        if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
-            if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
-                e.preventDefault();
-                if (state.currentPage === 'stage-plots') {
-                    undo();
-                } else {
-                    undoGlobalAction();
-                }
-            }
-        }
-
-        // Redo: Ctrl+Shift+Z or Cmd+Shift+Z
-        if ((e.ctrlKey || e.metaKey) && e.key === 'z' && e.shiftKey) {
-            if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
-                e.preventDefault();
-                redo();
-            }
-        }
-
-        // Delete or Backspace key
-        if ((e.key === 'Delete' || e.key === 'Backspace') && state.canvas) {
-            // Prevent default backspace behavior (going back in browser)
-            if (e.key === 'Backspace' && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
-                e.preventDefault();
-            }
-
-            // Only delete if we're not in an input field
-            if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
-                const activeObjects = state.canvas.getActiveObjects();
-                const deletableObjects = activeObjects.filter(obj => !obj.locked);
-                const lockedCount = activeObjects.length - deletableObjects.length;
-                if (deletableObjects.length > 0) {
-                    deletableObjects.forEach(obj => {
-                        // If this is a stage rectangle, also remove its dimension labels
-                        if (obj.rectId) {
-                            const rectDataIndex = state.stageRectangles.findIndex(r => r.id === obj.rectId);
-                            if (rectDataIndex !== -1) {
-                                const rectData = state.stageRectangles[rectDataIndex];
-                                state.canvas.remove(rectData.widthLabel);
-                                state.canvas.remove(rectData.heightLabel);
-                                state.canvas.remove(rectData.rect);
-                                state.stageRectangles.splice(rectDataIndex, 1);
-                            }
-                        }
-                        state.canvas.remove(obj);
-                    });
-                    state.canvas.discardActiveObject();
-                    state.canvas.renderAll();
-                    triggerAutoSave();
-                }
-                if (lockedCount > 0) {
-                    showToast('Locked objects cannot be deleted', 'warning');
-                }
-            }
-        }
-
-        // Duplicate with Cmd+D or Ctrl+D
-        if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
+        // Timeline: Cmd/Ctrl+Enter inserts a new row right after wherever you
+        // last were, instead of always jumping to the bottom phantom row.
+        // (Plain "N" used to do this, but Cmd/Ctrl+Enter works from inside an
+        // active cell edit too, which is when "where you are" matters most.)
+        if (state.currentPage === 'timeline' && e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
             e.preventDefault();
-            if (state.canvas && state.currentPage === 'stage-plots') {
-                const active = state.canvas.getActiveObject();
-                if (active && !active.gridLine) {
-                    duplicateObject(active);
-                }
-            }
-        }
-
-        // Escape key - cancel drawing mode
-        if (e.key === 'Escape' && state.isDrawingStage) {
-            cancelDrawingMode();
-        }
-
-        // Enter key - finish drawing
-        if (e.key === 'Enter' && state.isDrawingStage) {
-            finishDrawingStage();
-        }
-    });
-}
-
-// =============================================
-// RECTANGLE-BASED STAGE DRAWING SYSTEM
-// =============================================
-
-// Toggle Drawing Mode (Rectangle-based)
-function toggleDrawingMode() {
-    console.log('toggleDrawingMode called, canvas exists:', !!state.canvas);
-    if (!state.canvas) return;
-
-    state.isDrawingStage = !state.isDrawingStage;
-    console.log('isDrawingStage set to:', state.isDrawingStage);
-
-    const drawBtn = document.getElementById('draw-stage-btn');
-    const finishBtn = document.getElementById('finish-drawing-btn');
-
-    if (state.isDrawingStage) {
-        // Enter rectangle drawing mode
-        drawBtn.style.display = 'none';
-        finishBtn.style.display = 'inline-block';
-
-        // Show tool mode toggle
-        const toolModeContainer = document.getElementById('tool-mode-container');
-        if (toolModeContainer) {
-            toolModeContainer.style.display = 'flex';
-        }
-
-        // Disable selection of existing elements
-        state.canvas.selection = false;
-        state.canvas.forEachObject(obj => {
-            if (!obj.gridLine && !obj.isRectDimension) {
-                obj.selectable = false;
-            }
-        });
-
-        // Set initial tool to draw
-        console.log('About to call setTool(draw)');
-        setTool('draw');
-    } else {
-        cancelDrawingMode();
-    }
-}
-
-// Set Tool Mode (Draw or Move)
-function setTool(tool) {
-    console.log('setTool called with:', tool);
-    state.currentTool = tool;
-
-    // Update button active states
-    const drawBtn = document.getElementById('draw-rect-tool-btn');
-    const moveBtn = document.getElementById('move-tool-btn');
-
-    if (drawBtn && moveBtn) {
-        drawBtn.classList.remove('active');
-        moveBtn.classList.remove('active');
-
-        if (tool === 'draw') {
-            drawBtn.classList.add('active');
-        } else {
-            moveBtn.classList.add('active');
-        }
-    }
-
-    // Remove all existing tool handlers
-    state.canvas.off('mouse:down', startDrawingRectangle);
-    state.canvas.off('mouse:move', continueDrawingRectangle);
-    state.canvas.off('mouse:up', finishDrawingRectangle);
-
-    // Make all stage rectangles non-selectable first
-    state.stageRectangles.forEach(rectData => {
-        rectData.rect.set({ selectable: false, evented: false });
-        rectData.widthLabel.set({ selectable: false, evented: false });
-        rectData.heightLabel.set({ selectable: false, evented: false });
-    });
-
-    if (tool === 'draw') {
-        // Drawing mode: click and drag creates rectangles, nothing is movable
-        state.canvas.on('mouse:down', startDrawingRectangle);
-        state.canvas.on('mouse:move', continueDrawingRectangle);
-        state.canvas.on('mouse:up', finishDrawingRectangle);
-
-        // Lock all non-grid, non-stage objects so they can't be moved
-        state.canvas.getObjects().forEach(obj => {
-            if (!obj.gridLine && !obj.rectId) {
-                obj.set({ selectable: false, evented: false });
-            }
-        });
-        state.canvas.selection = false;
-        state.canvas.discardActiveObject();
-    } else if (tool === 'move') {
-        // Move mode: everything is movable, no drawing
-        state.stageRectangles.forEach((rectData, index) => {
-            rectData.rect.set({
-                selectable: true,
-                evented: true,
-                hasControls: false,
-                hasBorders: true,
-                borderColor: '#c9a961',
-                lockRotation: true
-            });
-
-            // CRITICAL: Update the object's bounding box for hit detection
-            rectData.rect.setCoords();
-
-            // Add moving event handler for snap-to-align
-            rectData.rect.on('moving', function(e) {
-                snapRectangleToAlign(rectData);
-                updateRectangleDimensions(rectData);
-            });
-
-            // Make dimension labels selectable for editing
-            rectData.widthLabel.set({ selectable: true, evented: true });
-            rectData.heightLabel.set({ selectable: true, evented: true });
-        });
-
-        // Unlock all non-grid objects so they can be moved
-        state.canvas.getObjects().forEach(obj => {
-            if (!obj.gridLine) {
-                obj.set({ selectable: true, evented: true });
-                obj.setCoords();
-            }
-        });
-        state.canvas.selection = true;
-    }
-
-    state.canvas.renderAll();
-}
-
-// Rebuild stageRectangles array from current canvas objects (after loadFromJSON)
-function rebuildStageRectangles() {
-    if (!state.canvas) return;
-    const rectMap = new Map();
-
-    state.canvas.getObjects().forEach(obj => {
-        if (obj.rectId) {
-            if (!rectMap.has(obj.rectId)) {
-                rectMap.set(obj.rectId, { id: obj.rectId });
-            }
-            const rectData = rectMap.get(obj.rectId);
-            if (obj.type === 'rect' && !obj.isRectDimension) {
-                rectData.rect = obj;
-            } else if (obj.isRectDimension) {
-                if (obj.dimensionType === 'width') rectData.widthLabel = obj;
-                else if (obj.dimensionType === 'height') rectData.heightLabel = obj;
-            }
-        }
-    });
-
-    state.stageRectangles = Array.from(rectMap.values()).filter(
-        r => r.rect && r.widthLabel && r.heightLabel
-    );
-
-    state.stageRectangles.forEach(rectData => {
-        rectData.widthLabel.set({ evented: true, hoverCursor: 'pointer', visible: state.dimensionsVisible });
-        rectData.heightLabel.set({ evented: true, hoverCursor: 'pointer', visible: state.dimensionsVisible });
-        if (rectData.rect.locked) {
-            applyLockState(rectData.rect);
-        }
-    });
-}
-
-// Ensure stage rectangles and their labels stay behind all other elements (but above grid)
-function sendStageRectsToBack() {
-    if (!state.canvas) return;
-    state.stageRectangles.forEach(rectData => {
-        state.canvas.sendToBack(rectData.heightLabel);
-        state.canvas.sendToBack(rectData.widthLabel);
-        state.canvas.sendToBack(rectData.rect);
-    });
-    // Grid lines should be at the very back
-    state.canvas.getObjects().forEach(obj => {
-        if (obj.gridLine) state.canvas.sendToBack(obj);
-    });
-    state.canvas.renderAll();
-    // Mark all non-grid objects dirty so updated zIndex gets saved
-    if (!state.isReceivingRemote) {
-        state.canvas.getObjects().forEach(obj => {
-            if (!obj.gridLine && obj.objectId) {
-                state.dirtyObjectIds.add(obj.objectId);
-            }
-        });
-    }
-}
-
-// Start Drawing a Rectangle
-function startDrawingRectangle(e) {
-    if (state.currentTool !== 'draw' || state.currentDrawingRect) {
-        return;
-    }
-
-    const pointer = state.canvas.getPointer(e.e);
-    state.drawingStartPoint = { x: pointer.x, y: pointer.y };
-
-    // Get pixels per foot for live dimension display
-    const width = 40;
-    const height = 30;
-    const canvasWidth = state.canvas.width;
-    const canvasHeight = state.canvas.height;
-    const pixelsPerFoot = Math.min(canvasWidth / width, canvasHeight / height);
-
-    // Create temporary rectangle with fill properties
-    const defaultStroke = state.defaultRectStroke || '#c9a961';
-    const defaultFillColor = state.defaultFillColor || '#c9a961';
-    const defaultFillOpacity = state.defaultFillOpacity || 0.2;
-    const rgb = hexToRgb(defaultFillColor);
-
-    state.currentDrawingRect = new fabric.Rect({
-        left: pointer.x,
-        top: pointer.y,
-        width: 0,
-        height: 0,
-        fill: `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${defaultFillOpacity})`,
-        stroke: defaultStroke,
-        strokeWidth: 3,
-        selectable: false,
-        evented: false,
-        pixelsPerFoot: pixelsPerFoot,
-        fillEnabled: true,
-        fillColor: defaultFillColor,
-        fillOpacity: defaultFillOpacity
-    });
-
-    state.canvas.add(state.currentDrawingRect);
-}
-
-// Continue Drawing Rectangle (mouse move)
-function continueDrawingRectangle(e) {
-    if (!state.currentDrawingRect || !state.drawingStartPoint) return;
-
-    const pointer = state.canvas.getPointer(e.e);
-    const startX = state.drawingStartPoint.x;
-    const startY = state.drawingStartPoint.y;
-
-    // Calculate rectangle dimensions
-    const width = pointer.x - startX;
-    const height = pointer.y - startY;
-
-    // Update rectangle (handle negative dimensions for reverse dragging)
-    if (width > 0) {
-        state.currentDrawingRect.set({ left: startX, width: width });
-    } else {
-        state.currentDrawingRect.set({ left: pointer.x, width: Math.abs(width) });
-    }
-
-    if (height > 0) {
-        state.currentDrawingRect.set({ top: startY, height: height });
-    } else {
-        state.currentDrawingRect.set({ top: pointer.y, height: Math.abs(height) });
-    }
-
-    state.canvas.renderAll();
-}
-
-// Finish Drawing Rectangle (mouse up)
-function finishDrawingRectangle(e) {
-    if (!state.currentDrawingRect) return;
-
-    const rect = state.currentDrawingRect;
-
-    // Only create if rectangle has meaningful size (> 10 pixels)
-    if (rect.width < 10 || rect.height < 10) {
-        state.canvas.remove(rect);
-        state.currentDrawingRect = null;
-        state.drawingStartPoint = null;
-        return;
-    }
-
-    // Get pixels per foot
-    const pixelsPerFoot = rect.pixelsPerFoot;
-
-    // Calculate dimensions in feet
-    const widthFeet = rect.width / pixelsPerFoot;
-    const heightFeet = rect.height / pixelsPerFoot;
-
-    // Create dimension labels using rect's stroke color
-    const labelColor = rect.stroke || '#c9a961';
-
-    const widthLabel = new fabric.Text(feetToFeetInches(widthFeet), {
-        left: rect.left + rect.width / 2,
-        top: rect.top - 15,
-        fontSize: 12,
-        fontFamily: 'Arial, sans-serif',
-        fontWeight: 'bold',
-        fill: labelColor,
-        backgroundColor: 'rgba(255, 255, 255, 0.8)',
-        padding: 3,
-        originX: 'center',
-        originY: 'center',
-        selectable: false,
-        evented: true,
-        hoverCursor: 'pointer',
-        isRectDimension: true,
-        dimensionType: 'width'
-    });
-
-    const heightLabel = new fabric.Text(feetToFeetInches(heightFeet), {
-        left: rect.left - 15,
-        top: rect.top + rect.height / 2,
-        fontSize: 12,
-        fontFamily: 'Arial, sans-serif',
-        fontWeight: 'bold',
-        fill: labelColor,
-        backgroundColor: 'rgba(255, 255, 255, 0.8)',
-        padding: 3,
-        originX: 'center',
-        originY: 'center',
-        angle: -90,
-        selectable: false,
-        evented: true,
-        hoverCursor: 'pointer',
-        isRectDimension: true,
-        dimensionType: 'height'
-    });
-
-    widthLabel.set({ visible: state.dimensionsVisible });
-    heightLabel.set({ visible: state.dimensionsVisible });
-    state.canvas.add(widthLabel);
-    state.canvas.add(heightLabel);
-
-    // Store rectangle with its labels
-    const rectId = 'rect_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-    rect.set({ rectId: rectId });
-    widthLabel.set({ rectId: rectId });
-    heightLabel.set({ rectId: rectId });
-
-    state.stageRectangles.push({
-        id: rectId,
-        rect: rect,
-        widthLabel: widthLabel,
-        heightLabel: heightLabel
-    });
-
-    // Reset for next rectangle
-    state.currentDrawingRect = null;
-    state.drawingStartPoint = null;
-
-    sendStageRectsToBack();
-}
-
-// Convert decimal feet to feet and inches format
-function feetToFeetInches(decimalFeet) {
-    const feet = Math.floor(decimalFeet);
-    const inches = Math.round((decimalFeet - feet) * 12);
-
-    // Handle case where inches rounds to 12
-    if (inches === 12) {
-        return `${feet + 1}'0"`;
-    } else if (inches === 0) {
-        return `${feet}'0"`;
-    } else {
-        return `${feet}'${inches}"`;
-    }
-}
-
-// Convert feet-inches format to decimal feet
-function feetInchesToFeet(feetInchesStr) {
-    // Parse formats like "20'6\"" or "20' 6\"" or just "20"
-    const match = feetInchesStr.match(/(\d+)(?:'|ft)?\s*(\d+)?(?:"|in)?/);
-    if (!match) return null;
-
-    const feet = parseInt(match[1]) || 0;
-    const inches = parseInt(match[2]) || 0;
-
-    return feet + (inches / 12);
-}
-
-// Parse feet-inches format or decimal feet to decimal
-function parseFeetInches(input) {
-    // Remove extra spaces
-    input = input.trim();
-
-    // Try to match feet-inches format: 20'6" or 20' 6" or 20ft 6in
-    const feetInchesPattern = /(\d+)['ft]?\s*(\d+)?["in]?/i;
-    const match = input.match(feetInchesPattern);
-
-    if (match) {
-        const feet = parseInt(match[1]) || 0;
-        const inches = parseInt(match[2]) || 0;
-        return feet + (inches / 12);
-    }
-
-    // Otherwise, try to parse as decimal
-    const decimal = parseFloat(input);
-    if (!isNaN(decimal)) {
-        return decimal;
-    }
-
-    return null;
-}
-
-
-// Finish Drawing Stage
-// Finish Drawing/Editing and Switch to Move Mode
-function finishDrawingStage() {
-    // Handle both drawing mode and editing mode
-    if (!state.isDrawingStage && !state.isEditingStage) return;
-
-    if (state.stageRectangles.length === 0) {
-        alert('Please draw at least one rectangle for the stage.');
-        return;
-    }
-
-    console.log('Finishing drawing stage, switching to move mode');
-
-    // Hide the Finish button (keep tool toggle visible)
-    const finishBtn = document.getElementById('finish-drawing-btn');
-    if (finishBtn) finishBtn.style.display = 'none';
-
-    // Switch to move mode so user can immediately move rectangles
-    setTool('move');
-
-    state.canvas.renderAll();
-    triggerAutoSave();
-}
-
-
-// Edit Element Label (Double-click handler)
-function editElementLabel(elementGroup) {
-    if (!elementGroup || !elementGroup.isStageElement) return;
-
-    // Get the label object from the group (it's the second item, index 1)
-    const objects = elementGroup.getObjects();
-    const labelObj = objects[1];  // Index 0 is emoji, index 1 is label
-
-    if (!labelObj) return;
-
-    const currentLabel = labelObj.text;
-
-    // Prompt for new label
-    const newLabel = prompt('Enter new label for this element:', currentLabel);
-    if (!newLabel || newLabel === currentLabel) return;  // User cancelled or no change
-
-    // Update the label text
-    labelObj.set('text', newLabel);
-
-    // Mark as dirty and re-render
-    elementGroup.dirty = true;
-    elementGroup.setCoords();
-    state.canvas.renderAll();
-    triggerAutoSave();
-    updateSaveStatus('Label updated');
-}
-
-// Edit Rectangle Dimension (Double-click on dimension label)
-function editRectangleDimension(dimensionLabel) {
-    if (!dimensionLabel || !dimensionLabel.isRectDimension) return;
-
-    const rectId = dimensionLabel.rectId;
-    const dimensionType = dimensionLabel.dimensionType; // 'width' or 'height'
-
-    // Find the rectangle data
-    const rectData = state.stageRectangles.find(r => r.id === rectId);
-    if (!rectData) return;
-
-    const rect = rectData.rect;
-    const pixelsPerFoot = rect.pixelsPerFoot || 20; // fallback
-
-    // Get current dimension in feet
-    const currentFeet = dimensionType === 'width'
-        ? rect.width / pixelsPerFoot
-        : rect.height / pixelsPerFoot;
-    const currentDimensionStr = feetToFeetInches(currentFeet);
-
-    // Prompt for new dimension
-    const newDimensionStr = prompt(
-        `Enter new ${dimensionType} (e.g., "20'6\"" or "20' 6\"" or "20"):`,
-        currentDimensionStr
-    );
-
-    if (!newDimensionStr || newDimensionStr === currentDimensionStr) return;
-
-    // Parse new dimension
-    const newFeet = feetInchesToFeet(newDimensionStr);
-    if (newFeet === null || newFeet <= 0) {
-        alert('Invalid dimension format. Please use format like "20\'6\"" or "20"');
-        return;
-    }
-
-    const newPixels = newFeet * pixelsPerFoot;
-
-    // Resize the rectangle
-    if (dimensionType === 'width') {
-        rect.set({ width: newPixels });
-    } else {
-        rect.set({ height: newPixels });
-    }
-
-    // Update coordinates
-    rect.setCoords();
-
-    // Update dimension labels
-    updateRectangleDimensionLabels(rectData);
-
-    state.canvas.renderAll();
-    triggerAutoSave();
-    updateSaveStatus('Updated');
-}
-
-// Update Rectangle Dimension Label Positions and Text
-function updateRectangleDimensionLabels(rectData) {
-    const rect = rectData.rect;
-    const pixelsPerFoot = rect.pixelsPerFoot || 20;
-
-    // Calculate dimensions in feet
-    const widthFeet = rect.width / pixelsPerFoot;
-    const heightFeet = rect.height / pixelsPerFoot;
-
-    // Update width label
-    rectData.widthLabel.set({
-        text: feetToFeetInches(widthFeet),
-        left: rect.left + rect.width / 2,
-        top: rect.top - 15
-    });
-
-    // Update height label
-    rectData.heightLabel.set({
-        text: feetToFeetInches(heightFeet),
-        left: rect.left - 15,
-        top: rect.top + rect.height / 2
-    });
-}
-
-// Unlock Stage for Editing
-// Unlock Stage - Enter Drag/Edit Mode
-function unlockStage() {
-    if (state.stageRectangles.length === 0) return;
-
-    state.stageLocked = false;
-    state.isDrawingStage = true;  // Reuse drawing mode flag for tool system
-
-    // Show tool mode toggle
-    const toolModeContainer = document.getElementById('tool-mode-container');
-    if (toolModeContainer) {
-        toolModeContainer.style.display = 'flex';
-    }
-
-    // Hide Edit button, show Finish button
-    const editBtn = document.getElementById('edit-stage-btn');
-    const finishBtn = document.getElementById('finish-drawing-btn');
-
-    if (editBtn) editBtn.style.display = 'none';
-    if (finishBtn) finishBtn.style.display = 'inline-block';
-
-    // Set initial tool to move mode
-    setTool('move');
-}
-
-// Snap Rectangle to Align with Other Rectangles
-function snapRectangleToAlign(movingRectData) {
-    const movingRect = movingRectData.rect;
-    const snapDist = state.snapDistance;
-
-    // Get edges of moving rectangle
-    const movingLeft = movingRect.left;
-    const movingRight = movingRect.left + movingRect.width;
-    const movingTop = movingRect.top;
-    const movingBottom = movingRect.top + movingRect.height;
-
-    // Check against all other rectangles
-    state.stageRectangles.forEach(otherRectData => {
-        if (otherRectData.id === movingRectData.id) return;
-
-        const otherRect = otherRectData.rect;
-        const otherLeft = otherRect.left;
-        const otherRight = otherRect.left + otherRect.width;
-        const otherTop = otherRect.top;
-        const otherBottom = otherRect.top + otherRect.height;
-
-        // Snap left edge to other's right edge
-        if (Math.abs(movingLeft - otherRight) < snapDist) {
-            movingRect.set({ left: otherRight });
-        }
-        // Snap right edge to other's left edge
-        if (Math.abs(movingRight - otherLeft) < snapDist) {
-            movingRect.set({ left: otherLeft - movingRect.width });
-        }
-        // Snap left edges together
-        if (Math.abs(movingLeft - otherLeft) < snapDist) {
-            movingRect.set({ left: otherLeft });
-        }
-        // Snap right edges together
-        if (Math.abs(movingRight - otherRight) < snapDist) {
-            movingRect.set({ left: otherRight - movingRect.width });
-        }
-
-        // Snap top edge to other's bottom edge
-        if (Math.abs(movingTop - otherBottom) < snapDist) {
-            movingRect.set({ top: otherBottom });
-        }
-        // Snap bottom edge to other's top edge
-        if (Math.abs(movingBottom - otherTop) < snapDist) {
-            movingRect.set({ top: otherTop - movingRect.height });
-        }
-        // Snap top edges together
-        if (Math.abs(movingTop - otherTop) < snapDist) {
-            movingRect.set({ top: otherTop });
-        }
-        // Snap bottom edges together
-        if (Math.abs(movingBottom - otherBottom) < snapDist) {
-            movingRect.set({ top: otherBottom - movingRect.height });
-        }
-    });
-}
-
-// Update Rectangle Dimension Labels After Move
-function updateRectangleDimensions(rectData) {
-    const rect = rectData.rect;
-
-    // Update width label position
-    rectData.widthLabel.set({
-        left: rect.left + rect.width / 2,
-        top: rect.top - 15
-    });
-
-    // Update height label position
-    rectData.heightLabel.set({
-        left: rect.left - 15,
-        top: rect.top + rect.height / 2
-    });
-}
-
-// Delete All Stage Rectangles (called when clearing canvas or loading new plot)
-function deleteStage() {
-    state.stageRectangles.forEach(rectData => {
-        state.canvas.remove(rectData.rect);
-        state.canvas.remove(rectData.widthLabel);
-        state.canvas.remove(rectData.heightLabel);
-    });
-
-    state.stageRectangles = [];
-    state.stageLocked = false;
-    state.isEditingStage = false;
-
-    // Reset buttons
-    const drawBtn = document.getElementById('draw-stage-btn');
-    const editBtn = document.getElementById('edit-stage-btn');
-    const finishBtn = document.getElementById('finish-drawing-btn');
-
-    if (drawBtn) drawBtn.style.display = 'inline-block';
-    if (editBtn) editBtn.style.display = 'none';
-    if (finishBtn) finishBtn.style.display = 'none';
-}
-
-// Cancel Drawing/Editing Mode
-function cancelDrawingMode() {
-    state.isDrawingStage = false;
-    state.isEditingStage = false;
-    state.currentTool = null;
-
-    // Remove any in-progress rectangle
-    if (state.currentDrawingRect) {
-        state.canvas.remove(state.currentDrawingRect);
-        state.currentDrawingRect = null;
-    }
-    state.drawingStartPoint = null;
-
-    // Remove mouse handlers
-    state.canvas.off('mouse:down', startDrawingRectangle);
-    state.canvas.off('mouse:move', continueDrawingRectangle);
-    state.canvas.off('mouse:up', finishDrawingRectangle);
-
-    // Hide tool mode toggle
-    const toolModeContainer = document.getElementById('tool-mode-container');
-    if (toolModeContainer) {
-        toolModeContainer.style.display = 'none';
-    }
-
-    // Re-enable selection for elements (but NOT grid lines!)
-    state.canvas.selection = true;
-    state.canvas.forEachObject(obj => {
-        if (!obj.isRectDimension && !obj.locked && !obj.gridLine) {
-            obj.selectable = true;
-        }
-        // Make absolutely sure grid lines stay locked
-        if (obj.gridLine) {
-            obj.selectable = false;
-            obj.evented = false;
-        }
-    });
-
-    const drawBtn = document.getElementById('draw-stage-btn');
-    const finishBtn = document.getElementById('finish-drawing-btn');
-
-    if (drawBtn && finishBtn) {
-        drawBtn.style.display = 'inline-block';
-        finishBtn.style.display = 'none';
-    }
-
-    updateSaveStatus('');
-}
-
-// Setup Plot Name Input
-function setupPlotNameInput() {
-    const plotNameInput = document.getElementById('plot-name-input');
-    if (!plotNameInput) return;
-
-    // Update plot name on blur
-    plotNameInput.addEventListener('blur', async () => {
-        const newName = plotNameInput.value.trim();
-        if (!newName) {
-            alert('Plot name cannot be empty');
-            if (state.isDraftPlot) {
-                plotNameInput.value = 'Untitled Plot';
-            } else {
-                const plot = state.stagePlots.find(p => p.id === state.currentPlotId);
-                if (plot) {
-                    plotNameInput.value = plot.name;
-                }
-            }
+            insertTimelineRowAfterCurrent();
             return;
         }
 
-        // Promote draft if user typed a non-default name
-        if (state.isDraftPlot && newName !== 'Untitled Plot') {
-            await promoteDraftPlot();
-            return;
-        }
-
-        if (!state.currentPlotId) return;
-
-        try {
-            await collections.stagePlots.doc(state.currentPlotId).update({
-                name: newName,
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-            });
-
-            // Update the plot in local state
-            const plot = state.stagePlots.find(p => p.id === state.currentPlotId);
-            if (plot) {
-                plot.name = newName;
+        // Undo: Ctrl+Z or Cmd+Z (global, regardless of focus)
+        if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+            e.preventDefault();
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+                e.target.blur();
             }
-
-            // Update the dropdown to show the new name
-            updatePlotSelector();
-
-            updateSaveStatus('Renamed');
-            showToast('Plot renamed');
-        } catch (error) {
-            console.error('Error updating plot name:', error);
-            showToast('Error updating plot name. Please try again.', 'error');
+            undoGlobalAction();
         }
     });
-
-    // Update on Enter key
-    plotNameInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            plotNameInput.blur();
-        }
-    });
-}
-
-// Print Plot
-function printPlot() {
-    if (!state.canvas) return;
-
-    // Export canvas as data URL
-    const dataURL = state.canvas.toDataURL({
-        format: 'png',
-        quality: 1.0,
-        multiplier: 2  // Higher resolution for printing
-    });
-
-    // Create a new window for printing
-    const printWindow = window.open('', '_blank');
-
-    // Use fixed dimensions
-    const width = 40;
-    const height = 30;
-    const plotName = state.currentPlotId ?
-        state.stagePlots.find(p => p.id === state.currentPlotId)?.name || 'Untitled Plot' :
-        'Untitled Plot';
-    const stageTypeName = state.currentStagePlotType === 'main' ? 'Main Stage' : 'Cocktail Stage';
-    const today = new Date().toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-    });
-
-    printWindow.document.write(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>${plotName} - ${stageTypeName}</title>
-            <style>
-                * {
-                    margin: 0;
-                    padding: 0;
-                    box-sizing: border-box;
-                }
-                body {
-                    font-family: 'Segoe UI', 'Arial', sans-serif;
-                    padding: 40px;
-                    background: white;
-                }
-                .header {
-                    border-bottom: 3px solid #c9a961;
-                    padding-bottom: 20px;
-                    margin-bottom: 30px;
-                }
-                .event-title {
-                    color: #2c3e50;
-                    font-size: 24px;
-                    font-weight: 300;
-                    margin-bottom: 5px;
-                    text-transform: uppercase;
-                    letter-spacing: 2px;
-                }
-                h1 {
-                    color: #c9a961;
-                    font-size: 32px;
-                    margin-bottom: 8px;
-                    font-weight: 600;
-                }
-                .subtitle {
-                    color: #7f8c8d;
-                    font-size: 16px;
-                    margin-bottom: 5px;
-                }
-                .info-grid {
-                    display: grid;
-                    grid-template-columns: repeat(3, 1fr);
-                    gap: 20px;
-                    margin-bottom: 30px;
-                    padding: 15px;
-                    background: #f8f9fa;
-                    border-radius: 8px;
-                }
-                .info-item {
-                    text-align: center;
-                }
-                .info-label {
-                    font-size: 12px;
-                    color: #7f8c8d;
-                    text-transform: uppercase;
-                    letter-spacing: 1px;
-                    margin-bottom: 5px;
-                }
-                .info-value {
-                    font-size: 18px;
-                    color: #2c3e50;
-                    font-weight: 600;
-                }
-                .plot-container {
-                    border: 2px solid #e0e0e0;
-                    border-radius: 8px;
-                    padding: 20px;
-                    background: white;
-                    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-                }
-                img {
-                    width: 100%;
-                    height: auto;
-                    display: block;
-                    border-radius: 4px;
-                }
-                .footer {
-                    margin-top: 30px;
-                    padding-top: 20px;
-                    border-top: 1px solid #e0e0e0;
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                    font-size: 12px;
-                    color: #95a5a6;
-                }
-                .footer-left {
-                    font-style: italic;
-                }
-                .footer-right {
-                    text-align: right;
-                }
-                @media print {
-                    body {
-                        padding: 20px;
-                    }
-                    .plot-container {
-                        box-shadow: none;
-                    }
-                }
-            </style>
-        </head>
-        <body>
-            <div class="header">
-                <div class="event-title">YMU Gala 2026</div>
-                <h1>${plotName}</h1>
-                <div class="subtitle">${stageTypeName} Plot</div>
-            </div>
-
-            <div class="info-grid">
-                <div class="info-item">
-                    <div class="info-label">Event Date</div>
-                    <div class="info-value">April 25, 2026</div>
-                </div>
-                <div class="info-item">
-                    <div class="info-label">Stage Dimensions</div>
-                    <div class="info-value">${width}' × ${height}'</div>
-                </div>
-                <div class="info-item">
-                    <div class="info-label">Scale</div>
-                    <div class="info-value">1 ft = 1 grid</div>
-                </div>
-            </div>
-
-            <div class="plot-container">
-                <img src="${dataURL}" alt="Stage Plot">
-            </div>
-
-            <div class="footer">
-                <div class="footer-left">
-                    Young Musicians Unite • 2026 Gala Event
-                </div>
-                <div class="footer-right">
-                    Printed: ${today}
-                </div>
-            </div>
-        </body>
-        </html>
-    `);
-
-    printWindow.document.close();
-
-    // Wait for image to load then print
-    printWindow.onload = () => {
-        setTimeout(() => {
-            printWindow.print();
-        }, 250);
-    };
-}
-
-// =============================================
-// REAL-TIME COLLABORATION HELPERS
-// =============================================
-
-// Assign a unique objectId to a Fabric object if it doesn't have one
-function assignObjectId(obj) {
-    if (!obj.objectId && !obj.gridLine) {
-        obj.objectId = 'obj_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-    }
-}
-
-// Mark an object (and related rect labels) as dirty
-function trackDirtyObject(obj) {
-    if (!obj || obj.gridLine) return;
-    assignObjectId(obj);
-    state.dirtyObjectIds.add(obj.objectId);
-
-    // If it's a rect, also mark its dimension labels
-    if (obj.rectId) {
-        const rectData = state.stageRectangles.find(r => r.id === obj.rectId);
-        if (rectData) {
-            if (rectData.widthLabel && rectData.widthLabel !== obj) {
-                assignObjectId(rectData.widthLabel);
-                state.dirtyObjectIds.add(rectData.widthLabel.objectId);
-            }
-            if (rectData.heightLabel && rectData.heightLabel !== obj) {
-                assignObjectId(rectData.heightLabel);
-                state.dirtyObjectIds.add(rectData.heightLabel.objectId);
-            }
-            if (rectData.rect && rectData.rect !== obj) {
-                assignObjectId(rectData.rect);
-                state.dirtyObjectIds.add(rectData.rect.objectId);
-            }
-        }
-    }
-}
-
-// Setup real-time listener for plot objects subcollection
-function setupPlotObjectsListener(plotId) {
-    // Detach previous listener
-    if (state.plotObjectsUnsubscribe) {
-        state.plotObjectsUnsubscribe();
-        state.plotObjectsUnsubscribe = null;
-    }
-
-    const unsubscribe = collections.stagePlots.doc(plotId).collection('objects')
-        .onSnapshot((snapshot) => {
-            if (!state.canvas || state.currentPlotId !== plotId) return;
-
-            const remoteChanges = snapshot.docChanges().filter(c => c.doc.data().updatedBy !== CLIENT_ID);
-            if (remoteChanges.length > 0) {
-                state.isReceivingRemote = true;
-
-                remoteChanges.forEach(change => {
-                    const data = change.doc.data();
-                    if (change.type === 'added' || change.type === 'modified') {
-                        applyRemoteObject(data);
-                    } else if (change.type === 'removed') {
-                        removeRemoteObject(data.objectId);
-                    }
-                });
-
-                state.canvas.renderAll();
-                state.isReceivingRemote = false;
-            }
-        }, (error) => {
-            console.error('Error listening to plot objects:', error);
-        });
-
-    state.plotObjectsUnsubscribe = unsubscribe;
-}
-
-// Apply a remote object change to the canvas
-function applyRemoteObject(data) {
-    if (!data.fabricData || !data.objectId) return;
-
-    // Find existing object on canvas
-    const existing = state.canvas.getObjects().find(o => o.objectId === data.objectId);
-
-    if (existing) {
-        // Update existing object properties
-        const fabricData = data.fabricData;
-        existing.set(fabricData);
-        existing.setCoords();
-        applyLockState(existing);
-    } else {
-        // Create new object from fabric data
-        const objData = { ...data.fabricData, objectId: data.objectId };
-        if (data.rectId) objData.rectId = data.rectId;
-
-        fabric.util.enlivenObjects([objData], (objects) => {
-            objects.forEach(obj => {
-                // Insert at correct z-position based on stored zIndex
-                const targetZIndex = data.zIndex;
-                if (targetZIndex != null) {
-                    const nonGridObjects = state.canvas.getObjects().filter(o => !o.gridLine);
-                    const gridCount = state.canvas.getObjects().filter(o => o.gridLine).length;
-                    // Clamp insertion index: gridCount offset + position among non-grid objects
-                    const insertAt = Math.min(gridCount + targetZIndex, state.canvas.getObjects().length);
-                    state.canvas.insertAt(obj, insertAt);
-                } else {
-                    state.canvas.add(obj);
-                }
-                applyLockState(obj);
-            });
-            // Rebuild stage rectangles if rect-related
-            if (data.rectId) {
-                rebuildStageRectangles();
-                sendStageRectsToBack();
-            }
-        });
-    }
-}
-
-// Remove a remote object from the canvas
-function removeRemoteObject(objectId) {
-    if (!objectId) return;
-    const obj = state.canvas.getObjects().find(o => o.objectId === objectId);
-    if (obj) {
-        // If it's a rect, also remove related labels
-        if (obj.rectId) {
-            const rectData = state.stageRectangles.find(r => r.id === obj.rectId);
-            if (rectData) {
-                if (rectData.widthLabel) state.canvas.remove(rectData.widthLabel);
-                if (rectData.heightLabel) state.canvas.remove(rectData.heightLabel);
-                if (rectData.rect) state.canvas.remove(rectData.rect);
-                state.stageRectangles = state.stageRectangles.filter(r => r.id !== obj.rectId);
-                return;
-            }
-        }
-        state.canvas.remove(obj);
-    }
-}
-
-// After undo/redo, sync entire canvas state to Firestore
-async function syncAfterUndoRedo() {
-    if (!state.currentPlotId || !state.canvas) return;
-
-    state.isReceivingRemote = true;
-
-    // Get all current canvas objects (non-grid)
-    const canvasObjects = state.canvas.getObjects().filter(o => !o.gridLine);
-    const canvasObjectIds = new Set();
-
-    // Assign IDs and mark all as dirty
-    canvasObjects.forEach(obj => {
-        assignObjectId(obj);
-        canvasObjectIds.add(obj.objectId);
-        state.dirtyObjectIds.add(obj.objectId);
-    });
-
-    // Find objects in Firestore that are no longer on canvas
-    try {
-        const objectsSnap = await collections.stagePlots.doc(state.currentPlotId).collection('objects').get();
-        objectsSnap.docs.forEach(doc => {
-            const objectId = doc.data().objectId;
-            if (!canvasObjectIds.has(objectId)) {
-                state.deletedObjectIds.add(objectId);
-            }
-        });
-    } catch (error) {
-        console.error('Error fetching objects for undo/redo sync:', error);
-    }
-
-    state.isReceivingRemote = false;
-    triggerAutoSave();
-}
-
-// =============================================
-// PROPERTIES PANEL (COLOR PICKER + FILL)
-// =============================================
-
-function hexToRgb(hex) {
-    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-    return result ? {
-        r: parseInt(result[1], 16),
-        g: parseInt(result[2], 16),
-        b: parseInt(result[3], 16)
-    } : { r: 0, g: 0, b: 0 };
-}
-
-function rgbaToHex(rgba) {
-    if (!rgba || rgba === 'transparent') return '#000000';
-    if (rgba.startsWith('#')) return rgba;
-    const match = rgba.match(/(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
-    if (!match) return '#000000';
-    const r = parseInt(match[1]).toString(16).padStart(2, '0');
-    const g = parseInt(match[2]).toString(16).padStart(2, '0');
-    const b = parseInt(match[3]).toString(16).padStart(2, '0');
-    return `#${r}${g}${b}`;
-}
-
-function toggleLockObject(obj) {
-    if (!obj || obj.gridLine) return;
-    const newLocked = !obj.locked;
-    obj.set({
-        locked: newLocked,
-        lockMovementX: newLocked,
-        lockMovementY: newLocked,
-        lockScalingX: newLocked,
-        lockScalingY: newLocked,
-        lockRotation: newLocked,
-        hasControls: !newLocked,
-        selectable: true,
-        evented: true,
-        borderDashArray: newLocked ? [5, 5] : null,
-        borderColor: newLocked ? '#999' : '#c9a961'
-    });
-
-    trackDirtyObject(obj);
-    state.canvas.renderAll();
-    triggerAutoSave();
-    updateLockButton(obj);
-}
-window.toggleLockObject = toggleLockObject;
-
-function applyLockState(obj) {
-    if (!obj || !obj.locked) return;
-    obj.set({
-        lockMovementX: true,
-        lockMovementY: true,
-        lockScalingX: true,
-        lockScalingY: true,
-        lockRotation: true,
-        hasControls: false,
-        borderDashArray: [5, 5],
-        borderColor: '#999'
-    });
-}
-
-function updateLockButton(obj) {
-    const lockBtn = document.getElementById('prop-lock-btn');
-    if (!lockBtn) return;
-    if (obj && obj.locked) {
-        lockBtn.classList.add('active');
-        lockBtn.title = 'Unlock';
-    } else {
-        lockBtn.classList.remove('active');
-        lockBtn.title = 'Lock';
-    }
-}
-
-function showPropertiesPanel(selectedObjects) {
-    const panel = document.getElementById('properties-panel');
-    if (!panel || !selectedObjects || selectedObjects.length === 0) return;
-
-    const obj = selectedObjects[0];
-
-    // Skip grid lines and dimension labels
-    if (obj.gridLine || obj.isRectDimension) return;
-
-    const strokeInput = document.getElementById('prop-stroke-color');
-    const fillEnabledInput = document.getElementById('prop-fill-enabled');
-    const fillColorInput = document.getElementById('prop-fill-color');
-    const fillOpacitySelect = document.getElementById('prop-fill-opacity');
-    const fillControls = document.getElementById('prop-fill-controls');
-
-    // Determine if this is a rect-type object (show fill controls)
-    const isRect = obj.type === 'rect' && obj.rectId;
-
-    // Set stroke color
-    if (strokeInput) {
-        const strokeColor = obj.stroke || (isRect ? '#c9a961' : '#000000');
-        strokeInput.value = rgbaToHex(strokeColor);
-    }
-
-    // Show/hide fill controls
-    if (fillControls) {
-        fillControls.style.display = isRect ? 'inline-flex' : 'none';
-    }
-
-    if (isRect) {
-        const fillEnabled = obj.fillEnabled !== undefined ? obj.fillEnabled : true;
-        const fillColor = obj.fillColor || rgbaToHex(obj.fill) || '#c9a961';
-        const fillOpacity = obj.fillOpacity !== undefined ? obj.fillOpacity : 0.2;
-
-        if (fillEnabledInput) fillEnabledInput.checked = fillEnabled;
-        if (fillColorInput) fillColorInput.value = fillColor;
-        if (fillOpacitySelect) {
-            // Find closest opacity option
-            const options = ['0.2', '0.4', '0.6', '1.0'];
-            const closest = options.reduce((prev, curr) =>
-                Math.abs(parseFloat(curr) - fillOpacity) < Math.abs(parseFloat(prev) - fillOpacity) ? curr : prev
-            );
-            fillOpacitySelect.value = closest;
-        }
-    }
-
-    panel.classList.remove('hidden');
-}
-
-function hidePropertiesPanel() {
-    const panel = document.getElementById('properties-panel');
-    if (panel) panel.classList.add('hidden');
-}
-
-function setupPropertiesPanel() {
-    const strokeInput = document.getElementById('prop-stroke-color');
-    const fillEnabledInput = document.getElementById('prop-fill-enabled');
-    const fillColorInput = document.getElementById('prop-fill-color');
-    const fillOpacitySelect = document.getElementById('prop-fill-opacity');
-
-    if (strokeInput) {
-        strokeInput.addEventListener('input', () => {
-            const obj = state.canvas?.getActiveObject();
-            if (!obj) return;
-
-            const newColor = strokeInput.value;
-            obj.set('stroke', newColor);
-
-            // If rect, update dimension label colors to match
-            if (obj.rectId) {
-                const rectData = state.stageRectangles.find(r => r.id === obj.rectId);
-                if (rectData) {
-                    rectData.widthLabel.set('fill', newColor);
-                    rectData.heightLabel.set('fill', newColor);
-                    trackDirtyObject(rectData.widthLabel);
-                    trackDirtyObject(rectData.heightLabel);
-                }
-            }
-
-            trackDirtyObject(obj);
-            state.canvas.renderAll();
-            triggerAutoSave();
-        });
-    }
-
-    if (fillEnabledInput) {
-        fillEnabledInput.addEventListener('change', () => {
-            const obj = state.canvas?.getActiveObject();
-            if (!obj || !obj.rectId) return;
-
-            obj.fillEnabled = fillEnabledInput.checked;
-            applyFillToRect(obj);
-            trackDirtyObject(obj);
-            state.canvas.renderAll();
-            triggerAutoSave();
-        });
-    }
-
-    if (fillColorInput) {
-        fillColorInput.addEventListener('input', () => {
-            const obj = state.canvas?.getActiveObject();
-            if (!obj || !obj.rectId) return;
-
-            obj.fillColor = fillColorInput.value;
-            if (obj.fillEnabled) {
-                applyFillToRect(obj);
-            }
-            trackDirtyObject(obj);
-            state.canvas.renderAll();
-            triggerAutoSave();
-        });
-    }
-
-    if (fillOpacitySelect) {
-        fillOpacitySelect.addEventListener('change', () => {
-            const obj = state.canvas?.getActiveObject();
-            if (!obj || !obj.rectId) return;
-
-            obj.fillOpacity = parseFloat(fillOpacitySelect.value);
-            if (obj.fillEnabled) {
-                applyFillToRect(obj);
-            }
-            trackDirtyObject(obj);
-            state.canvas.renderAll();
-            triggerAutoSave();
-        });
-    }
-
-    // Lock button
-    document.getElementById('prop-lock-btn')?.addEventListener('click', () => {
-        const obj = state.canvas?.getActiveObject();
-        if (obj) toggleLockObject(obj);
-    });
-
-    // Right-click context menu for stage plots (z-order, duplicate, lock)
-    const canvasWrapper = document.getElementById('canvas-wrapper');
-    if (canvasWrapper) {
-        canvasWrapper.addEventListener('contextmenu', spShowContextMenu);
-        document.addEventListener('click', spHideContextMenu);
-    }
-}
-
-// Stage Plot Right-Click Context Menu (matches venue map pattern)
-function spShowContextMenu(e) {
-    const activeObj = state.canvas && state.canvas.getActiveObject();
-    if (!activeObj || activeObj.gridLine || activeObj.isRectDimension) return;
-
-    e.preventDefault();
-    const menu = document.getElementById('sp-context-menu');
-    if (!menu) return;
-    menu.style.display = 'block';
-    menu.style.left = e.clientX + 'px';
-    menu.style.top = e.clientY + 'px';
-}
-
-function spHideContextMenu() {
-    const menu = document.getElementById('sp-context-menu');
-    if (menu) menu.style.display = 'none';
-}
-
-function spContextAction(action) {
-    const obj = state.canvas && state.canvas.getActiveObject();
-    if (!obj) return;
-
-    if (action === 'duplicate') {
-        duplicateObject(obj);
-    } else if (action === 'lock') {
-        toggleLockObject(obj);
-    } else {
-        // Z-order: bringForward, bringToFront, sendBackwards, sendToBack
-        saveCanvasState();
-        state.canvas[action](obj);
-        sendStageRectsToBack();
-        state.canvas.renderAll();
-        trackDirtyObject(obj);
-        triggerAutoSave();
-    }
-    spHideContextMenu();
-}
-window.spContextAction = spContextAction;
-
-function applyFillToRect(rect) {
-    if (rect.fillEnabled) {
-        const color = rect.fillColor || '#c9a961';
-        const opacity = rect.fillOpacity !== undefined ? rect.fillOpacity : 0.2;
-        const rgb = hexToRgb(color);
-        rect.set('fill', `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${opacity})`);
-    } else {
-        rect.set('fill', 'transparent');
-    }
 }
 
 // ========================================
@@ -14429,22 +11646,24 @@ function setupVenueMap() {
     // Keyboard shortcuts for venue map
     document.addEventListener('keydown', (e) => {
         if (state.currentPage !== 'venue-map' || !state.vmCanvas) return;
-        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+        const inField = e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA';
 
-        if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (!inField && (e.key === 'Delete' || e.key === 'Backspace')) {
             if (state.vmCanvas.getActiveObject()?.isEditing) return;
             vmDeleteSelected();
             e.preventDefault();
         }
 
-        // Undo: Ctrl+Z / Cmd+Z
+        // Undo: Ctrl+Z / Cmd+Z (works regardless of focus)
         if (e.key === 'z' && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
             e.preventDefault();
+            if (inField) e.target.blur();
             vmUndo();
         }
         // Redo: Ctrl+Shift+Z / Cmd+Shift+Z
         if (e.key === 'z' && (e.ctrlKey || e.metaKey) && e.shiftKey) {
             e.preventDefault();
+            if (inField) e.target.blur();
             vmRedo();
         }
     });
@@ -17499,46 +14718,50 @@ async function handleStagePlotFileSelect(input) {
     input.disabled = true;
 
     let uploadTimedOut = false;
-    let progressReceived = false;
+    let idleTimeout = null;
 
-    // Timeout: if no progress after 15s, the bucket likely doesn't exist or rules block access
-    const timeout = setTimeout(() => {
-        if (!progressReceived) {
+    // Stall detection: re-armed on every progress tick (not just the first),
+    // so a transfer that stalls partway through — not just one that never
+    // starts — still gets caught instead of freezing at whatever % it was
+    // last on (commonly 0%, since that's the first snapshot's usual value).
+    function armIdleTimeout() {
+        clearTimeout(idleTimeout);
+        idleTimeout = setTimeout(() => {
             uploadTimedOut = true;
             try { task.cancel(); } catch (e) { /* ignore */ }
             showUploadError(status,
-                'Upload timed out — Firebase Storage may not be enabled.',
-                'Go to Firebase Console → Storage → Get Started to enable it.'
+                'Upload stalled — check your connection and try again.',
+                'If this keeps happening, Firebase Storage may not be enabled: Firebase Console → Storage → Get Started.'
             );
-            showToast('Upload failed: Firebase Storage may not be enabled. Check Firebase Console → Storage.', 'error');
+            showToast('Upload failed: stalled with no progress for 15s.', 'error');
             input.disabled = false;
             input.value = '';
-        }
-    }, 15000);
+        }, 15000);
+    }
 
     let task;
     try {
         const ref = storage.ref(path);
         task = ref.put(file);
     } catch (error) {
-        clearTimeout(timeout);
         showUploadError(status, 'Upload failed: ' + (error.message || 'Unknown error'));
         input.disabled = false;
         input.value = '';
         return;
     }
 
+    armIdleTimeout();
+
     task.on('state_changed',
         (snapshot) => {
             if (uploadTimedOut) return;
-            progressReceived = true;
-            clearTimeout(timeout);
+            armIdleTimeout();
             const pct = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
             status.textContent = `Uploading... ${pct}%`;
         },
         (error) => {
             if (uploadTimedOut) return;
-            clearTimeout(timeout);
+            clearTimeout(idleTimeout);
             input.disabled = false;
             input.value = '';
 
@@ -17557,7 +14780,7 @@ async function handleStagePlotFileSelect(input) {
         },
         async () => {
             if (uploadTimedOut) return;
-            clearTimeout(timeout);
+            clearTimeout(idleTimeout);
             input.disabled = false;
 
             try {
@@ -18000,6 +15223,15 @@ function saveSingleSeatingCell(cell, row, keepEditing = false) {
     if (newValue === oldValue) return;
 
     item[field] = newValue;
+
+    const eventId = state.currentEventId;
+    pushUndo(`Edit ${field}`, async () => {
+        if (eventId !== state.currentEventId) { showToast('Nothing to undo', 'info'); return; }
+        const current = state.guests.find(g => g.id === id);
+        if (current) current[field] = oldValue;
+        await collections.guests.doc(id).update({ [field]: oldValue, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    });
+
     collections.guests.doc(id).update({
         [field]: newValue,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -18882,11 +16114,22 @@ function restoreGuestPhantomCell(cell, field) {
 
 async function saveGuestField(invId, field, value) {
     if (!state.currentEventId || !collections.invitees) return;
+    const item = (state.invitees || []).find(i => i.id === invId);
+    const oldValue = item ? (item[field] ?? '') : '';
     try {
         await collections.invitees.doc(invId).update({
             [field]: value,
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         });
+        if (oldValue !== value) {
+            const eventId = state.currentEventId;
+            pushUndo(`Edit ${field}`, async () => {
+                if (eventId !== state.currentEventId) { showToast('Nothing to undo', 'info'); return; }
+                const current = (state.invitees || []).find(i => i.id === invId);
+                if (current) current[field] = oldValue;
+                await collections.invitees.doc(invId).update({ [field]: oldValue, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+            });
+        }
     } catch(e) { console.error('saveGuestField:', e); }
 }
 
@@ -19302,9 +16545,57 @@ window.exportSeatingToXlsx = exportSeatingToXlsx;
 // QUOTE PAGE
 // =============================================
 
+const QUOTE_SECTIONS = [
+    { key: 'talent',    label: 'Talent' },
+    { key: 'equipment', label: 'Equipment' },
+    { key: 'labor',     label: 'Labor' },
+];
+
+function quoteLineSection(line) {
+    const key = line.section || 'talent';
+    return QUOTE_SECTIONS.some(s => s.key === key) ? key : 'talent';
+}
+
+function quoteLineSubtotal(line) {
+    return (parseFloat(line.qty) || 0) * (parseFloat(line.unitCost) || 0);
+}
+
+function renderQuoteLineRow(line) {
+    const sub = quoteLineSubtotal(line);
+    // A line that's just been added and never filled in (blank description,
+    // no rate, no notes) shouldn't show up as a "Description… / Notes…"
+    // ghost row in the exported PDF — same idea as the discount row.
+    const isEmpty = !line.description && !(parseFloat(line.unitCost) > 0) && !line.notes;
+    return `<tr class="quote-line-row${isEmpty ? ' is-empty' : ''}">
+        <td class="quote-td-desc">
+            <input class="quote-cell-input" value="${escapeHtml(line.description || '')}" placeholder="Description…" onblur="saveQuoteField('${line.id}','description',this.value)">
+        </td>
+        <td class="quote-td-qty">
+            <input class="quote-cell-input quote-cell-num" type="number" min="0" value="${line.qty || ''}" placeholder="1" onblur="saveQuoteField('${line.id}','qty',parseFloat(this.value)||0)">
+        </td>
+        <td class="quote-td-cost">
+            <input class="quote-cell-input quote-cell-num" type="number" min="0" step="0.01" value="${line.unitCost || ''}" placeholder="0.00" onblur="saveQuoteField('${line.id}','unitCost',parseFloat(this.value)||0)">
+        </td>
+        <td class="quote-td-sub">${sub > 0 ? '$' + sub.toLocaleString('en-US', {minimumFractionDigits:2,maximumFractionDigits:2}) : '—'}</td>
+        <td class="quote-td-notes">
+            <input class="quote-cell-input" value="${escapeHtml(line.notes || '')}" placeholder="Notes…" onblur="saveQuoteField('${line.id}','notes',this.value)">
+        </td>
+        <td class="quote-td-del no-print">
+            <button class="btn-icon-sm delete" onclick="deleteQuoteLine('${line.id}')" title="Remove">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+            </button>
+        </td>
+    </tr>`;
+}
+
 function renderQuote() {
     if (state.currentPage !== 'quote') return;
     const ev = state.activeEvent || {};
+
+    // Title defaults to the event's name so each event's quote is distinguishable
+    // out of the box, but stays freely editable/overridable per event.
+    const titleEl = document.getElementById('quote-title-input');
+    if (titleEl && document.activeElement !== titleEl) titleEl.value = ev.quoteTitle || ev.name || 'Quote';
 
     // Populate event detail fields (only if not focused to avoid clobbering typing)
     const fields = [
@@ -19320,45 +16611,48 @@ function renderQuote() {
         if (el && document.activeElement !== el) el.value = val;
     });
 
-    // Render line items
+    // Render line items, grouped into Talent / Equipment / Labor sections
     const lines = [...state.quoteLines].sort((a, b) => (a.order || 0) - (b.order || 0));
     const tbody = document.getElementById('quote-lines-body');
     if (!tbody) return;
 
-    if (lines.length === 0) {
-        tbody.innerHTML = `<tr class="quote-empty-row"><td colspan="6">No services added yet. Click <strong>+ Add Service</strong> to begin.</td></tr>`;
-    } else {
-        tbody.innerHTML = lines.map(line => {
-            const qty     = parseFloat(line.qty)      || 0;
-            const rate    = parseFloat(line.unitCost)  || 0;
-            const sub     = qty * rate;
-            return `<tr class="quote-line-row">
-                <td class="quote-td-desc">
-                    <input class="quote-cell-input" value="${escapeHtml(line.description || '')}" placeholder="Service description…" onblur="saveQuoteField('${line.id}','description',this.value)">
-                </td>
-                <td class="quote-td-qty">
-                    <input class="quote-cell-input quote-cell-num" type="number" min="0" value="${line.qty || ''}" placeholder="1" onblur="saveQuoteField('${line.id}','qty',parseFloat(this.value)||0)">
-                </td>
-                <td class="quote-td-cost">
-                    <input class="quote-cell-input quote-cell-num" type="number" min="0" step="0.01" value="${line.unitCost || ''}" placeholder="0.00" onblur="saveQuoteField('${line.id}','unitCost',parseFloat(this.value)||0)">
-                </td>
-                <td class="quote-td-sub">${sub > 0 ? '$' + sub.toLocaleString('en-US', {minimumFractionDigits:2,maximumFractionDigits:2}) : '—'}</td>
-                <td class="quote-td-notes">
-                    <input class="quote-cell-input" value="${escapeHtml(line.notes || '')}" placeholder="Notes…" onblur="saveQuoteField('${line.id}','notes',this.value)">
-                </td>
-                <td class="quote-td-del no-print">
-                    <button class="btn-icon-sm delete" onclick="deleteQuoteLine('${line.id}')" title="Remove">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
-                    </button>
-                </td>
+    tbody.innerHTML = QUOTE_SECTIONS.map(sec => {
+        const secLines = lines.filter(l => quoteLineSection(l) === sec.key);
+        const secTotal = secLines.reduce((sum, l) => sum + quoteLineSubtotal(l), 0);
+        const rowsHtml = secLines.length
+            ? secLines.map(renderQuoteLineRow).join('')
+            : `<tr class="quote-empty-row"><td colspan="6">No ${escapeHtml(sec.label.toLowerCase())} items yet.</td></tr>`;
+        return `
+            <tr class="quote-section-header"><td colspan="6">${escapeHtml(sec.label)}</td></tr>
+            ${rowsHtml}
+            <tr class="quote-add-row no-print">
+                <td colspan="6"><button class="quote-add-line-btn" onclick="addQuoteLine('${sec.key}')" type="button">+ Add ${escapeHtml(sec.label)}</button></td>
+            </tr>
+            <tr class="quote-subtotal-row">
+                <td class="quote-subtotal-label" colspan="3">${escapeHtml(sec.label)} Subtotal</td>
+                <td class="quote-subtotal-amount">$${secTotal.toLocaleString('en-US', {minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+                <td colspan="2"></td>
             </tr>`;
-        }).join('');
-    }
+    }).join('');
 
-    // Grand total
-    const total = lines.reduce((sum, l) => sum + (parseFloat(l.qty)||0) * (parseFloat(l.unitCost)||0), 0);
+    // Optional discount (%) — the whole row only shows on export/print when
+    // it's actually filled out; the Grand Total below always shows.
+    const discountPct = parseFloat(ev.quoteDiscountPct) || 0;
+    const discountEl = document.getElementById('quote-discount-input');
+    if (discountEl && document.activeElement !== discountEl) discountEl.value = ev.quoteDiscountPct || '';
+    const discountRow = document.getElementById('quote-discount-row');
+    if (discountRow) discountRow.classList.toggle('is-empty', discountPct <= 0);
+
+    // Grand total across all sections, minus the discount
+    const subtotal = lines.reduce((sum, l) => sum + quoteLineSubtotal(l), 0);
+    const total = subtotal - (subtotal * (discountPct / 100));
+    const totalStr = (total < 0 ? '-$' : '$') + Math.abs(total).toLocaleString('en-US', {minimumFractionDigits:2,maximumFractionDigits:2});
+
+    const discountTotalEl = document.getElementById('quote-discount-total');
+    if (discountTotalEl) discountTotalEl.textContent = totalStr;
+
     const totalEl = document.getElementById('quote-grand-total');
-    if (totalEl) totalEl.textContent = '$' + total.toLocaleString('en-US', {minimumFractionDigits:2,maximumFractionDigits:2});
+    if (totalEl) totalEl.textContent = totalStr;
 }
 
 window.saveQuoteMeta = async function(field, value) {
@@ -19366,6 +16660,10 @@ window.saveQuoteMeta = async function(field, value) {
     try {
         await db.collection('events').doc(state.currentEventId).update({ [field]: value });
         if (state.activeEvent) state.activeEvent[field] = value;
+        // state.activeEvent has no live listener (it's fetched once on enterEvent),
+        // so a re-render has to be triggered explicitly — needed for the discount
+        // %, which recomputes the total from this field.
+        renderQuote();
     } catch(err) { showToast('Error saving', 'error'); }
 };
 
@@ -19376,12 +16674,13 @@ window.saveQuoteField = async function(lineId, field, value) {
     } catch(err) { showToast('Error saving', 'error'); }
 };
 
-window.addQuoteLine = async function() {
+window.addQuoteLine = async function(section = 'talent') {
     showToast('Adding…', 'info');
     if (!state.currentEventId) { showToast('No event selected', 'error'); return; }
     try {
         const ref = db.collection('events').doc(state.currentEventId).collection('quoteLines');
         await ref.add({
+            section,
             description: '',
             qty: 1,
             unitCost: 0,
@@ -19400,7 +16699,29 @@ window.deleteQuoteLine = async function(lineId) {
 };
 
 window.printQuote = function() {
-    window.print();
+    // CSS alone (input::placeholder { color: transparent } in the print
+    // media block) only hides the ink — the placeholder text ("0.00",
+    // "Notes…") is still painted and ends up in the exported PDF's text
+    // layer (selectable, and read aloud by screen readers) even though it's
+    // invisible on the page. Strip the attribute from empty fields entirely
+    // before printing, then restore it for normal on-screen editing.
+    const stripped = [];
+    document.querySelectorAll('#quote input[placeholder]').forEach(el => {
+        if (!el.value) {
+            el.dataset.printPlaceholder = el.placeholder;
+            el.removeAttribute('placeholder');
+            stripped.push(el);
+        }
+    });
+    requestAnimationFrame(() => {
+        window.print();
+        setTimeout(() => {
+            stripped.forEach(el => {
+                el.setAttribute('placeholder', el.dataset.printPlaceholder);
+                delete el.dataset.printPlaceholder;
+            });
+        }, 500);
+    });
 };
 
 window.renderQuote = renderQuote;
