@@ -3280,12 +3280,22 @@ function populateBudgetCategorySelect() {
 }
 
 function renderBudget() {
-    if (state.activeEvent && !state.activeEvent.budgetSetup) {
+    if (state.currentPage !== 'budget') return;
+    const skippedThisEvent = state.budgetSetupSkippedEventId === state.currentEventId;
+    if (state.activeEvent && !state.activeEvent.budgetSetup && !skippedThisEvent) {
         openBudgetSetupModal();
         return;
     }
     renderBudgetGrouped();
 }
+
+window.skipBudgetSetup = function() {
+    // Not persisted — nothing is configured, so the setup modal will prompt
+    // again on a fresh visit. Just defers it for the rest of this session.
+    state.budgetSetupSkippedEventId = state.currentEventId;
+    document.getElementById('budget-setup-modal').classList.remove('is-open');
+    renderBudgetGrouped();
+};
 
 window.resetBudgetSetup = async function() {
     if (!state.currentEventId) return;
@@ -3294,6 +3304,7 @@ window.resetBudgetSetup = async function() {
             budgetSetup: firebase.firestore.FieldValue.delete()
         });
         state.activeEvent.budgetSetup = null;
+        if (state.budgetSetupSkippedEventId === state.currentEventId) state.budgetSetupSkippedEventId = null;
         switchPage('budget');
     } catch(e) {
         console.error('Failed to reset budget setup:', e);
@@ -3496,18 +3507,20 @@ function renderBudgetGrouped() {
     const clearBtn = document.getElementById('budget-search-clear');
     if (clearBtn) clearBtn.style.display = isSearching ? '' : 'none';
 
-    if (state.budget.length === 0) {
-        container.innerHTML = '<div class="card"><div class="card-body"><p class="empty-state">No budget items</p></div></div>';
-        return;
-    }
-
     if (isSearching && filteredBudget.length === 0) {
         container.innerHTML = `<div class="card"><div class="card-body"><p class="empty-state">No items match "${escapeHtml(searchQuery)}"</p></div></div>`;
         return;
     }
 
-    // Group filtered items by category
+    // Group filtered items by category. Seed every configured letter first
+    // (A–G or A/B, per the event's budget setup) so each always shows as its
+    // own section with a phantom "+ add" row, even with zero items yet —
+    // skip this seeding while searching, since a text search should only
+    // surface matching results, not invite adding to unrelated categories.
     const categorized = {};
+    if (!isSearching) {
+        getBudgetCategories().forEach(c => { categorized[c.value] = []; });
+    }
     filteredBudget.forEach(item => {
         const cat = item.category || 'Uncategorized';
         if (!categorized[cat]) {
@@ -3709,8 +3722,6 @@ function renderTimeline() {
                 <td class="prod-col"></td>
                 <td class="responsible-col" data-field="responsible" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ responsible</span></td>
                 <td class="staff-col" data-field="staff" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ staff</span></td>
-                <td class="setlist-col"></td>
-                <td class="stageplot-col"></td>
                 <td class="actions-col no-print"></td>
             </tr>
         `;
@@ -3750,26 +3761,6 @@ function renderTimeline() {
                 <td class="prod-col"><input type="checkbox" class="tl-checkbox" ${item.production === true || item.tag === 'production' ? 'checked' : ''} onchange="toggleTimelineField('${item.id}', 'production', this.checked)"></td>
                 <td class="responsible-col" data-field="responsible" data-original="${escapeHtml(item.responsible || '')}" onclick="editTimelineCell(this)">${escapeHtml(item.responsible || '')}</td>
                 <td class="staff-col" data-field="staff" data-original="${escapeHtml(item.staff || '')}" onclick="editTimelineCell(this)">${escapeHtml(item.staff || '')}</td>
-                <td class="setlist-col">
-                    ${item.performer && state.setLists.some(sl => sl.performer && sl.performer.toLowerCase() === item.performer.toLowerCase()) ? `
-                    <button class="action-icon action-icon-link" onclick="goToLinkedSetList('${escapeHtml(item.performer).replace(/'/g, "\\'")}')" title="Go to set list: ${escapeHtml(item.performer)}">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>
-                        <span class="link-label">${escapeHtml(item.performer)}</span>
-                    </button>` : `
-                    <button class="action-icon action-icon-assign" onclick="assignTimelineLink('${item.id}', 'performer')" title="Assign set list">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                    </button>`}
-                </td>
-                <td class="stageplot-col">
-                    ${item.stagePlotId && state.stagePlots.some(sp => sp.id === item.stagePlotId) ? `
-                    <button class="action-icon action-icon-link" onclick="goToLinkedStagePlot('${item.stagePlotId}')" title="Go to stage plot: ${escapeHtml((state.stagePlots.find(sp => sp.id === item.stagePlotId) || {}).name || '')}">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
-                        <span class="link-label">${escapeHtml((state.stagePlots.find(sp => sp.id === item.stagePlotId) || {}).name || '')}</span>
-                    </button>` : `
-                    <button class="action-icon action-icon-assign" onclick="assignTimelineLink('${item.id}', 'stagePlotId')" title="Assign stage plot">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                    </button>`}
-                </td>
                 <td class="actions-col no-print">
                     <div class="actions-row">
                         <div class="color-swatch-wrapper">
@@ -3810,8 +3801,6 @@ function renderTimeline() {
             <td class="prod-col"></td>
             <td class="responsible-col" data-field="responsible" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ responsible</span></td>
             <td class="staff-col" data-field="staff" onclick="editTimelineCell(this)"><span class="phantom-placeholder">+ staff</span></td>
-            <td class="setlist-col"></td>
-            <td class="stageplot-col"></td>
             <td class="actions-col no-print"></td>
         </tr>
     `;
@@ -4218,9 +4207,7 @@ function openTimelineModal(itemId = null) {
             'timeline-responsible': 'responsible',
             'timeline-staff': 'staff',
             'timeline-production': 'production',
-            'timeline-notes': 'notes',
-            'timeline-performer': 'performer',
-            'timeline-stage-plot': 'stagePlotId'
+            'timeline-notes': 'notes'
         },
         defaultValues: {
             'timeline-day': state.currentDay
@@ -4229,40 +4216,6 @@ function openTimelineModal(itemId = null) {
     // Show the current day in the read-only display field
     document.getElementById('timeline-day-display').value =
         document.getElementById('timeline-day').value || state.currentDay;
-    populateTimelineLinkedDropdowns();
-}
-
-function populateTimelineLinkedDropdowns() {
-    // Populate performer dropdown from set lists
-    const performerSelect = document.getElementById('timeline-performer');
-    if (performerSelect) {
-        const currentVal = performerSelect.value;
-        const performers = [...new Set(state.setLists.map(sl => sl.performer).filter(Boolean))].sort();
-        performerSelect.innerHTML = '<option value="">— None —</option>' +
-            performers.map(p => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join('');
-        performerSelect.value = currentVal;
-    }
-
-    // Populate stage plot dropdown grouped by stage type
-    const plotSelect = document.getElementById('timeline-stage-plot');
-    if (plotSelect) {
-        const currentVal = plotSelect.value;
-        const mainPlots = state.stagePlots.filter(p => p.stageType === 'main').sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-        const cocktailPlots = state.stagePlots.filter(p => p.stageType === 'cocktail').sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-        let html = '<option value="">— None —</option>';
-        if (mainPlots.length) {
-            html += '<optgroup label="Main Stage">' +
-                mainPlots.map(p => `<option value="${p.id}">${escapeHtml(p.name || 'Untitled')}</option>`).join('') +
-                '</optgroup>';
-        }
-        if (cocktailPlots.length) {
-            html += '<optgroup label="Cocktail Stage">' +
-                cocktailPlots.map(p => `<option value="${p.id}">${escapeHtml(p.name || 'Untitled')}</option>`).join('') +
-                '</optgroup>';
-        }
-        plotSelect.innerHTML = html;
-        plotSelect.value = currentVal;
-    }
 }
 
 // Form Handlers
@@ -4441,9 +4394,7 @@ async function handleTimelineSubmit(e) {
             'timeline-responsible': 'responsible',
             'timeline-staff': 'staff',
             'timeline-production': 'production',
-            'timeline-notes': 'notes',
-            'timeline-performer': 'performer',
-            'timeline-stage-plot': 'stagePlotId'
+            'timeline-notes': 'notes'
         },
         numericFields: []
     });
@@ -4454,65 +4405,6 @@ async function handleTimelineSubmit(e) {
 // CRUD Operations
 window.editBudgetItem = (id) => openBudgetModal(id);
 window.editTimelineItem = (id) => openTimelineModal(id);
-
-function updateNavActiveState(pageName) {
-    const navLinks = document.querySelectorAll('.nav-link');
-    navLinks.forEach(l => l.classList.toggle('active', l.dataset.page === pageName));
-    updateNavGroupIndicators();
-}
-
-window.goToLinkedSetList = function(performer) {
-    switchPage('set-lists');
-    updateNavActiveState('set-lists');
-    // Find and highlight the matching accordion item after switchPage renders
-    setTimeout(() => {
-        const items = document.querySelectorAll('.setlist-accordion-item');
-        for (const item of items) {
-            const perfEl = item.querySelector('.setlist-performer');
-            if (perfEl && perfEl.textContent.toLowerCase() === performer.toLowerCase()) {
-                // Expand the accordion body
-                const body = item.querySelector('.setlist-accordion-body');
-                const icon = item.querySelector('.setlist-toggle-icon');
-                if (body) body.style.display = '';
-                if (icon) icon.innerHTML = '&#9660;';
-                item.classList.add('expanded');
-                item.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                item.classList.add('setlist-accordion-highlight');
-                setTimeout(() => item.classList.remove('setlist-accordion-highlight'), 2000);
-                break;
-            }
-        }
-    }, 100);
-};
-
-window.goToLinkedStagePlot = function(plotId) {
-    const plot = state.stagePlots.find(p => p.id === plotId);
-    if (!plot) return;
-    // Pre-set state so initializeStagePlots (called by switchPage) picks up the right tab and plot
-    state.currentStagePlotType = plot.stageType || 'main';
-    state.currentPlotId = plotId;
-    switchPage('stage-plots');
-    updateNavActiveState('stage-plots');
-    // Set the correct stage type tab visually
-    const tabs = document.querySelectorAll('.stage-plot-tab');
-    tabs.forEach(t => t.classList.toggle('active', t.dataset.stageType === state.currentStagePlotType));
-    updatePlotSelector();
-    // Load the specific plot
-    const plotSelect = document.getElementById('plot-select');
-    if (plotSelect) plotSelect.value = plotId;
-    loadPlot(plotId);
-};
-
-window.assignTimelineLink = function(itemId, fieldType) {
-    // Open the timeline modal for this item so the user can pick from the dropdowns
-    openTimelineModal(itemId);
-    // Auto-focus the relevant dropdown
-    setTimeout(() => {
-        const selectId = fieldType === 'performer' ? 'timeline-performer' : 'timeline-stage-plot';
-        const el = document.getElementById(selectId);
-        if (el) el.focus();
-    }, 100);
-};
 
 window.duplicateBudgetItem = async (id) => {
     const item = state.budget.find(i => i.id === id);
@@ -5673,8 +5565,6 @@ async function commitNewRow() {
     data.tag = '';
     data.notes = '';
     data.highlightColor = '';
-    data.performer = '';
-    data.stagePlotId = '';
     data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
     data.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
 
@@ -19302,9 +19192,57 @@ window.exportSeatingToXlsx = exportSeatingToXlsx;
 // QUOTE PAGE
 // =============================================
 
+const QUOTE_SECTIONS = [
+    { key: 'talent',    label: 'Talent' },
+    { key: 'equipment', label: 'Equipment' },
+    { key: 'labor',     label: 'Labor' },
+];
+
+function quoteLineSection(line) {
+    const key = line.section || 'talent';
+    return QUOTE_SECTIONS.some(s => s.key === key) ? key : 'talent';
+}
+
+function quoteLineSubtotal(line) {
+    return (parseFloat(line.qty) || 0) * (parseFloat(line.unitCost) || 0);
+}
+
+function renderQuoteLineRow(line) {
+    const sub = quoteLineSubtotal(line);
+    // A line that's just been added and never filled in (blank description,
+    // no rate, no notes) shouldn't show up as a "Description… / Notes…"
+    // ghost row in the exported PDF — same idea as the discount row.
+    const isEmpty = !line.description && !(parseFloat(line.unitCost) > 0) && !line.notes;
+    return `<tr class="quote-line-row${isEmpty ? ' is-empty' : ''}">
+        <td class="quote-td-desc">
+            <input class="quote-cell-input" value="${escapeHtml(line.description || '')}" placeholder="Description…" onblur="saveQuoteField('${line.id}','description',this.value)">
+        </td>
+        <td class="quote-td-qty">
+            <input class="quote-cell-input quote-cell-num" type="number" min="0" value="${line.qty || ''}" placeholder="1" onblur="saveQuoteField('${line.id}','qty',parseFloat(this.value)||0)">
+        </td>
+        <td class="quote-td-cost">
+            <input class="quote-cell-input quote-cell-num" type="number" min="0" step="0.01" value="${line.unitCost || ''}" placeholder="0.00" onblur="saveQuoteField('${line.id}','unitCost',parseFloat(this.value)||0)">
+        </td>
+        <td class="quote-td-sub">${sub > 0 ? '$' + sub.toLocaleString('en-US', {minimumFractionDigits:2,maximumFractionDigits:2}) : '—'}</td>
+        <td class="quote-td-notes">
+            <input class="quote-cell-input" value="${escapeHtml(line.notes || '')}" placeholder="Notes…" onblur="saveQuoteField('${line.id}','notes',this.value)">
+        </td>
+        <td class="quote-td-del no-print">
+            <button class="btn-icon-sm delete" onclick="deleteQuoteLine('${line.id}')" title="Remove">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+            </button>
+        </td>
+    </tr>`;
+}
+
 function renderQuote() {
     if (state.currentPage !== 'quote') return;
     const ev = state.activeEvent || {};
+
+    // Title defaults to the event's name so each event's quote is distinguishable
+    // out of the box, but stays freely editable/overridable per event.
+    const titleEl = document.getElementById('quote-title-input');
+    if (titleEl && document.activeElement !== titleEl) titleEl.value = ev.quoteTitle || ev.name || 'Quote';
 
     // Populate event detail fields (only if not focused to avoid clobbering typing)
     const fields = [
@@ -19320,45 +19258,48 @@ function renderQuote() {
         if (el && document.activeElement !== el) el.value = val;
     });
 
-    // Render line items
+    // Render line items, grouped into Talent / Equipment / Labor sections
     const lines = [...state.quoteLines].sort((a, b) => (a.order || 0) - (b.order || 0));
     const tbody = document.getElementById('quote-lines-body');
     if (!tbody) return;
 
-    if (lines.length === 0) {
-        tbody.innerHTML = `<tr class="quote-empty-row"><td colspan="6">No services added yet. Click <strong>+ Add Service</strong> to begin.</td></tr>`;
-    } else {
-        tbody.innerHTML = lines.map(line => {
-            const qty     = parseFloat(line.qty)      || 0;
-            const rate    = parseFloat(line.unitCost)  || 0;
-            const sub     = qty * rate;
-            return `<tr class="quote-line-row">
-                <td class="quote-td-desc">
-                    <input class="quote-cell-input" value="${escapeHtml(line.description || '')}" placeholder="Service description…" onblur="saveQuoteField('${line.id}','description',this.value)">
-                </td>
-                <td class="quote-td-qty">
-                    <input class="quote-cell-input quote-cell-num" type="number" min="0" value="${line.qty || ''}" placeholder="1" onblur="saveQuoteField('${line.id}','qty',parseFloat(this.value)||0)">
-                </td>
-                <td class="quote-td-cost">
-                    <input class="quote-cell-input quote-cell-num" type="number" min="0" step="0.01" value="${line.unitCost || ''}" placeholder="0.00" onblur="saveQuoteField('${line.id}','unitCost',parseFloat(this.value)||0)">
-                </td>
-                <td class="quote-td-sub">${sub > 0 ? '$' + sub.toLocaleString('en-US', {minimumFractionDigits:2,maximumFractionDigits:2}) : '—'}</td>
-                <td class="quote-td-notes">
-                    <input class="quote-cell-input" value="${escapeHtml(line.notes || '')}" placeholder="Notes…" onblur="saveQuoteField('${line.id}','notes',this.value)">
-                </td>
-                <td class="quote-td-del no-print">
-                    <button class="btn-icon-sm delete" onclick="deleteQuoteLine('${line.id}')" title="Remove">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
-                    </button>
-                </td>
+    tbody.innerHTML = QUOTE_SECTIONS.map(sec => {
+        const secLines = lines.filter(l => quoteLineSection(l) === sec.key);
+        const secTotal = secLines.reduce((sum, l) => sum + quoteLineSubtotal(l), 0);
+        const rowsHtml = secLines.length
+            ? secLines.map(renderQuoteLineRow).join('')
+            : `<tr class="quote-empty-row"><td colspan="6">No ${escapeHtml(sec.label.toLowerCase())} items yet.</td></tr>`;
+        return `
+            <tr class="quote-section-header"><td colspan="6">${escapeHtml(sec.label)}</td></tr>
+            ${rowsHtml}
+            <tr class="quote-add-row no-print">
+                <td colspan="6"><button class="quote-add-line-btn" onclick="addQuoteLine('${sec.key}')" type="button">+ Add ${escapeHtml(sec.label)}</button></td>
+            </tr>
+            <tr class="quote-subtotal-row">
+                <td class="quote-subtotal-label" colspan="3">${escapeHtml(sec.label)} Subtotal</td>
+                <td class="quote-subtotal-amount">$${secTotal.toLocaleString('en-US', {minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+                <td colspan="2"></td>
             </tr>`;
-        }).join('');
-    }
+    }).join('');
 
-    // Grand total
-    const total = lines.reduce((sum, l) => sum + (parseFloat(l.qty)||0) * (parseFloat(l.unitCost)||0), 0);
+    // Optional discount (%) — the whole row only shows on export/print when
+    // it's actually filled out; the Grand Total below always shows.
+    const discountPct = parseFloat(ev.quoteDiscountPct) || 0;
+    const discountEl = document.getElementById('quote-discount-input');
+    if (discountEl && document.activeElement !== discountEl) discountEl.value = ev.quoteDiscountPct || '';
+    const discountRow = document.getElementById('quote-discount-row');
+    if (discountRow) discountRow.classList.toggle('is-empty', discountPct <= 0);
+
+    // Grand total across all sections, minus the discount
+    const subtotal = lines.reduce((sum, l) => sum + quoteLineSubtotal(l), 0);
+    const total = subtotal - (subtotal * (discountPct / 100));
+    const totalStr = (total < 0 ? '-$' : '$') + Math.abs(total).toLocaleString('en-US', {minimumFractionDigits:2,maximumFractionDigits:2});
+
+    const discountTotalEl = document.getElementById('quote-discount-total');
+    if (discountTotalEl) discountTotalEl.textContent = totalStr;
+
     const totalEl = document.getElementById('quote-grand-total');
-    if (totalEl) totalEl.textContent = '$' + total.toLocaleString('en-US', {minimumFractionDigits:2,maximumFractionDigits:2});
+    if (totalEl) totalEl.textContent = totalStr;
 }
 
 window.saveQuoteMeta = async function(field, value) {
@@ -19366,6 +19307,10 @@ window.saveQuoteMeta = async function(field, value) {
     try {
         await db.collection('events').doc(state.currentEventId).update({ [field]: value });
         if (state.activeEvent) state.activeEvent[field] = value;
+        // state.activeEvent has no live listener (it's fetched once on enterEvent),
+        // so a re-render has to be triggered explicitly — needed for the discount
+        // %, which recomputes the total from this field.
+        renderQuote();
     } catch(err) { showToast('Error saving', 'error'); }
 };
 
@@ -19376,12 +19321,13 @@ window.saveQuoteField = async function(lineId, field, value) {
     } catch(err) { showToast('Error saving', 'error'); }
 };
 
-window.addQuoteLine = async function() {
+window.addQuoteLine = async function(section = 'talent') {
     showToast('Adding…', 'info');
     if (!state.currentEventId) { showToast('No event selected', 'error'); return; }
     try {
         const ref = db.collection('events').doc(state.currentEventId).collection('quoteLines');
         await ref.add({
+            section,
             description: '',
             qty: 1,
             unitCost: 0,
@@ -19400,7 +19346,29 @@ window.deleteQuoteLine = async function(lineId) {
 };
 
 window.printQuote = function() {
-    window.print();
+    // CSS alone (input::placeholder { color: transparent } in the print
+    // media block) only hides the ink — the placeholder text ("0.00",
+    // "Notes…") is still painted and ends up in the exported PDF's text
+    // layer (selectable, and read aloud by screen readers) even though it's
+    // invisible on the page. Strip the attribute from empty fields entirely
+    // before printing, then restore it for normal on-screen editing.
+    const stripped = [];
+    document.querySelectorAll('#quote input[placeholder]').forEach(el => {
+        if (!el.value) {
+            el.dataset.printPlaceholder = el.placeholder;
+            el.removeAttribute('placeholder');
+            stripped.push(el);
+        }
+    });
+    requestAnimationFrame(() => {
+        window.print();
+        setTimeout(() => {
+            stripped.forEach(el => {
+                el.setAttribute('placeholder', el.dataset.printPlaceholder);
+                delete el.dataset.printPlaceholder;
+            });
+        }, 500);
+    });
 };
 
 window.renderQuote = renderQuote;

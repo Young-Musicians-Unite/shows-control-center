@@ -243,6 +243,20 @@ h1, h2, h3 {
   color: var(--text-primary) !important;
 }
 
+/* Timeline "Columns" toggle button — same hardcoded white-bg miss as the
+   card header above */
+.btn-columns-toggle {
+  background: transparent !important;
+  border: 0.5px solid var(--border-medium) !important;
+  color: var(--text-secondary) !important;
+}
+
+.btn-columns-toggle:hover {
+  background: var(--bg-hover) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border-medium) !important;
+}
+
 /* ── 5. STAT CARDS ─────────────────────────────────────────────────────*/
 
 .stat-card,
@@ -351,7 +365,12 @@ h1, h2, h3 {
   box-shadow: none !important;
 }
 
+/* .card-header itself was never given a background in the dark pass, so any
+   page using the plain .card/.card-header markup (Timeline, Cue Sheet, Input
+   Lists) fell back to styles.css's hardcoded cream #fdfcfa — invisible under
+   the white text color forced below. */
 .card-header {
+  background: var(--bg-page) !important;
   border-bottom: 0.5px solid var(--border-subtle) !important;
   padding: 14px 16px !important;
 }
@@ -383,6 +402,96 @@ h1, h2, h3 {
 }
 
 .data-table tbody tr:hover {
+  background: var(--bg-hover) !important;
+}
+
+/* Timeline date subtitle + time column were missed in the dark-mode pass —
+   .tl-time had a hardcoded dark-green color from the pre-override
+   styles.css. */
+.timeline-date {
+  color: var(--text-tertiary) !important;
+}
+
+.tl-time {
+  color: var(--text-primary) !important;
+}
+
+/* The old cream design used a 50%-opacity near-white overlay for zebra
+   striping, which reads as a harsh gray band on the dark surface. Every
+   redesigned table (hub-table, data-table) is flat with a hover-only
+   highlight — match that instead of carrying the banding over. Generic on
+   .data-table so Timeline, Cue Sheet, and Input Lists all pick it up. */
+.data-table tbody tr:nth-child(even),
+.data-table tbody tr:nth-child(even) td {
+  background: transparent !important;
+}
+
+/* Columns dropdown panel — also hardcoded white/light in styles.css */
+.timeline-columns-dropdown {
+  background: var(--bg-surface) !important;
+  border: 0.5px solid var(--border-subtle) !important;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4) !important;
+}
+
+.col-toggle {
+  color: var(--text-primary) !important;
+}
+
+.col-toggle:hover {
+  background: var(--bg-hover) !important;
+}
+
+/* ── Technical Cue Sheet — same pre-override styles.css leftovers ────────*/
+
+/* "Show hidden (0)" label — hardcoded dark slate, unreadable on dark bg */
+.cue-show-hidden-toggle {
+  color: var(--text-secondary) !important;
+}
+
+/* Hidden-row treatment was a light-gray/italic box for a light page;
+   restyle as a muted dark row instead of a glaring light patch */
+.cue-sheet-card .cue-sheet-table tbody tr.cs-hidden-row td,
+.cue-sheet-card .cue-sheet-table tbody tr.cs-hidden-row:hover td {
+  background-color: var(--bg-page) !important;
+  color: var(--text-tertiary) !important;
+}
+
+/* Cue action button hover popped a cream box on the dark surface */
+.cue-sheet-table .cs-action-btn:hover {
+  background: var(--bg-hover) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border-medium) !important;
+}
+
+/* Hairline column dividers were tuned for the cream header; align with the
+   dark border token so they read as dividers, not stray light streaks */
+.cue-sheet-table tbody td.cs-audio-col,
+.cue-sheet-table tbody td.cs-live-video-col,
+.cue-sheet-table tbody td.cs-stage-lighting-col,
+.cue-sheet-table tbody td.cs-house-lighting-col,
+.cue-sheet-table tbody td.cs-center-screen-col,
+.cue-sheet-table tbody td.cs-side-screens-col,
+.cue-sheet-table tbody td.cs-cue-col,
+.cue-sheet-table thead th.cs-audio-col,
+.cue-sheet-table thead th.cs-live-video-col,
+.cue-sheet-table thead th.cs-stage-lighting-col,
+.cue-sheet-table thead th.cs-house-lighting-col,
+.cue-sheet-table thead th.cs-center-screen-col,
+.cue-sheet-table thead th.cs-side-screens-col,
+.cue-sheet-table thead th.cs-cue-col {
+  border-left-color: var(--border-subtle) !important;
+}
+
+/* ── Input Lists (Stage Tables) ───────────────────────────────────────── */
+
+/* Drag handle turned dark-green on hover — invisible against the dark
+   surface right when a user is trying to grab it */
+.drag-handle:hover {
+  color: var(--text-primary) !important;
+}
+
+/* Dragging-row highlight was a light gray box */
+.stage-table tbody tr.dragging {
   background: var(--bg-hover) !important;
 }
 
@@ -539,6 +648,24 @@ label {
 }
 
 /* ── 12. FILTER / TAB PILLS ────────────────────────────────────────────*/
+
+/* Container was a hardcoded white pill-track from the pre-dark-mode pass.
+   The active .filter-btn gets its own white background so it still reads
+   fine, but the inactive ones use light text meant for a dark backdrop —
+   sitting on white instead, they read as barely-visible white-on-white. */
+.timeline-filters {
+  background: var(--bg-page) !important;
+  border-color: var(--border-medium) !important;
+}
+
+/* Same bug, same fix — .vendor-view-btn's inactive text is also forced
+   light by the shared rule below, and was sitting on this same kind of
+   light cream track. .staff-view-btn keeps its own warm-toned text
+   unaffected either way, but shares this container so it comes along too. */
+.staff-view-toggle,
+.vendor-view-toggle {
+  background: var(--bg-page) !important;
+}
 
 .filter-btn,
 .vendor-view-btn,
@@ -2223,5 +2350,74 @@ select.intake-field-input ~ .intake-field-edit {
   justify-content: center;
 }
 .ical-extra-email-remove:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+/* ── QUOTE DOCUMENT — opt out of dark-mode inputs ───────────────────────
+   The quote is a fixed white printed letterhead, not a themed app page —
+   it should look the same regardless of dark mode. §11's generic
+   input[type=...] rule forces a dark background/border/padding onto every
+   text input site-wide (including these), so it has to be beaten with an
+   equally-!important, scoped rule rather than left to fall through. */
+#quote .quote-detail-input {
+  background: transparent !important;
+  border: none !important;
+  border-bottom: 1px dashed #ccc !important;
+  border-radius: 0 !important;
+  color: #1a1a1a !important;
+  font-family: 'DM Sans', 'Inter', sans-serif !important;
+  font-size: 12.5px !important;
+  padding: 1px 4px !important;
+}
+#quote .quote-detail-input:focus {
+  border-bottom-color: #3B5BDB !important;
+  background: rgba(59,91,219,0.04) !important;
+}
+
+#quote .quote-cell-input {
+  background: transparent !important;
+  border: none !important;
+  border-radius: 3px !important;
+  color: #1a1a1a !important;
+  font-family: 'DM Sans', 'Inter', sans-serif !important;
+  font-size: 14px !important;
+  padding: 2px 4px !important;
+}
+#quote .quote-cell-input:focus {
+  background: rgba(59,91,219,0.07) !important;
+  outline: 1px solid #3B5BDB !important;
+  border: none !important;
+}
+
+#quote .quote-pct-input {
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  color: #2d3f8f !important;
+  font-family: 'DM Sans', 'Inter', sans-serif !important;
+  font-size: 12.5px !important;
+  padding: 0 !important;
+  width: 36px !important;
+}
+
+#quote .quote-title-row {
+  background: transparent !important;
+  border: none !important;
+  border-radius: 6px !important;
+  color: #1a2540 !important;
+  font-family: inherit !important;
+  font-size: 1.6rem !important;
+  padding: 12px 0 6px !important;
+}
+#quote .quote-title-row:hover { background: rgba(59,91,219,0.04) !important; }
+#quote .quote-title-row:focus { background: rgba(59,91,219,0.07) !important; }
+
+/* §15's 210px sidebar-reserved body padding survives into print (the
+   sidebar itself is hidden, but this file loads after styles.css, so its
+   unconditional !important rule always wins that cascade tie regardless of
+   media query — the fix has to live here, not in styles.css's print
+   block). Squeezes the printed quote into a much narrower column than the
+   page actually has, forcing extra wrapping/height. */
+@media print {
+  body { padding-left: 0 !important; }
+}
 
 /* ── END ───────────────────────────────────────────────────────────────*/

@@ -315,6 +315,7 @@
                 <input type="hidden" id="bsm-selected-set" value="">
             </div>
             <div class="hub-modal-footer">
+                <button class="btn-secondary" onclick="skipBudgetSetup()">Not yet — ask me later</button>
                 <button class="btn-primary" onclick="saveBudgetSetup()">Set Up Budget</button>
             </div>
         </div>
@@ -571,8 +572,6 @@
                         <label class="col-toggle"><input type="checkbox" checked onchange="toggleTimelineCol('prod', this.checked)"> Prod</label>
                         <label class="col-toggle"><input type="checkbox" checked onchange="toggleTimelineCol('responsible', this.checked)"> Responsible</label>
                         <label class="col-toggle"><input type="checkbox" checked onchange="toggleTimelineCol('staff', this.checked)"> Staff</label>
-                        <label class="col-toggle"><input type="checkbox" checked onchange="toggleTimelineCol('setlist', this.checked)"> Set List</label>
-                        <label class="col-toggle"><input type="checkbox" checked onchange="toggleTimelineCol('stageplot', this.checked)"> Stage Plot</label>
                     </div>
                 </div>
             </div>
@@ -596,14 +595,12 @@
                                 <th class="prod-col">Prod</th>
                                 <th class="responsible-col">Responsible</th>
                                 <th class="staff-col">Staff</th>
-                                <th class="setlist-col">Set List</th>
-                                <th class="stageplot-col">Stage Plot</th>
                                 <th class="actions-col no-print">Actions</th>
                             </tr>
                         </thead>
                         <tbody id="timeline-tbody">
                             <tr>
-                                <td colspan="10" class="empty-state">No tasks for this day</td>
+                                <td colspan="8" class="empty-state">No tasks for this day</td>
                             </tr>
                         </tbody>
                     </table>
@@ -1971,7 +1968,6 @@
                 <button class="btn btn-secondary no-print" onclick="printQuote()">
                     <i class="ti ti-printer"></i> Print / Export PDF
                 </button>
-                <button class="btn btn-primary-gold no-print" onclick="addQuoteLine()">+ Add Service</button>
             </div>
         </div>
         <div class="quote-canvas">
@@ -1980,12 +1976,7 @@
                 <div class="quote-header-band">
                     <div class="quote-header-inner">
                         <div class="quote-logo-block">
-                            <div class="quote-logo-letters">YMU</div>
-                            <div class="quote-logo-text">
-                                <div>YOUNG</div>
-                                <div>MUSICIANS</div>
-                                <div>UNITE</div>
-                            </div>
+                            <img class="quote-logo-img" src="ymu-logo.png" alt="Young Musicians Unite">
                         </div>
                         <div class="quote-org-address">
                             <strong>Young Musicians Unite</strong><br>
@@ -2001,7 +1992,7 @@
 
                 <!-- Document body -->
                 <div class="quote-body">
-                    <div class="quote-title-row">Quote</div>
+                    <input type="text" class="quote-title-row" id="quote-title-input" placeholder="Quote" onblur="saveQuoteMeta('quoteTitle', this.value)">
 
                     <!-- Client + event details -->
                     <div class="quote-event-details">
@@ -2049,8 +2040,25 @@
                         </thead>
                         <tbody id="quote-lines-body"></tbody>
                         <tfoot>
+                            <tr class="quote-discount-row" id="quote-discount-row">
+                                <td colspan="6" class="quote-discount-cell">
+                                    <div class="quote-discount-flex">
+                                        <div class="quote-discount-block">
+                                            <span class="quote-discount-block-label">Discount %</span>
+                                            <span class="quote-pct-input-wrap">
+                                                <input class="quote-pct-input" type="number" min="0" max="100" step="0.1" id="quote-discount-input" placeholder="0" onblur="saveQuoteMeta('quoteDiscountPct', parseFloat(this.value)||0)">
+                                                <span class="quote-pct-suffix">%</span>
+                                            </span>
+                                        </div>
+                                        <div class="quote-discount-block">
+                                            <span class="quote-discount-block-label">Total</span>
+                                            <span class="quote-discount-total-amount" id="quote-discount-total">$0.00</span>
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
                             <tr class="quote-total-row">
-                                <td class="quote-total-label" colspan="3">Services Grand Total</td>
+                                <td class="quote-total-label" colspan="3">Grand Total</td>
                                 <td class="quote-total-amount" id="quote-grand-total">$0.00</td>
                                 <td colspan="2" class="quote-total-notes"></td>
                             </tr>
@@ -2568,23 +2576,6 @@
                         <div class="form-group">
                             <label for="timeline-notes">Notes</label>
                             <textarea id="timeline-notes" rows="3"></textarea>
-                        </div>
-                    </div>
-                    <div class="form-group form-section-divider">
-                        <label class="form-section-label">Linked Resources</label>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="timeline-performer">Performer (Set List)</label>
-                            <select id="timeline-performer">
-                                <option value="">— None —</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="timeline-stage-plot">Stage Plot</label>
-                            <select id="timeline-stage-plot">
-                                <option value="">— None —</option>
-                            </select>
                         </div>
                     </div>
                     <div class="form-actions">

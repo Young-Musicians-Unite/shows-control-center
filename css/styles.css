@@ -2199,48 +2199,6 @@ body {
     color: #c0392b;
 }
 
-.action-icon.action-icon-link {
-    color: #3498db;
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    white-space: nowrap;
-}
-
-.action-icon.action-icon-link:hover {
-    background: rgba(52, 152, 219, 0.1);
-    color: #2980b9;
-}
-
-.action-icon.action-icon-link .link-label {
-    font-size: 0.75rem;
-    max-width: 100px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.action-icon.action-icon-assign {
-    color: #aaa;
-    border: 1px dashed #ccc;
-    border-radius: 4px;
-    width: 24px;
-    height: 24px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.action-icon.action-icon-assign:hover {
-    color: #3498db;
-    border-color: #3498db;
-    background: rgba(52, 152, 219, 0.05);
-}
-
-.setlist-col, .stageplot-col {
-    text-align: center;
-    white-space: nowrap;
-}
-
 /* Form section divider for modals */
 .form-section-divider {
     border-top: 1px solid #e0e0e0;
@@ -2361,8 +2319,6 @@ body {
 .timeline-table.hide-responsible .responsible-col { display: none; }
 .timeline-table.hide-staff .staff-col { display: none; }
 .timeline-table.hide-screencue .screencue-col { display: none; }
-.timeline-table.hide-setlist .setlist-col { display: none; }
-.timeline-table.hide-stageplot .stageplot-col { display: none; }
 
 .filter-btn {
     padding: 0.4rem 1rem;
@@ -2950,8 +2906,6 @@ body.printing-timeline .timeline-table .prod-col,
 body.printing-timeline .timeline-table .andi-col,
 body.printing-timeline .timeline-table .pedro-col,
 body.printing-timeline .timeline-table .runner-col,
-body.printing-timeline .timeline-table .setlist-col,
-body.printing-timeline .timeline-table .stageplot-col,
 body.printing-timeline .timeline-table .actions-col {
     display: none !important;
 }
@@ -12016,8 +11970,8 @@ tr:hover .gi-del-btn { color: rgba(255,255,255,0.35); }
     width: 820px;
     max-width: 100%;
     background: #ffffff;
-    box-shadow: 0 8px 48px rgba(0,0,0,0.35);
-    border-radius: 6px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.08), 0 20px 48px rgba(0,0,0,0.28);
+    border-radius: 8px;
     overflow: hidden;
     font-family: 'DM Sans', 'Inter', sans-serif;
     color: #1a1a1a;
@@ -12040,25 +11994,15 @@ tr:hover .gi-del-btn { color: rgba(255,255,255,0.35); }
 .quote-logo-block {
     display: flex;
     align-items: center;
-    gap: 10px;
-    color: #ffffff;
 }
 
-.quote-logo-letters {
-    font-size: 2.4rem;
-    font-weight: 800;
-    letter-spacing: -0.04em;
-    line-height: 1;
-    color: #fff;
-}
-
-.quote-logo-text {
-    font-size: 9px;
-    font-weight: 600;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    line-height: 1.5;
-    color: rgba(255,255,255,0.8);
+.quote-logo-img {
+    display: block;
+    height: 40px;
+    width: auto;
+    /* Source file is solid blue on transparent — recolor to white so it
+       reads against the blue header band instead of needing a white chip. */
+    filter: brightness(0) invert(1);
 }
 
 .quote-org-address {
@@ -12079,28 +12023,56 @@ tr:hover .gi-del-btn { color: rgba(255,255,255,0.35); }
 
 /* Body */
 .quote-body {
-    padding: 8px 40px 32px;
+    padding: 10px 40px 24px;
 }
 
 .quote-title-row {
+    display: block;
+    width: 100%;
+    border: none;
+    outline: none;
+    background: transparent;
+    font-family: inherit;
     text-align: center;
-    font-size: 1.1rem;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    padding: 12px 0 20px;
-    color: #1a1a1a;
+    font-size: 1.6rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 12px 0 6px;
+    color: #1a2540;
+    border-radius: 6px;
+    transition: background-color 0.12s ease;
+}
+
+.quote-title-row:hover { background: rgba(59,91,219,0.04); }
+.quote-title-row:focus { background: rgba(59,91,219,0.07); }
+
+.quote-title-row::after {
+    content: '';
+    display: block;
+    width: 46px;
+    height: 3px;
+    margin: 10px auto 0;
+    background: #3B5BDB;
+    border-radius: 2px;
 }
 
 /* Event details */
 .quote-event-details {
-    margin-bottom: 24px;
+    margin-bottom: 20px;
+    background: #f7f8fc;
+    border: 1px solid #e6e9f5;
+    border-radius: 8px;
+    padding: 10px 16px;
 }
 
 .quote-event-label {
     font-weight: 700;
-    font-size: 13px;
-    color: #1a1a1a;
-    margin-bottom: 4px;
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #6b7bb8;
+    margin-bottom: 5px;
 }
 
 .quote-detail-grid { display: flex; flex-direction: column; gap: 2px; }
@@ -12167,7 +12139,13 @@ tr:hover .gi-del-btn { color: rgba(255,255,255,0.35); }
     border-bottom: 0.5px solid #e0e4f0;
     padding: 7px 10px;
     vertical-align: middle;
+    font-size: 14px;
+    transition: background-color 0.12s ease;
 }
+
+.quote-line-row:hover td:not(.quote-td-cost):not(.quote-td-sub) { background: #f7f8fc; }
+.quote-line-row:hover td.quote-td-cost,
+.quote-line-row:hover td.quote-td-sub { background: #e4e9fa; }
 
 .quote-td-desc { padding-left: 14px !important; }
 
@@ -12181,7 +12159,7 @@ tr:hover .gi-del-btn { color: rgba(255,255,255,0.35); }
     width: 100%;
     border: none;
     background: transparent;
-    font-size: 12.5px;
+    font-size: 14px;
     font-family: inherit;
     color: #1a1a1a;
     padding: 2px 4px;
@@ -12198,10 +12176,73 @@ tr:hover .gi-del-btn { color: rgba(255,255,255,0.35); }
 
 .quote-empty-row td {
     text-align: center;
-    padding: 28px;
+    padding: 16px;
     color: #888;
-    font-size: 13px;
+    font-size: 12.5px;
+    font-style: italic;
     border-bottom: 0.5px solid #e0e4f0;
+}
+
+/* Section header row — groups line items under Talent / Equipment / Labor */
+.quote-section-header td {
+    background: #eef1fb;
+    color: #2d4fc4;
+    font-weight: 700;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 7px 14px !important;
+    padding-left: 11px !important;
+    border-top: 1px solid #d7ddf3;
+    border-bottom: 1px solid #d7ddf3;
+    border-left: 3px solid #3B5BDB;
+}
+
+/* Inline "+ Add" row per section */
+.quote-add-row td {
+    padding: 6px 14px !important;
+    border-bottom: 0.5px solid #e0e4f0;
+}
+
+.quote-add-line-btn {
+    background: none;
+    border: 1px dashed rgba(59,91,219,0.4);
+    border-radius: 6px;
+    color: #3B5BDB;
+    font-family: inherit;
+    font-size: 11.5px;
+    font-weight: 600;
+    padding: 5px 12px;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.quote-add-line-btn:hover {
+    background: rgba(59,91,219,0.07);
+    border-color: rgba(59,91,219,0.65);
+}
+
+/* Section subtotal row — lighter weight than the final grand total */
+.quote-subtotal-row td {
+    background: #f4f6fc;
+    border-bottom: 1px solid #d7ddf3;
+}
+
+.quote-subtotal-label {
+    color: #2d3f8f;
+    font-weight: 600;
+    font-size: 11.5px;
+    text-align: right;
+    padding: 7px 14px !important;
+}
+
+.quote-subtotal-amount {
+    color: #2d3f8f;
+    font-weight: 700;
+    font-size: 12px;
+    text-align: center;
+    padding: 7px 10px !important;
+    background: #e3e7f7 !important;
 }
 
 /* Grand total row */
@@ -12226,6 +12267,92 @@ tr:hover .gi-del-btn { color: rgba(255,255,255,0.35); }
 }
 
 .quote-total-notes { padding: 0 !important; }
+
+/* Optional discount row — editable on screen; hidden on export/print when
+   left blank (see the generic .is-empty rule in the print media block).
+   Two sections side by side: the % you fill in, and the resulting total
+   with that discount applied. */
+.quote-discount-row td.quote-discount-cell {
+    background: #f4f6fc;
+    border-bottom: 1px solid #d7ddf3;
+    padding: 8px 14px !important;
+}
+
+.quote-discount-flex {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 28px;
+}
+
+.quote-discount-block {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.quote-discount-block-label {
+    color: #2d3f8f;
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.quote-pct-input-wrap {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    background: #ffffff;
+    border: 1px solid #c7cef0;
+    border-radius: 5px;
+    padding: 3px 8px;
+}
+
+.quote-pct-input {
+    width: 36px;
+    border: none;
+    outline: none;
+    background: transparent;
+    text-align: right;
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: #2d3f8f;
+    /* Remove native number-input spinner arrows */
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
+.quote-pct-input::-webkit-outer-spin-button,
+.quote-pct-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.quote-pct-suffix {
+    font-size: 12px;
+    font-weight: 600;
+    color: #2d3f8f;
+}
+
+.quote-discount-total-amount {
+    font-size: 13px;
+    font-weight: 700;
+    color: #2d3f8f;
+}
+
+/* Same spinner-arrow cleanup for the QTY/Rate line-item inputs */
+.quote-cell-num {
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
+.quote-cell-num::-webkit-outer-spin-button,
+.quote-cell-num::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
 
 /* Footer band */
 .quote-footer-band {
@@ -12256,6 +12383,8 @@ tr:hover .gi-del-btn { color: rgba(255,255,255,0.35); }
 @media print {
     /* Hide everything by default */
     body > * { display: none !important; }
+    /* Sidebar's reserved body padding is reset in ymu-overrides.css (which
+       loads after this file, so a rule here can't win the cascade tie). */
 
     /* Show only the quote doc */
     .page#quote { display: block !important; padding: 0 !important; }
@@ -12272,9 +12401,23 @@ tr:hover .gi-del-btn { color: rgba(255,255,255,0.35); }
         border-radius: 0 !important;
     }
     .no-print { display: none !important; }
+    /* Rows explicitly marked as not-filled-out — the discount row and any
+       blank/never-edited quote line item — are omitted from the export. */
+    .is-empty { display: none !important; }
+    /* A row that's partially filled out still prints — but any individual
+       cell left blank inside it (e.g. Rate or Notes) was showing its
+       editing-time placeholder ("0.00", "Notes…") as literal ghost text in
+       the export. Blank should just look blank on a client-facing quote. */
+    .quote-cell-input::placeholder,
+    .quote-pct-input::placeholder,
+    .quote-detail-input::placeholder {
+        color: transparent !important;
+    }
     .quote-detail-input { border-bottom: none !important; }
     .quote-cell-input { -webkit-print-color-adjust: exact; }
-    .quote-th, .quote-total-row td, .quote-header-band, .quote-footer-band {
+    .quote-th, .quote-total-row td, .quote-header-band, .quote-footer-band,
+    .quote-section-header td, .quote-subtotal-row td, .quote-event-details,
+    .quote-title-row::after {
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
     }
