@@ -2856,7 +2856,21 @@ body.printing-timeline .day-tabs,
 body.printing-stage-inputs .navbar,
 body.printing-stage-inputs .no-print,
 body.printing-stage-inputs .page-header .header-actions,
-body.printing-stage-inputs .day-tabs {
+body.printing-stage-inputs .day-tabs,
+body.printing-vendors .navbar,
+body.printing-vendors .no-print,
+body.printing-vendors .page-header .header-actions,
+body.printing-vendors .page-search-bar,
+body.printing-vendors .vendor-filters,
+body.printing-vendors .vendor-schedule-filters,
+body.printing-vendors #vendor-gantt-section,
+body.printing-packing-list .navbar,
+body.printing-packing-list .no-print,
+body.printing-packing-list .page-header .header-actions,
+body.printing-packing-list .page-search-bar,
+body.printing-packing-list .packing-progress-bar-container,
+body.printing-packing-list .stats-grid,
+body.printing-packing-list .pl-stats {
     display: none !important;
 }
 
@@ -2864,20 +2878,39 @@ body.printing-stage-inputs .day-tabs {
    as transparent in the PDF (the timeline .tl-row has a fade-in keyframe
    whose `from` state is opacity:0). */
 body.printing-timeline *,
-body.printing-stage-inputs * {
+body.printing-stage-inputs *,
+body.printing-vendors *,
+body.printing-packing-list * {
     animation: none !important;
     transition: none !important;
     opacity: 1 !important;
     transform: none !important;
 }
+/* The blanket opacity:1 above is meant for print-relevant content, but a
+   closed modal like .si-overlay also hides itself via opacity:0 (rather
+   than display:none) — without this, it would force itself fully visible
+   over the page any time these print-scope classes are on <body>, even
+   just transiently during a normal print, not only if cleanup got stuck. */
+body.printing-timeline .si-overlay:not(.active),
+body.printing-stage-inputs .si-overlay:not(.active),
+body.printing-cue-sheet .si-overlay:not(.active),
+body.printing-vendors .si-overlay:not(.active),
+body.printing-packing-list .si-overlay:not(.active) {
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
 
 body.printing-timeline,
-body.printing-stage-inputs {
+body.printing-stage-inputs,
+body.printing-vendors,
+body.printing-packing-list {
     background: #fff !important;
 }
 
 body.printing-timeline .container,
-body.printing-stage-inputs .container {
+body.printing-stage-inputs .container,
+body.printing-vendors .container,
+body.printing-packing-list .container {
     max-width: none !important;
     padding: 0 !important;
     margin: 0 !important;
@@ -2901,11 +2934,15 @@ body.printing-cue-sheet .phantom-placeholder {
 /* Only the active page prints; force its visibility even if some earlier rule
    tried to hide it. */
 body.printing-timeline .page:not(.active),
-body.printing-stage-inputs .page:not(.active) {
+body.printing-stage-inputs .page:not(.active),
+body.printing-vendors .page:not(.active),
+body.printing-packing-list .page:not(.active) {
     display: none !important;
 }
 body.printing-timeline #timeline.page.active,
-body.printing-stage-inputs #input-lists.page.active {
+body.printing-stage-inputs #input-lists.page.active,
+body.printing-vendors #vendors.page.active,
+body.printing-packing-list #packing-list.page.active {
     display: block !important;
 }
 
@@ -2949,7 +2986,7 @@ body.printing-stage-inputs .card-header h2 {
     color: #000 !important;
 }
 
-/* ---------- Timeline: plain compact table ---------- */
+/* ---------- Timeline: branded run-of-show handout ---------- */
 body.printing-timeline .timeline-table .checkbox-col,
 body.printing-timeline .timeline-table .prod-col,
 body.printing-timeline .timeline-table .andi-col,
@@ -2963,32 +3000,40 @@ body.printing-timeline .timeline-table {
     table-layout: auto !important;
     border-collapse: collapse !important;
     background: #fff !important;
+    font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
 }
 body.printing-timeline .timeline-table thead {
-    background: #fff !important;
     display: table-header-group !important;
-}
-body.printing-timeline .timeline-table th {
-    background: #fff !important;
-    color: #000 !important;
-    font-weight: 700 !important;
-    text-align: left !important;
-    text-transform: none !important;
-    letter-spacing: 0 !important;
 }
 body.printing-timeline .timeline-table th,
 body.printing-timeline .timeline-table td {
-    padding: 3px 6px !important;
-    font-size: 9pt !important;
-    line-height: 1.25 !important;
-    border: 1px solid #333 !important;
+    padding: 7px 10px !important;
+    font-size: 9.5pt !important;
+    line-height: 1.35 !important;
+    border: none !important;
+    border-bottom: 1px solid #e5e1d6 !important;
     background: #fff !important;
-    color: #000 !important;
+    color: #2d2d2d !important;
     vertical-align: top !important;
+}
+/* Header row: text + a rule, no ink-heavy fill — comes after the shared
+   th/td rule above so its border wins. */
+body.printing-timeline .timeline-table th {
+    color: #0f2621 !important;
+    font-weight: 700 !important;
+    text-align: left !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.08em !important;
+    font-size: 7.5pt !important;
+    border-bottom: 2px solid #0f2621 !important;
+}
+body.printing-timeline .timeline-table tbody tr:nth-child(even) td {
+    background: #faf8f3 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
 }
 body.printing-timeline .timeline-table tr,
 body.printing-timeline .timeline-table .tl-row {
-    background: #fff !important;
     border-left: none !important;
     page-break-inside: avoid !important;
     break-inside: avoid !important;
@@ -2996,48 +3041,64 @@ body.printing-timeline .timeline-table .tl-row {
 body.printing-timeline .timeline-table .time-col {
     width: 1% !important;
     white-space: nowrap !important;
-    font-weight: 700 !important;
 }
 body.printing-timeline .timeline-table .duration-col {
     width: 1% !important;
     white-space: nowrap !important;
+    color: #888 !important;
 }
 body.printing-timeline .timeline-table .tl-time {
-    color: #000 !important;
+    color: #0f2621 !important;
+    font-family: 'Cormorant Garamond', Georgia, serif !important;
     font-weight: 700 !important;
+    font-size: 11pt !important;
+    letter-spacing: 0.2px !important;
 }
-body.printing-timeline .timeline-table .event-col { width: auto !important; }
+body.printing-timeline .timeline-table .event-col {
+    width: auto !important;
+    font-weight: 600 !important;
+}
 body.printing-timeline .timeline-table .responsible-col,
 body.printing-timeline .timeline-table .staff-col {
-    width: 16% !important;
+    width: 15% !important;
     white-space: normal !important;
+    color: #666 !important;
 }
 
-/* Timeline day header — plain bold title, no decorative border chrome */
+/* Timeline day header — branded title with a gold rule, like a document
+   masthead rather than bare browser-default heading text. */
 body.printing-timeline .timeline-card-header {
-    padding: 0 0 0.15rem 0 !important;
+    padding: 0 0 10px 0 !important;
     border: none !important;
-    margin: 0 0 0.2rem 0 !important;
+    border-bottom: 2px solid #c9a961 !important;
+    margin: 0 0 14px 0 !important;
     background: none !important;
-    display: block !important;
+    display: flex !important;
+    align-items: baseline !important;
+    gap: 10px !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
 }
 body.printing-timeline .timeline-card-header h2 {
-    font-size: 12pt !important;
+    font-family: 'Cormorant Garamond', Georgia, serif !important;
+    font-size: 19pt !important;
     font-weight: 700 !important;
     margin: 0 !important;
-    color: #000 !important;
+    color: #0f2621 !important;
+    letter-spacing: 0.3px !important;
 }
 body.printing-timeline #timeline-date-subtitle {
-    font-size: 9pt !important;
-    color: #000 !important;
-    font-weight: 400 !important;
-    margin-left: 0.5rem;
+    font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+    font-size: 10pt !important;
+    color: #888 !important;
+    font-weight: 500 !important;
+    margin-left: 0 !important;
 }
-/* Cards inside timeline contain each day — keep them minimal */
+/* Cards inside timeline contain each day */
 body.printing-timeline .timeline-card {
     box-shadow: none !important;
     border: none !important;
-    margin: 0 0 0.5rem 0 !important;
+    margin: 0 0 0.75rem 0 !important;
     padding: 0 !important;
     background: #fff !important;
     page-break-inside: auto !important;
@@ -3090,23 +3151,31 @@ body.printing-cue-sheet .cue-sheet-card .table-container {
     background: #fff !important;
 }
 
+/* Header — branded masthead, matching Timeline's print treatment */
 body.printing-cue-sheet .cue-sheet-card-header {
-    padding: 0 0 0.2rem 0 !important;
+    padding: 0 0 10px 0 !important;
     border: none !important;
+    border-bottom: 2px solid #c9a961 !important;
+    margin: 0 0 14px 0 !important;
     background: none !important;
-    display: block !important;
+    display: flex !important;
+    align-items: baseline !important;
+    gap: 10px !important;
 }
 body.printing-cue-sheet .cue-sheet-card-header h2 {
-    font-size: 12pt !important;
+    font-family: 'Cormorant Garamond', Georgia, serif !important;
+    font-size: 19pt !important;
     font-weight: 700 !important;
     margin: 0 !important;
-    color: #000 !important;
+    color: #0f2621 !important;
+    letter-spacing: 0.3px !important;
 }
 body.printing-cue-sheet .cue-sheet-card-header .cue-sheet-date {
-    font-size: 9pt !important;
-    color: #000 !important;
-    font-weight: 400 !important;
-    margin-left: 0.5rem;
+    font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+    font-size: 10pt !important;
+    color: #888 !important;
+    font-weight: 500 !important;
+    margin-left: 0 !important;
 }
 
 /* Hide rows that are marked hidden, even if "Show hidden" was on */
@@ -3120,41 +3189,53 @@ body.printing-cue-sheet .cue-sheet-table {
     table-layout: auto !important;
     border-collapse: collapse !important;
     background: #fff !important;
+    font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
 }
 body.printing-cue-sheet .cue-sheet-table thead {
-    background: #fff !important;
     display: table-header-group !important;
-}
-body.printing-cue-sheet .cue-sheet-table th {
-    background: #fff !important;
-    color: #000 !important;
-    font-weight: 700 !important;
-    text-align: left !important;
-    text-transform: none !important;
-    letter-spacing: 0 !important;
 }
 body.printing-cue-sheet .cue-sheet-table th,
 body.printing-cue-sheet .cue-sheet-table td {
-    padding: 3px 6px !important;
+    padding: 6px 8px !important;
     font-size: 9pt !important;
-    line-height: 1.25 !important;
-    border: 1px solid #333 !important;
+    line-height: 1.3 !important;
+    border: none !important;
+    border-bottom: 1px solid #e5e1d6 !important;
     background: #fff !important;
-    color: #000 !important;
+    color: #2d2d2d !important;
     vertical-align: top !important;
 }
+body.printing-cue-sheet .cue-sheet-table th {
+    color: #0f2621 !important;
+    font-weight: 700 !important;
+    text-align: left !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.06em !important;
+    font-size: 7.5pt !important;
+    border-bottom: 2px solid #0f2621 !important;
+}
+body.printing-cue-sheet .cue-sheet-table tbody tr:nth-child(even) td {
+    background: #faf8f3 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+}
 body.printing-cue-sheet .cue-sheet-table tr {
-    background: #fff !important;
     page-break-inside: avoid !important;
     break-inside: avoid !important;
 }
-body.printing-cue-sheet .cue-sheet-table .cs-time-col { white-space: nowrap !important; font-weight: 700 !important; }
-body.printing-cue-sheet .cue-sheet-table .cs-duration-col { white-space: nowrap !important; }
+body.printing-cue-sheet .cue-sheet-table .cs-time-col { white-space: nowrap !important; }
+body.printing-cue-sheet .cue-sheet-table .cs-duration-col { white-space: nowrap !important; color: #888 !important; }
 body.printing-cue-sheet .cue-sheet-table .cs-cell-multiline { white-space: pre-wrap !important; }
-body.printing-cue-sheet .cue-sheet-table .cs-cell-empty { color: #fff !important; } /* hide '—' placeholders in print */
-body.printing-cue-sheet .cue-sheet-table .tl-time { color: #000 !important; font-weight: 700 !important; }
+body.printing-cue-sheet .cue-sheet-table .cs-cell-empty { color: transparent !important; } /* hide '—' placeholders in print */
+body.printing-cue-sheet .cue-sheet-table .tl-time {
+    color: #0f2621 !important;
+    font-family: 'Cormorant Garamond', Georgia, serif !important;
+    font-weight: 700 !important;
+    font-size: 11pt !important;
+    letter-spacing: 0.2px !important;
+}
 
-/* ---------- Input List: compact table ---------- */
+/* ---------- Input List: branded compact table ---------- */
 body.printing-stage-inputs #stage-table .drag-col,
 body.printing-stage-inputs #stage-table .drag-handle,
 body.printing-stage-inputs #stage-table .stage-actions-cell,
@@ -3166,28 +3247,35 @@ body.printing-stage-inputs #stage-table {
     table-layout: auto !important;
     border-collapse: collapse !important;
     background: #fff !important;
+    font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
 }
 body.printing-stage-inputs #stage-table thead {
-    background: #fff !important;
     display: table-header-group !important;
-}
-body.printing-stage-inputs #stage-table th {
-    background: #fff !important;
-    color: #000 !important;
-    font-weight: 700 !important;
-    text-align: left !important;
-    text-transform: none !important;
-    letter-spacing: 0 !important;
 }
 body.printing-stage-inputs #stage-table th,
 body.printing-stage-inputs #stage-table td {
-    padding: 3px 6px !important;
+    padding: 6px 8px !important;
     font-size: 9pt !important;
-    line-height: 1.25 !important;
-    border: 1px solid #333 !important;
+    line-height: 1.3 !important;
+    border: none !important;
+    border-bottom: 1px solid #e5e1d6 !important;
     background: #fff !important;
-    color: #000 !important;
+    color: #2d2d2d !important;
     vertical-align: top !important;
+}
+body.printing-stage-inputs #stage-table th {
+    color: #0f2621 !important;
+    font-weight: 700 !important;
+    text-align: left !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.06em !important;
+    font-size: 7.5pt !important;
+    border-bottom: 2px solid #0f2621 !important;
+}
+body.printing-stage-inputs #stage-table tbody tr:nth-child(even) td {
+    background: #faf8f3 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
 }
 body.printing-stage-inputs #stage-table tr {
     page-break-inside: avoid !important;
@@ -3196,8 +3284,230 @@ body.printing-stage-inputs #stage-table tr {
 body.printing-stage-inputs #stage-table .stage-phantom-row {
     display: none !important;
 }
+/* Header — branded masthead, matching Timeline's print treatment */
+body.printing-stage-inputs .card-header {
+    padding: 0 0 10px 0 !important;
+    border-bottom: 2px solid #c9a961 !important;
+    margin: 0 0 14px 0 !important;
+}
 body.printing-stage-inputs .card-header h2 {
-    font-size: 14pt !important;
+    font-family: 'Cormorant Garamond', Georgia, serif !important;
+    font-size: 17pt !important;
+    font-weight: 700 !important;
+    color: #0f2621 !important;
+    letter-spacing: 0.3px !important;
+}
+
+/* ---------- Vendors: branded contact sheet ---------- */
+body.printing-vendors .page-header {
+    padding: 0 0 10px 0 !important;
+    border-bottom: 2px solid #c9a961 !important;
+    margin: 0 0 16px 0 !important;
+}
+body.printing-vendors .page-header h1 {
+    font-family: 'Cormorant Garamond', Georgia, serif !important;
+    font-size: 19pt !important;
+    font-weight: 700 !important;
+    color: #0f2621 !important;
+    letter-spacing: 0.3px !important;
+}
+body.printing-vendors .vendor-view-toggle { display: none !important; }
+
+/* Force every category open regardless of on-screen collapse state, and
+   drop the collapse arrow / hover chrome that means nothing on paper. */
+body.printing-vendors .vendor-category-content {
+    display: block !important;
+}
+body.printing-vendors .category-arrow { display: none !important; }
+body.printing-vendors .vendor-category-header {
+    cursor: default !important;
+    padding: 8px 0 !important;
+    border-bottom: 1px solid #e5e1d6 !important;
+    margin: 14px 0 8px 0 !important;
+}
+body.printing-vendors .vendor-category-header h3 {
+    font-family: 'Cormorant Garamond', Georgia, serif !important;
+    font-size: 13pt !important;
+    color: #0f2621 !important;
+}
+body.printing-vendors .category-count {
+    color: #888 !important;
+    font-size: 8.5pt !important;
+}
+
+/* Cards: two-column flow instead of full hover-shadow tiles */
+body.printing-vendors .vendor-grid {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 10px !important;
+}
+body.printing-vendors .vendor-card {
+    background: #fff !important;
+    border: 1px solid #e5e1d6 !important;
+    box-shadow: none !important;
+    border-radius: 4px !important;
+    padding: 10px 12px !important;
+    animation: none !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+}
+body.printing-vendors .vendor-card-title {
+    font-weight: 700 !important;
+    color: #0f2621 !important;
+    font-size: 10.5pt !important;
+}
+body.printing-vendors .vendor-card-description,
+body.printing-vendors .vendor-card-category,
+body.printing-vendors .vendor-detail,
+body.printing-vendors .vendor-linked-staff {
+    color: #2d2d2d !important;
+    font-size: 8.5pt !important;
+}
+body.printing-vendors .vendor-card-category { color: #888 !important; }
+body.printing-vendors .status-badge {
+    border: 1px solid #0f2621 !important;
+    background: #fff !important;
+    color: #0f2621 !important;
+}
+body.printing-vendors .status-badge.confirmed {
+    border-color: #0f2621 !important;
+    color: #0f2621 !important;
+}
+body.printing-vendors .status-badge.pending {
+    border-color: #888 !important;
+    color: #888 !important;
+}
+body.printing-vendors .vendor-card-budget {
+    border-top: 1px solid #e5e1d6 !important;
+    margin-top: 6px !important;
+    padding-top: 6px !important;
+    color: #2d2d2d !important;
+    font-size: 8.5pt !important;
+}
+body.printing-vendors .vendor-card-actions,
+body.printing-vendors .action-icon,
+body.printing-vendors .vendor-issues { display: none !important; }
+
+/* Schedule view table */
+body.printing-vendors .vendor-sched-table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    background: #fff !important;
+    font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+}
+body.printing-vendors .vendor-sched-table th,
+body.printing-vendors .vendor-sched-table td {
+    padding: 6px 8px !important;
+    font-size: 9pt !important;
+    border: none !important;
+    border-bottom: 1px solid #e5e1d6 !important;
+    background: #fff !important;
+    color: #2d2d2d !important;
+}
+body.printing-vendors .vendor-sched-table th {
+    color: #0f2621 !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.06em !important;
+    font-size: 7.5pt !important;
+    border-bottom: 2px solid #0f2621 !important;
+}
+body.printing-vendors .vendor-sched-table tbody tr:nth-child(even) td {
+    background: #faf8f3 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+}
+
+/* ---------- Packing List: branded compact table ---------- */
+body.printing-packing-list .page-header {
+    padding: 0 0 10px 0 !important;
+    border-bottom: 2px solid #c9a961 !important;
+    margin: 0 0 16px 0 !important;
+}
+body.printing-packing-list .page-header h1 {
+    font-family: 'Cormorant Garamond', Georgia, serif !important;
+    font-size: 19pt !important;
+    font-weight: 700 !important;
+    color: #0f2621 !important;
+    letter-spacing: 0.3px !important;
+}
+body.printing-packing-list .pl-view-toggle { display: none !important; }
+body.printing-packing-list .pl-actions-cell,
+body.printing-packing-list .pl-thumb-cell,
+body.printing-packing-list .pl-th-img,
+body.printing-packing-list .pl-condition-cell,
+body.printing-packing-list .pl-cat-broken-flag {
+    display: none !important;
+}
+/* Keep checkboxes (useful as a physical checklist while packing) and notes
+   text (useful info) — just strip the interactive/form-field look. */
+body.printing-packing-list .pl-notes-input {
+    border: none !important;
+    background: none !important;
+    color: #2d2d2d !important;
+    padding: 0 !important;
+}
+body.printing-packing-list .pl-notes-input::placeholder { color: transparent !important; }
+body.printing-packing-list .pl-table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    background: #fff !important;
+    font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+}
+body.printing-packing-list .pl-table th,
+body.printing-packing-list .pl-table td {
+    padding: 6px 8px !important;
+    font-size: 9pt !important;
+    border: none !important;
+    border-bottom: 1px solid #e5e1d6 !important;
+    background: #fff !important;
+    color: #2d2d2d !important;
+}
+body.printing-packing-list .pl-table th {
+    color: #0f2621 !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.06em !important;
+    font-size: 7.5pt !important;
+    border-bottom: 2px solid #0f2621 !important;
+}
+body.printing-packing-list .pl-th-check { width: 4% !important; }
+body.printing-packing-list .pl-name-cell { width: 38% !important; }
+body.printing-packing-list .pl-qty-cell { width: 8% !important; white-space: nowrap !important; }
+body.printing-packing-list .pl-table tbody tr:nth-child(even) td {
+    background: #faf8f3 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+}
+body.printing-packing-list .pl-category-row td {
+    background: #faf8f3 !important;
+    padding-top: 10px !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+}
+/* .pl-cat-name/.pl-cat-count set their own on-screen (dark-theme) text
+   color directly on the span, which wins over the td's inherited color
+   above — override them explicitly or they print unreadably light. */
+body.printing-packing-list .pl-cat-name {
+    color: #0f2621 !important;
+    font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+    font-size: 9pt !important;
+    letter-spacing: 0.04em !important;
+}
+body.printing-packing-list .pl-cat-count {
+    color: #888 !important;
+}
+/* Match the item name's weight so it doesn't look like an editable form
+   pill, and keep it from wrapping mid-word when the column is narrow. */
+body.printing-packing-list .pl-adhoc-tag {
+    background: none !important;
+    border: 1px solid #e5e1d6 !important;
+    color: #888 !important;
+    white-space: nowrap !important;
+    display: inline-block !important;
+}
+body.printing-packing-list .pl-item-name {
+    font-weight: 600 !important;
 }
 
 /* Inline Editing Styles */
