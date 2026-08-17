@@ -151,15 +151,24 @@ h1, h2, h3 {
   color: #6BA3F0 !important;
 }
 
-/* Tabler icon sizing inside nav */
+/* Tabler icon sizing inside nav — some glyphs in the webfont carry a taller
+   internal line-box than others, which can visually spill into the row
+   above/below even though the layout box is sized correctly. Pinning
+   line-height and clipping overflow keeps every icon confined to its row. */
 .nav-link .ti.nav-icon,
 .nav-group-toggle .ti.nav-icon {
   font-size: 12px !important;
+  line-height: 1 !important;
   width: 13px !important;
-  height: auto !important;
+  height: 13px !important;
+  overflow: hidden !important;
   text-align: center !important;
   flex-shrink: 0 !important;
   opacity: 0.55 !important;
+}
+.nav-link,
+.nav-group-toggle {
+  min-height: 26px !important;
 }
 .nav-link.active .ti.nav-icon,
 .nav-link:hover .ti.nav-icon {

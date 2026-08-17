@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>YMU Gala 2026 Management</title>
-    <link rel="stylesheet" href="css/styles.css?v=2">
-    <link rel="stylesheet" href="css/ymu-overrides.css?v=2">
+    <link rel="stylesheet" href="css/styles.css?v=5">
+    <link rel="stylesheet" href="css/ymu-overrides.css?v=5">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -588,6 +588,7 @@
                     <table class="data-table timeline-table" id="timeline-table">
                         <thead>
                             <tr>
+                                <th class="drag-col no-print"></th>
                                 <th class="checkbox-col">✓</th>
                                 <th class="time-col">Time</th>
                                 <th class="duration-col">Duration</th>
@@ -600,7 +601,7 @@
                         </thead>
                         <tbody id="timeline-tbody">
                             <tr>
-                                <td colspan="8" class="empty-state">No tasks for this day</td>
+                                <td colspan="9" class="empty-state">No tasks for this day</td>
                             </tr>
                         </tbody>
                     </table>
@@ -614,7 +615,7 @@
                 <span><kbd>Tab</kbd> next cell</span>
                 <span><kbd>Enter</kbd> next row</span>
                 <span><kbd>Esc</kbd> cancel</span>
-                <span><kbd>N</kbd> new row</span>
+                <span><kbd>Ctrl</kbd>+<kbd>Enter</kbd> new row below</span>
                 <span><kbd>Ctrl</kbd>+<kbd>Z</kbd> undo</span>
             </div>
         </div>
