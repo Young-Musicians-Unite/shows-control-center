@@ -3771,6 +3771,23 @@ function backfillTimelineOrder() {
     if (hasWrites) batch.commit().catch(err => console.error('Error backfilling timeline order:', err));
 }
 
+// Finds the Run of Show window for a day's items — from the "doors
+// open"/"event start"/"show start" row through the "event over" row —
+// so the Timeline filter and the Technical Cue Sheet both derive their
+// range from whatever time those rows actually have, instead of a fixed
+// clock time. Either bound is null (unrestricted) if its marker row
+// isn't present or has no time set.
+function getRunOfShowBounds(dayItems) {
+    const norm = s => (s || '').trim().toLowerCase();
+    const startPhrases = ['doors open', 'event start', 'show start'];
+    const startTime = dayItems.find(item => {
+        const ev = norm(item.event);
+        return startPhrases.some(p => ev.includes(p));
+    })?.time || null;
+    const endTime = dayItems.find(item => norm(item.event) === 'event over')?.time || null;
+    return { startTime, endTime };
+}
+
 function renderTimeline() {
     // Guard: don't rebuild DOM if user is editing a cell
     if (state.timelineEditingRowId) {
@@ -3794,9 +3811,12 @@ function renderTimeline() {
     if (state.timelineFilter === 'production') {
         filteredTimeline = filteredTimeline.filter(item => item.production === true || item.tag === 'production');
     } else if (state.timelineFilter === 'run-of-show') {
+        const { startTime, endTime } = getRunOfShowBounds(filteredTimeline);
         filteredTimeline = filteredTimeline.filter(item => {
             if (!item.time) return false;
-            return item.time >= '18:20' && item.time <= '23:00';
+            if (startTime && item.time < startTime) return false;
+            if (endTime && item.time > endTime) return false;
+            return true;
         });
     }
 
@@ -3959,7 +3979,8 @@ function renderTimeline() {
     }
 }
 
-// Technical Cue Sheet — same Firestore docs as timeline, filtered to Saturday >= 18:20.
+// Technical Cue Sheet — same Firestore docs as timeline, filtered to the
+// show day's Run of Show window (see getRunOfShowBounds).
 // Tech-only fields (audio/liveVideo/lighting/centerScreen/sideScreens/nameOfFile)
 // live on the same timeline document and are ignored by the timeline view.
 const CUE_SHEET_FIELD_ORDER = ['time', 'duration', 'event', 'audio', 'liveVideo', 'stageLighting', 'houseLighting', 'centerScreen', 'sideScreens', 'screenCue'];
@@ -3986,11 +4007,14 @@ function renderCueSheet() {
     const dayId = getCueSheetDayId();
     const dayLabel = state.timelineDays?.find(d => d.id === dayId)?.label || dayId;
 
-    const all = state.timeline.filter(item =>
-        item.day === dayId &&
-        typeof item.time === 'string' &&
-        item.time >= '18:20'
-    );
+    const dayItems = state.timeline.filter(item => item.day === dayId);
+    const { startTime, endTime } = getRunOfShowBounds(dayItems);
+    const all = dayItems.filter(item => {
+        if (typeof item.time !== 'string' || !item.time) return false;
+        if (startTime && item.time < startTime) return false;
+        if (endTime && item.time > endTime) return false;
+        return true;
+    });
 
     const hiddenCount = all.filter(item => item.hiddenFromCueSheet === true).length;
     const countEl = document.getElementById('cue-hidden-count');
@@ -4007,7 +4031,7 @@ function renderCueSheet() {
     });
 
     if (sorted.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="11" class="empty-state">No ${escapeHtml(dayLabel)} timeline rows ≥ 6:20 PM yet.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="11" class="empty-state">No ${escapeHtml(dayLabel)} timeline rows in the Run of Show window yet.</td></tr>`;
         return;
     }
 
