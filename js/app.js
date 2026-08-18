@@ -32,14 +32,14 @@ const state = {
     currentPage: 'events-hub',
     currentDay: 'Thursday',  // For timeline filtering
     timelineDays: null,       // [{id, label}] — null until initialized
-    vendorFilter: 'all',  // For vendor page filtering (all/confirmed/pending/issues)
+    vendors: [],             // Independent vendor logistics rows (not budget items)
+    vendorColumns: null,     // [{key, label}] — null until initialized, per-event
+    vendorCategorySequence: null,   // string[] — persisted category display order, null until initialized, per-event
     vendorSearch: '',
-    vendorView: 'grid',                     // 'grid' | 'schedule'
-    vendorScheduleFilter: 'all',            // 'all' | 'needs-schedule'
-    vendorScheduleEditingRowId: null,       // blocks re-render during cell edit
-    vendorScheduleRenderPending: false,     // deferred re-render flag
-    pendingVendorScheduleEdit: null,        // { id, day, originalValue } — for Esc revert
-    vendorGanttDay: 'saturday',             // selected day for Vendor Schedule gantt
+    vendorEditingRowId: null,        // blocks re-render during inline cell edit
+    vendorRenderPending: false,      // deferred re-render flag
+    pendingNewVendorRow: {},         // draft fields for whichever phantom row is active
+    vendorPendingCategories: [],     // categories added but with no saved row yet (ephemeral)
     staffSearch: '',
     staffFilter: 'all',  // 'all' or 'unfilled'
     staffView: 'team',
@@ -459,7 +459,6 @@ function initializeApp() {
     _setup('setupCountdown', setupCountdown);
     _setup('setupFormHandlers', setupFormHandlers);
     _setup('setupDayTabs', setupDayTabs);
-    _setup('setupVendorFilters', setupVendorFilters);
     _setup('setupStageTabs', setupStageTabs);
     _setup('setupExportAndPrint', setupExportAndPrint);
     _setup('setupKeyboardShortcuts', setupKeyboardShortcuts);
@@ -640,27 +639,10 @@ function switchPage(pageName) {
         if (pageName === 'dashboard') updateDashboard();
         if (pageName === 'guests') initGuestPage();
         if (pageName === 'vendors') {
-            state.vendorFilter = 'all';
             state.vendorSearch = '';
-            state.vendorView = 'grid';
-            state.vendorScheduleFilter = 'all';
-            state.vendorScheduleEditingRowId = null;
-            state.vendorScheduleRenderPending = false;
-            state.pendingVendorScheduleEdit = null;
-            state.vendorGanttDay = 'saturday';
             const vendorSearchInput = document.getElementById('vendor-search-input');
             if (vendorSearchInput) vendorSearchInput.value = '';
-            const vendorFilterBtns = document.querySelectorAll('#vendor-card-view .vendor-filter-btn');
-            vendorFilterBtns.forEach(b => b.classList.toggle('active', b.dataset.filter === 'all'));
-            const vendorCardBtn = document.getElementById('vendor-card-view-btn');
-            const vendorScheduleBtn = document.getElementById('vendor-schedule-view-btn');
-            if (vendorCardBtn) vendorCardBtn.classList.add('active');
-            if (vendorScheduleBtn) vendorScheduleBtn.classList.remove('active');
-            const vendorCardContainer = document.getElementById('vendor-card-view');
-            const vendorScheduleContainer = document.getElementById('vendor-schedule-view');
-            if (vendorCardContainer) vendorCardContainer.style.display = '';
-            if (vendorScheduleContainer) vendorScheduleContainer.style.display = 'none';
-            renderVendors();
+            renderVendorLogistics();
         }
         if (pageName === 'staff') {
             state.staffSearch = '';
@@ -795,11 +777,12 @@ function setupCollectionListener(collectionKey, stateKey, renderCallbacks = []) 
 // Load all data from Firestore (tears down any existing listeners first)
 function loadAllData() {
     teardownListeners();
-    setupCollectionListener('budget', 'budget', [renderBudget, renderVendors, updateDashboard, renderStaff, backfillLinkedContactInfo]);
+    setupCollectionListener('budget', 'budget', [renderBudget, updateDashboard, renderStaff, backfillLinkedContactInfo]);
     setupCollectionListener('timeline', 'timeline', [backfillTimelineOrder, renderTimeline, renderCueSheet, updateDashboard]);
     setupCollectionListener('mainStageInputs', 'mainStageInputs', [renderStageInputs]);
     setupCollectionListener('cocktailStageInputs', 'cocktailStageInputs', [renderStageInputs]);
-    setupCollectionListener('staff', 'staff', [renderStaff, renderVendors, backfillLinkedContactInfo]);
+    setupCollectionListener('staff', 'staff', [renderStaff, backfillLinkedContactInfo]);
+    setupCollectionListener('vendors', 'vendors', [renderVendorLogistics]);
     setupCollectionListener('setLists', 'setLists', [renderSetLists, updateDashboard, renderTimeline]);
     setupCollectionListener('packingList', 'packingList', [renderPackingList]);
     setupCollectionListener('packingCategoryColors', 'packingCategoryColors', [renderPackingList]);
@@ -1484,6 +1467,9 @@ async function enterEvent(eventId) {
     // Reset timeline days — will be initialized lazily on first renderTimeline()
     state.timelineDays = null;
     state.currentDay = 'Thursday';
+    // Reset vendor columns/category order — will be initialized lazily on first renderVendorLogistics()
+    state.vendorColumns = null;
+    state.vendorCategorySequence = null;
 
     setActiveEvent(eventId);
     localStorage.setItem('lastEventId', eventId);
@@ -1516,7 +1502,7 @@ async function enterEvent(eventId) {
         'budget', 'timeline', 'mainStageInputs', 'cocktailStageInputs',
         'staff', 'setLists', 'packingList', 'packingCategoryColors',
         'menuItems', 'printedMaterials', 'digitalAssets', 'guests', 'seatingTables',
-        'invitees',
+        'invitees', 'vendors',
     ].forEach(k => { state[k] = []; });
 
     loadAllData();
@@ -2117,7 +2103,6 @@ window.removeIntakeRow = function(sectionId, rowIdx) {
 // Dashboard
 function updateDashboard() {
     updateBudgetStats();
-    updateVendorStats();
     updateTimelineStats();
     renderDashboard();
 }
@@ -2493,775 +2478,559 @@ window.saveSetBudget = async function() {
     }
 };
 
-function updateVendorStats() {
-    const confirmed = state.budget.filter(b => b.confirmed).length;
-    const total = state.budget.length;
-    const pending = total - confirmed;
-    const issueCount = state.budget.filter(b => getVendorIssues(b).length > 0).length;
-
-    // (dashboard elements removed — counts rendered dynamically by renderDashboard)
-
-    // Update filter button count badges
-    const el = (id) => document.getElementById(id);
-    const setCount = (id, count) => { const e = el(id); if (e) e.textContent = count > 0 ? count : ''; };
-    setCount('vendor-filter-all-count', total);
-    setCount('vendor-filter-confirmed-count', confirmed);
-    setCount('vendor-filter-pending-count', pending);
-    setCount('vendor-filter-issue-count', issueCount);
-
-}
-
-// Vendor Issues
-function getVendorIssues(item) {
-    const issues = [];
-    if (!item.vendor) issues.push('vendor/item');
-    if (!item.description) issues.push('description');
-    if (!item.inKind && !item.budgeted) issues.push('budgeted');
-    if (!item.noContactNeeded && !item.offSite) {
-        if (!item.phone) issues.push('phone');
-        if (!item.email) issues.push('email');
-    }
-    return issues;
-}
-
-function vendorItemMatchesSearch(item, query) {
-    if (!query) return true;
-    const tokens = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
-    if (tokens.length === 0) return true;
-    const fields = [
-        item.vendor || '', item.description || '', item.category || '',
-        item.contact || '', item.email || '', item.phone || '', item.owner || '', item.notes || ''
-    ];
-    const text = fields.join(' ').toLowerCase();
-    return tokens.every(t => text.includes(t));
-}
-
-function handleVendorSearch(value) {
-    clearTimeout(vendorSearchDebounce);
-    vendorSearchDebounce = setTimeout(() => {
-        state.vendorSearch = value;
-        renderVendors();
-    }, 150);
-}
-
-function clearVendorSearch() {
-    const input = document.getElementById('vendor-search-input');
-    if (input) input.value = '';
-    state.vendorSearch = '';
-    renderVendors();
-}
-
-window.handleVendorSearch = handleVendorSearch;
-window.clearVendorSearch = clearVendorSearch;
-
-function toggleVendorCategorySection(categoryId) {
-    const content = document.getElementById(`vendor-content-${categoryId}`);
-    const arrow = document.getElementById(`vendor-arrow-${categoryId}`);
-    if (content.style.display === 'none') {
-        content.style.display = 'block';
-        arrow.textContent = '▼';
-    } else {
-        content.style.display = 'none';
-        arrow.textContent = '▶';
-    }
-}
-window.toggleVendorCategorySection = toggleVendorCategorySection;
-
-function summarizeVendorSchedule(sched) {
-    if (!sched) return '';
-    const days = [
-        ['thursday', 'Thu'], ['friday', 'Fri'], ['saturday', 'Sat'], ['sunday', 'Sun']
-    ].filter(([k]) => sched[k]).map(([, label]) => label);
-    if (days.length === 0) return '';
-    return `<div class="vendor-detail"><span class="vendor-detail-icon">📅</span> On-site ${days.join(', ')}</div>`;
-}
-
-function renderVendors() {
-    if (state.vendorView === 'schedule') {
-        renderVendorSchedule();
-    } else {
-        renderVendorCards();
-    }
-}
-
-function setVendorView(view) {
-    state.vendorView = view;
-    const cardBtn = document.getElementById('vendor-card-view-btn');
-    const schedBtn = document.getElementById('vendor-schedule-view-btn');
-    const cardView = document.getElementById('vendor-card-view');
-    const schedView = document.getElementById('vendor-schedule-view');
-    if (cardBtn) cardBtn.classList.toggle('active', view === 'grid');
-    if (schedBtn) schedBtn.classList.toggle('active', view === 'schedule');
-    if (cardView) cardView.style.display = view === 'grid' ? '' : 'none';
-    if (schedView) schedView.style.display = view === 'schedule' ? '' : 'none';
-    renderVendors();
-}
-window.setVendorView = setVendorView;
-
-function setVendorScheduleFilter(filter) {
-    state.vendorScheduleFilter = filter;
-    document.querySelectorAll('#vendor-schedule-view [data-schedule-filter]').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.scheduleFilter === filter);
-    });
-    renderVendorSchedule();
-}
-window.setVendorScheduleFilter = setVendorScheduleFilter;
-
-function renderVendorCards() {
-    const container = document.getElementById('vendor-grid');
-    if (!container) return;
-
-    // Capture expanded categories and scroll position before re-render
-    const expandedCategories = new Set();
-    container.querySelectorAll('.vendor-category-content').forEach(el => {
-        if (el.style.display !== 'none') {
-            expandedCategories.add(el.id);
-        }
-    });
-    const scrollY = window.scrollY;
-
-    let items = [...state.budget];
-
-    // Apply status filter
-    if (state.vendorFilter === 'confirmed') {
-        items = items.filter(b => b.confirmed);
-    } else if (state.vendorFilter === 'pending') {
-        items = items.filter(b => !b.confirmed);
-    } else if (state.vendorFilter === 'issues') {
-        items = items.filter(b => getVendorIssues(b).length > 0);
-    }
-
-    // Apply search
-    const searchQuery = state.vendorSearch;
-    const isSearching = searchQuery && searchQuery.trim().length > 0;
-    if (isSearching) {
-        items = items.filter(item => vendorItemMatchesSearch(item, searchQuery));
-    }
-
-    // Update search count
-    const countEl = document.getElementById('vendor-search-count');
-    if (countEl) {
-        const totalFiltered = state.budget.length;
-        countEl.textContent = isSearching
-            ? `${items.length} of ${totalFiltered} vendors`
-            : `${totalFiltered} vendors`;
-        countEl.style.display = totalFiltered > 0 ? '' : 'none';
-    }
-    const clearBtn = document.getElementById('vendor-search-clear');
-    if (clearBtn) clearBtn.style.display = isSearching ? '' : 'none';
-
-    if (items.length === 0) {
-        if (state.vendorFilter === 'issues') {
-            container.innerHTML = '<div class="staff-empty-state">All clear — no missing vendor information!</div>';
-        } else if (isSearching) {
-            container.innerHTML = `<div class="staff-empty-state">No vendors match "${escapeHtml(searchQuery)}"</div>`;
-        } else {
-            container.innerHTML = '<div class="staff-empty-state">No vendors found</div>';
-        }
-        return;
-    }
-
-    // Group by category
-    const categorized = {};
-    items.forEach(item => {
-        const cat = item.category || 'Uncategorized';
-        if (!categorized[cat]) categorized[cat] = [];
-        categorized[cat].push(item);
-    });
-
-    const sortedCategories = Object.entries(categorized).sort((a, b) => a[0].localeCompare(b[0]));
-
-    let cardIdx = 0;
-    container.innerHTML = sortedCategories.map(([category, catItems]) => {
-        const categoryId = category.replace(/[^a-zA-Z0-9]/g, '_');
-        const displayName = category.replace(/^6811[a-g] - /, '');
-        const budgetTotal = catItems.reduce((sum, item) => sum + (parseFloat(item.budgeted) || 0), 0);
-
-        const cardsHtml = catItems.map(item => {
-            const issues = getVendorIssues(item);
-            const hasIssues = issues.length > 0;
-            const isConfirmed = item.confirmed;
-            const itemCategory = (item.category || '').replace(/^6811[a-g] - /, '');
-
-            let statusClass = isConfirmed ? 'vendor-confirmed' : 'vendor-pending';
-            if (hasIssues) statusClass = 'vendor-has-issues';
-
-            const linkedStaff = getLinkedStaff(item);
-
-            const issuePills = hasIssues ? `
-                <div class="vendor-issues">
-                    <span class="vendor-issues-label">Missing:</span>
-                    ${issues.map(i => `<span class="vendor-issue-pill">${escapeHtml(i)}</span>`).join('')}
-                </div>
-            ` : '';
-
-            const delay = cardIdx * 40;
-            cardIdx++;
-
-            return `
-                <div class="vendor-card ${statusClass}" style="animation-delay: ${delay}ms">
-                    <div class="vendor-card-header">
-                        <div class="vendor-card-title">${escapeHtml(item.vendor || 'Unnamed')}</div>
-                        <span class="status-badge ${isConfirmed ? 'confirmed' : 'pending'}">${isConfirmed ? 'Confirmed' : 'Pending'}</span>
-                    </div>
-                    ${item.description ? `<div class="vendor-card-description">${escapeHtml(item.description)}</div>` : ''}
-                    <div class="vendor-card-category">${escapeHtml(itemCategory)}</div>
-                    ${linkedStaff ? `<div class="vendor-linked-staff"><span class="vendor-detail-icon">👥</span> Staff: ${escapeHtml(linkedStaff.name)}${linkedStaff.role ? ' (' + escapeHtml(linkedStaff.role) + ')' : ''}</div>` : ''}
-                    <div class="vendor-card-details">
-                        ${item.noContactNeeded ? `<div class="vendor-detail"><span class="vendor-detail-icon">🌐</span> Online vendor</div>` : ''}
-                        ${item.offSite ? `<div class="vendor-detail"><span class="vendor-detail-icon">🚫</span> Off-site</div>` : ''}
-                        ${item.contact ? `<div class="vendor-detail"><span class="vendor-detail-icon">👤</span> ${escapeHtml(item.contact)}</div>` : ''}
-                        ${item.phone ? `<div class="vendor-detail"><span class="vendor-detail-icon">📞</span> <a href="tel:${escapeHtml(item.phone)}">${escapeHtml(item.phone)}</a></div>` : ''}
-                        ${item.email ? `<div class="vendor-detail"><span class="vendor-detail-icon">✉</span> <a href="mailto:${escapeHtml(item.email)}">${escapeHtml(item.email)}</a></div>` : ''}
-                        ${summarizeVendorSchedule(linkedStaff ? linkedStaff.schedule : item.schedule)}
-                    </div>
-                    <div class="vendor-card-budget">
-                        ${item.inKind ? '<span class="vendor-in-kind-badge">In-Kind</span>' : ''}
-                        <span>Budgeted: <strong>${formatCurrency(item.budgeted)}</strong></span>
-                        ${item.actual ? `<span>Actual: <strong>${formatCurrency(item.actual)}</strong></span>` : ''}
-                    </div>
-                    ${issuePills}
-                    <div class="vendor-card-actions">
-                        ${hasIssues
-                            ? `<button class="btn btn-fix-issues" onclick="editBudgetItem('${item.id}')">Fix Issues</button>`
-                            : `<button class="btn btn-edit" onclick="editBudgetItem('${item.id}')">Edit</button>`}
-                        <div class="vendor-action-icons">
-                            <button class="action-icon" onclick="editBudgetItem('${item.id}')" title="Edit">
-                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                            </button>
-                            <button class="action-icon action-icon-danger" onclick="deleteBudgetItem('${item.id}')" title="Delete">
-                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            `;
-        }).join('');
-
-        return `
-            <div class="vendor-category-section">
-                <div class="vendor-category-header" onclick="toggleVendorCategorySection('${categoryId}')">
-                    <span class="category-arrow" id="vendor-arrow-${categoryId}">${isSearching ? '▼' : '▶'}</span>
-                    <h3>${escapeHtml(displayName)}</h3>
-                    <span class="category-count">${catItems.length} vendors</span>
-                    <span style="font-size: 0.9rem; color: #8a8778; margin-left: auto;"><strong>Budget:</strong> ${formatCurrency(budgetTotal)}</span>
-                </div>
-                <div class="vendor-category-content" id="vendor-content-${categoryId}" style="display: ${isSearching ? 'block' : 'none'};">
-                    <div class="vendor-grid">
-                        ${cardsHtml}
-                    </div>
-                </div>
-            </div>
-        `;
-    }).join('');
-
-    // Restore expanded categories and scroll position after re-render
-    expandedCategories.forEach(id => {
-        const el = document.getElementById(id);
-        if (el) {
-            el.style.display = 'block';
-            const arrow = document.getElementById(id.replace('vendor-content-', 'vendor-arrow-'));
-            if (arrow) arrow.textContent = '▼';
-        }
-    });
-    requestAnimationFrame(() => window.scrollTo(0, scrollY));
-}
-
-// ---------- Vendor Schedule view (inline day-cell edit) ----------
-
-const VENDOR_SCHEDULE_DAYS = [
-    ['thursday', 'Thu'],
-    ['friday', 'Fri'],
-    ['saturday', 'Sat'],
-    ['sunday', 'Sun']
+// ── Vendor Logistics ──────────────────────────────────────────────
+// Independent of Budget/Staff — day-of coordination info only (who's
+// showing up, what they need from us, how long they need). Financial
+// tracking (payments, contracts) stays on the Budget page.
+const DEFAULT_VENDOR_COLUMNS = [
+    { key: 'description', label: 'Description' },
+    { key: 'vendor', label: 'Vendor' },
+    { key: 'contactName', label: 'Contact Name' },
+    { key: 'contactNumber', label: 'Contact Number' },
+    { key: 'notes', label: 'Notes' },
+    { key: 'requirements', label: 'Requirements' },
+    { key: 'serviceTime', label: 'Service Time' },
 ];
 
-function vendorHasFullSchedule(sched) {
-    if (!sched) return false;
-    return VENDOR_SCHEDULE_DAYS.every(([k]) => sched[k] && String(sched[k]).trim());
+function vendorFieldKeys() {
+    return (state.vendorColumns || DEFAULT_VENDOR_COLUMNS).map(c => c.key);
 }
 
-function renderVendorSchedule() {
-    const container = document.getElementById('vendor-schedule-container');
+function vendorColumnLabel(key) {
+    const col = (state.vendorColumns || DEFAULT_VENDOR_COLUMNS).find(c => c.key === key);
+    return col ? col.label : key;
+}
+
+async function initVendorColumns() {
+    if (state.vendorColumns !== null) return;
+    const event = state.activeEvent;
+    if (!event) return;
+
+    if (event.vendorColumns && event.vendorColumns.length > 0) {
+        state.vendorColumns = event.vendorColumns;
+        return;
+    }
+
+    const columns = DEFAULT_VENDOR_COLUMNS;
+    state.vendorColumns = columns;
+    await eventsCollection.doc(event.id).update({ vendorColumns: columns });
+    state.activeEvent.vendorColumns = columns;
+}
+
+window.addVendorColumn = async function() {
+    const label = prompt('New column name:');
+    if (!label || !label.trim()) return;
+    const trimmed = label.trim();
+    const key = 'col-' + Date.now();
+    const columns = [...(state.vendorColumns || DEFAULT_VENDOR_COLUMNS), { key, label: trimmed }];
+    state.vendorColumns = columns;
+    state.activeEvent.vendorColumns = columns;
+    await eventsCollection.doc(state.activeEvent.id).update({ vendorColumns: columns });
+    renderVendorLogistics();
+};
+
+window.removeVendorColumn = async function(e, key) {
+    e.stopPropagation();
+    const columns = state.vendorColumns || DEFAULT_VENDOR_COLUMNS;
+    if (columns.length <= 1) { showToast('At least one column is required', 'error'); return; }
+    const label = columns.find(c => c.key === key)?.label || 'this column';
+    if (!confirm(`Remove the "${label}" column? Any data already saved in it won't be deleted, just hidden.`)) return;
+    const updated = columns.filter(c => c.key !== key);
+    state.vendorColumns = updated;
+    state.activeEvent.vendorColumns = updated;
+    await eventsCollection.doc(state.activeEvent.id).update({ vendorColumns: updated });
+    renderVendorLogistics();
+};
+
+window.startRenameVendorColumn = function(e, key) {
+    e.stopPropagation();
+    const span = e.target;
+    if (span.tagName === 'INPUT') return;
+    const current = vendorColumnLabel(key);
+    const input = document.createElement('input');
+    input.className = 'vl-th-rename-input';
+    input.value = current;
+    input.placeholder = 'Column name…';
+    span.replaceWith(input);
+    input.focus();
+    input.select();
+    const save = async () => {
+        const newLabel = input.value.trim() || current;
+        const columns = (state.vendorColumns || DEFAULT_VENDOR_COLUMNS).map(c => c.key === key ? { ...c, label: newLabel } : c);
+        state.vendorColumns = columns;
+        state.activeEvent.vendorColumns = columns;
+        await eventsCollection.doc(state.activeEvent.id).update({ vendorColumns: columns });
+        renderVendorLogistics();
+    };
+    input.addEventListener('blur', save);
+    input.addEventListener('keydown', ev => {
+        if (ev.key === 'Enter') { ev.preventDefault(); input.blur(); }
+        if (ev.key === 'Escape') { input.value = current; input.blur(); }
+    });
+};
+
+function vendorItemMatchesSearch(item, query) {
+    const q = query.toLowerCase();
+    return vendorFieldKeys().some(f => (item[f] || '').toLowerCase().includes(q));
+}
+
+window.handleVendorSearch = function(value) {
+    state.vendorSearch = value;
+    const clearBtn = document.getElementById('vendor-search-clear');
+    if (clearBtn) clearBtn.style.display = value ? '' : 'none';
+    renderVendorLogistics();
+};
+
+window.clearVendorSearch = function() {
+    state.vendorSearch = '';
+    const input = document.getElementById('vendor-search-input');
+    if (input) input.value = '';
+    const clearBtn = document.getElementById('vendor-search-clear');
+    if (clearBtn) clearBtn.style.display = 'none';
+    renderVendorLogistics();
+};
+
+function nextVendorOrderInCategory(category) {
+    const inCat = state.vendors.filter(v => v.category === category);
+    if (inCat.length === 0) return 1000;
+    return Math.max(...inCat.map(v => (typeof v.order === 'number' ? v.order : 0))) + 1000;
+}
+
+// Category display order is tracked explicitly (state.vendorCategorySequence,
+// persisted on the event doc) rather than derived from row `order` values —
+// every category's first row starts at order 1000, so deriving display order
+// from min-row-order caused categories to reshuffle unpredictably as soon as
+// a second category got its first row.
+async function initVendorCategorySequence() {
+    if (state.vendorCategorySequence !== null) return;
+    const event = state.activeEvent;
+    if (!event) return;
+
+    if (event.vendorCategoryOrder && event.vendorCategoryOrder.length > 0) {
+        state.vendorCategorySequence = event.vendorCategoryOrder;
+        return;
+    }
+
+    // No sequence saved yet — establish a baseline from whatever categories
+    // already exist, in first-seen order, so nothing already in use is lost.
+    const seen = [];
+    state.vendors.forEach(v => {
+        const cat = v.category || 'Uncategorized';
+        if (!seen.includes(cat)) seen.push(cat);
+    });
+    state.vendorCategorySequence = seen;
+    if (seen.length > 0) {
+        await eventsCollection.doc(event.id).update({ vendorCategoryOrder: seen });
+        state.activeEvent.vendorCategoryOrder = seen;
+    }
+}
+
+async function persistVendorCategorySequence(sequence) {
+    state.vendorCategorySequence = sequence;
+    if (!state.activeEvent) return;
+    state.activeEvent.vendorCategoryOrder = sequence;
+    await eventsCollection.doc(state.activeEvent.id).update({ vendorCategoryOrder: sequence });
+}
+
+function vendorCategoryOrder() {
+    const sequence = state.vendorCategorySequence || [];
+    const realCats = new Set(state.vendors.map(v => v.category || 'Uncategorized'));
+    const ordered = sequence.filter(cat => realCats.has(cat) || state.vendorPendingCategories.includes(cat));
+    realCats.forEach(cat => { if (!ordered.includes(cat)) ordered.push(cat); });
+    state.vendorPendingCategories.forEach(cat => {
+        if (!ordered.includes(cat)) ordered.push(cat);
+    });
+    return ordered;
+}
+
+window.addVendorCategory = async function() {
+    const name = prompt('New category name (e.g. "Food Vendors"):');
+    if (!name || !name.trim()) return;
+    const trimmed = name.trim();
+    const exists = state.vendors.some(v => (v.category || 'Uncategorized').toLowerCase() === trimmed.toLowerCase()) ||
+        state.vendorPendingCategories.some(c => c.toLowerCase() === trimmed.toLowerCase());
+    if (exists) { showToast(`"${trimmed}" already exists — scroll down to find it`, 'error'); return; }
+    state.vendorPendingCategories.push(trimmed);
+    await persistVendorCategorySequence([...(state.vendorCategorySequence || []), trimmed]);
+    renderVendorLogistics();
+    showToast(`"${trimmed}" category added`);
+    setTimeout(() => {
+        const header = [...document.querySelectorAll('.vl-category-header h3')].find(h => h.textContent === trimmed);
+        if (header) header.closest('.vl-category-section').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 50);
+};
+
+window.removePendingVendorCategory = async function(category) {
+    state.vendorPendingCategories = state.vendorPendingCategories.filter(c => c !== category);
+    await persistVendorCategorySequence((state.vendorCategorySequence || []).filter(c => c !== category));
+    renderVendorLogistics();
+};
+
+window.deleteVendorItem = async function(id) {
+    const item = state.vendors.find(v => v.id === id);
+    if (!item) return;
+    if (!confirm(`Delete "${item.description || item.vendor || 'this row'}"?`)) return;
+    const { id: _id, ...data } = item;
+    const eventId = state.currentEventId;
+    pushUndo('Delete vendor row', async () => {
+        if (eventId !== state.currentEventId) { showToast('Nothing to undo', 'info'); return; }
+        await collections.vendors.doc(id).set(data);
+    });
+    try {
+        await collections.vendors.doc(id).delete();
+        showToast('Deleted — Cmd+Z to undo');
+    } catch (err) {
+        console.error('Error deleting vendor row:', err);
+        showToast('Error deleting row', 'error');
+    }
+};
+
+function renderVendorLogistics() {
+    if (state.vendorEditingRowId) { state.vendorRenderPending = true; return; }
+    const container = document.getElementById('vendor-logistics-container');
     if (!container) return;
 
-    // Skip re-render if a cell is being inline-edited (Firestore listener may fire mid-edit)
-    if (state.vendorScheduleEditingRowId) {
-        state.vendorScheduleRenderPending = true;
+    if (state.vendorColumns === null) {
+        initVendorColumns().then(() => renderVendorLogistics());
+        return;
+    }
+    if (state.vendorCategorySequence === null) {
+        initVendorCategorySequence().then(() => renderVendorLogistics());
         return;
     }
 
-    // Remember expanded categories (reuses same id prefix as cards view — they're never mounted together)
-    const expandedCategories = new Set();
-    container.querySelectorAll('.vendor-category-content').forEach(el => {
-        if (el.style.display !== 'none') expandedCategories.add(el.id);
-    });
+    const columns = state.vendorColumns;
+    const fieldKeys = columns.map(c => c.key);
 
-    let items = [...state.budget];
-
-    // Apply needs-schedule filter
-    if (state.vendorScheduleFilter === 'needs-schedule') {
-        items = items.filter(item => {
-            if (item.offSite) return false;
-            const linked = getLinkedStaff(item);
-            const sched = linked ? (linked.schedule || {}) : (item.schedule || {});
-            return !vendorHasFullSchedule(sched);
-        });
+    const search = (state.vendorSearch || '').trim();
+    let items = [...state.vendors];
+    const countEl = document.getElementById('vendor-search-count');
+    const isSearching = search.length > 0;
+    if (isSearching) items = items.filter(item => vendorItemMatchesSearch(item, search));
+    if (countEl) {
+        countEl.textContent = isSearching ? `${items.length} of ${state.vendors.length} rows` : `${state.vendors.length} rows`;
+        countEl.style.display = state.vendors.length > 0 ? '' : 'none';
     }
 
-    if (items.length === 0) {
-        container.innerHTML = state.vendorScheduleFilter === 'needs-schedule'
-            ? '<div class="vendor-sched-empty">All vendors have complete schedules (or are marked off-site).</div>'
-            : '<div class="vendor-sched-empty">No vendors yet.</div>';
+    const headerRow = `
+        <tr>
+            ${columns.map(col => `
+                <th data-col-key="${col.key}">
+                    <div class="vl-th-inner">
+                        <span class="vl-th-label" ondblclick="startRenameVendorColumn(event,'${col.key}')">${escapeHtml(col.label)}</span>
+                        ${columns.length > 1 ? `<span class="vl-th-remove" onclick="removeVendorColumn(event,'${col.key}')" title="Remove column">&times;</span>` : ''}
+                    </div>
+                </th>
+            `).join('')}
+            <th class="no-print vl-th-add"><button class="vl-add-col-btn" onclick="addVendorColumn()" title="Add column">+</button></th>
+        </tr>
+    `;
+
+    const categories = vendorCategoryOrder();
+
+    if (categories.length === 0) {
+        container.innerHTML = `
+            <div class="table-container">
+                <table class="data-table vl-table">
+                    <thead>${headerRow}</thead>
+                    <tbody>
+                        <tr><td colspan="${columns.length + 1}" class="empty-state">No vendor categories yet — click "+ Add Category" below to get started.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        `;
+        renderVendorAddCategoryRow(container);
         return;
     }
 
-    // Group by category (same ordering as card view)
-    const categorized = {};
-    items.forEach(item => {
-        const cat = item.category || 'Uncategorized';
-        if (!categorized[cat]) categorized[cat] = [];
-        categorized[cat].push(item);
-    });
-    const sortedCategories = Object.entries(categorized).sort((a, b) => a[0].localeCompare(b[0]));
+    container.innerHTML = categories.map(category => {
+        const catItems = items
+            .filter(v => (v.category || 'Uncategorized') === category)
+            .sort((a, b) => (a.order || 0) - (b.order || 0));
+        const isPending = state.vendorPendingCategories.includes(category) &&
+            !state.vendors.some(v => (v.category || 'Uncategorized') === category);
 
-    const html = sortedCategories.map(([category, catItems]) => {
-        const categoryId = category.replace(/[^a-zA-Z0-9]/g, '_');
-        const displayName = category.replace(/^6811[a-g] - /, '');
-
-        // Sort rows: unlinked, on-site, needs-schedule first; then linked; then off-site
-        catItems.sort((a, b) => {
-            const offA = a.offSite ? 1 : 0;
-            const offB = b.offSite ? 1 : 0;
-            if (offA !== offB) return offA - offB;
-            const linkA = a.linkedStaffId ? 1 : 0;
-            const linkB = b.linkedStaffId ? 1 : 0;
-            if (linkA !== linkB) return linkA - linkB;
-            return (a.vendor || '').localeCompare(b.vendor || '');
-        });
-
-        const rowsHtml = catItems.map(item => {
-            const linked = getLinkedStaff(item);
-            const sched = linked ? (linked.schedule || {}) : (item.schedule || {});
-            const isOffSite = item.offSite === true;
-            const isLinked = !!linked;
-            const rowClasses = ['vendor-sched-row'];
-            if (isOffSite) rowClasses.push('off-site');
-            if (isLinked) rowClasses.push('linked');
-
-            const dayCells = VENDOR_SCHEDULE_DAYS.map(([key]) => {
-                const raw = sched[key] || '';
-                const display = raw ? escapeHtml(normalizeTimeForPrint(raw) || raw)
-                                    : '<span class="phantom-placeholder">—</span>';
-                if (isOffSite) {
-                    return `<td class="vendor-sched-cell" data-field="day" data-day="${key}"><span class="phantom-placeholder">—</span></td>`;
-                }
-                if (isLinked) {
-                    return `<td class="vendor-sched-cell" data-field="day" data-day="${key}" data-original="${escapeHtml(raw)}" title="Also editable on staff tab" onclick="editVendorScheduleCell(this)">${display}</td>`;
-                }
-                return `<td class="vendor-sched-cell" data-field="day" data-day="${key}" data-original="${escapeHtml(raw)}" onclick="editVendorScheduleCell(this)">${display}</td>`;
-            }).join('');
-
-            const vendorLabel = escapeHtml(item.vendor || 'Unnamed');
-            const subtitleParts = [];
-            if (item.description) subtitleParts.push(escapeHtml(item.description));
-            const subtitle = subtitleParts.length ? `<span class="vendor-sched-subtitle">${subtitleParts.join(' · ')}</span>` : '';
-
-            const linkedBadge = isLinked
-                ? ` <span class="vendor-sched-linked-badge" onclick="event.stopPropagation(); openStaffModal('${linked.id}')" title="Open staff entry">also on staff tab</span>`
-                : '';
-            const offSitePill = isOffSite ? ` <span class="vendor-sched-offsite-pill">Off-site</span>` : '';
-
-            const switchDisabled = isLinked ? 'disabled' : '';
-            const switchChecked = !isOffSite ? 'checked' : '';
-            const switchTitle = isLinked
-                ? 'Linked to staff — presence controlled by staff entry'
-                : (isOffSite ? 'Off-site (hidden from check-in list)' : 'On-site (shown on check-in list)');
-
-            const contactLine = item.contact ? escapeHtml(item.contact) : '';
-
-            return `
-                <tr class="${rowClasses.join(' ')}" data-id="${item.id}">
-                    <td>
-                        <span class="vendor-sched-vendor" onclick="editBudgetItem('${item.id}')">${vendorLabel}</span>${linkedBadge}${offSitePill}
-                        ${subtitle}
+        const rowsHtml = catItems.map(item => `
+            <tr data-id="${item.id}">
+                ${fieldKeys.map(f => `
+                    <td data-field="${f}" data-original="${escapeHtml(item[f] || '')}" onclick="editVendorCell(this)">
+                        ${item[f] ? escapeHtml(item[f]) : ''}
                     </td>
-                    <td class="vendor-sched-onsite-cell">
-                        <input type="checkbox" class="vendor-onsite-switch" ${switchChecked} ${switchDisabled}
-                            title="${switchTitle}"
-                            onchange="toggleVendorOffSite('${item.id}', this.checked)">
-                    </td>
-                    ${dayCells}
-                    <td class="vendor-sched-contact">${contactLine}</td>
-                </tr>`;
-        }).join('');
+                `).join('')}
+                <td class="no-print">
+                    <div class="row-actions">
+                        <div class="act del" onclick="deleteVendorItem('${item.id}')" title="Delete"><i class="ti ti-trash"></i></div>
+                    </div>
+                </td>
+            </tr>
+        `).join('');
+
+        const phantomRow = `
+            <tr class="vl-phantom-row" data-phantom="true" data-category="${escapeHtml(category)}">
+                ${fieldKeys.map(f => `
+                    <td data-field="${f}" onclick="editVendorCell(this)"><span class="phantom-placeholder">+ ${vendorColumnLabel(f).toLowerCase()}</span></td>
+                `).join('')}
+                <td class="no-print"></td>
+            </tr>
+        `;
 
         return `
-            <div class="vendor-category-section">
-                <div class="vendor-category-header" onclick="toggleVendorCategorySection('${categoryId}')">
-                    <span class="category-arrow" id="vendor-arrow-${categoryId}">▼</span>
-                    <h3>${escapeHtml(displayName)}</h3>
-                    <span class="category-count">${catItems.length} vendors</span>
+            <div class="vl-category-section">
+                <div class="category-section-header vl-category-header">
+                    <h3>${escapeHtml(category)}</h3>
+                    <span class="category-count">${catItems.length} ${catItems.length === 1 ? 'vendor' : 'vendors'}</span>
+                    ${isPending ? `<span class="vl-remove-category" onclick="removePendingVendorCategory('${escapeHtml(category)}')" title="Remove empty category">&times;</span>` : ''}
                 </div>
-                <div class="vendor-category-content" id="vendor-content-${categoryId}" style="display:block;">
-                    <table class="vendor-sched-table">
-                        <thead>
-                            <tr>
-                                <th>Vendor</th>
-                                <th class="vendor-sched-onsite-cell">On-site</th>
-                                <th>Thu</th>
-                                <th>Fri</th>
-                                <th>Sat</th>
-                                <th>Sun</th>
-                                <th>Contact</th>
-                            </tr>
-                        </thead>
-                        <tbody>${rowsHtml}</tbody>
+                <div class="table-container">
+                    <table class="data-table vl-table">
+                        <thead>${headerRow}</thead>
+                        <tbody>${rowsHtml}${phantomRow}</tbody>
                     </table>
                 </div>
             </div>
         `;
     }).join('');
 
-    container.innerHTML = html;
-
-    // Restore collapsed/expanded state from previous render (default: expanded on first render)
-    if (expandedCategories.size > 0) {
-        container.querySelectorAll('.vendor-category-content').forEach(el => {
-            const isExpanded = expandedCategories.has(el.id);
-            el.style.display = isExpanded ? 'block' : 'none';
-            const arrow = document.getElementById(el.id.replace('vendor-content-', 'vendor-arrow-'));
-            if (arrow) arrow.textContent = isExpanded ? '▼' : '▶';
-        });
-    }
-
-    renderVendorGantt();
+    renderVendorAddCategoryRow(container);
+    state.pendingNewVendorRow = {};
 }
 
-function editVendorScheduleCell(cell) {
+function renderVendorAddCategoryRow(container) {
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-secondary vl-add-category-btn';
+    btn.textContent = '+ Add Category';
+    btn.onclick = () => window.addVendorCategory();
+    container.appendChild(btn);
+}
+
+window.editVendorCell = function(cell) {
     if (cell.querySelector('.inline-edit-input')) return;
     const row = cell.closest('tr');
-    if (!row) return;
-    const id = row.dataset.id;
-    const day = cell.dataset.day;
-    const original = cell.dataset.original || '';
+    const field = cell.dataset.field;
+    if (!field) return;
 
-    state.vendorScheduleEditingRowId = id;
-    state.pendingVendorScheduleEdit = { id, day, originalValue: original };
+    const isPhantom = row.dataset.phantom === 'true';
+    const rowId = row.dataset.id;
+    state.vendorEditingRowId = isPhantom ? 'phantom' : rowId;
     row.classList.add('editing');
+
+    const original = isPhantom ? (state.pendingNewVendorRow[field] || '') : (cell.dataset.original || '');
 
     const input = document.createElement('input');
     input.type = 'text';
-    input.className = 'inline-edit-input';
     input.value = original;
-    input.placeholder = 'e.g. 10am-6pm';
+    input.className = 'inline-edit-input';
+    input.dataset.field = field;
     cell.textContent = '';
     cell.appendChild(input);
     input.focus();
     input.select();
 
-    input.addEventListener('keydown', (e) => handleVendorScheduleKeydown(e, cell, row));
+    input.addEventListener('keydown', (e) => handleVendorCellKeydown(e, cell, row));
     input.addEventListener('blur', () => {
         setTimeout(() => {
-            if (cell.querySelector('.inline-edit-input')) saveVendorScheduleCell(cell, row);
+            const activeEl = document.activeElement;
+            if (row.contains(activeEl) && activeEl.classList.contains('inline-edit-input')) return;
+            if (!cell.querySelector('.inline-edit-input')) return;
+            if (isPhantom) {
+                const val = input.value.trim();
+                if (val) state.pendingNewVendorRow[field] = val;
+                restoreVendorCellDisplay(cell, true);
+                if (!row.querySelector('.inline-edit-input')) {
+                    row.classList.remove('editing');
+                    const hasData = vendorFieldKeys().some(f => state.pendingNewVendorRow[f] && String(state.pendingNewVendorRow[f]).trim());
+                    if (hasData) commitNewVendorRow(row); else clearVendorEditingFlag();
+                }
+            } else {
+                saveVendorCell(cell, row);
+            }
         }, 50);
     });
-}
-window.editVendorScheduleCell = editVendorScheduleCell;
+};
 
-function restoreVendorScheduleCellDisplay(cell) {
-    const raw = cell.dataset.original || '';
-    const display = raw
-        ? escapeHtml(normalizeTimeForPrint(raw) || raw)
-        : '<span class="phantom-placeholder">—</span>';
-    cell.innerHTML = display;
-}
+function handleVendorCellKeydown(e, cell, row) {
+    const field = cell.dataset.field;
+    const isPhantom = row.dataset.phantom === 'true';
 
-function clearVendorScheduleEditingFlag() {
-    state.vendorScheduleEditingRowId = null;
-    state.pendingVendorScheduleEdit = null;
-    if (state.vendorScheduleRenderPending) {
-        state.vendorScheduleRenderPending = false;
-        renderVendors();
-    }
-}
-
-function handleVendorScheduleKeydown(e, cell, row) {
-    if (e.key === 'Escape') {
-        e.preventDefault();
-        row.classList.remove('editing');
-        restoreVendorScheduleCellDisplay(cell);
-        clearVendorScheduleEditingFlag();
-        return;
-    }
-    if (e.key === 'Enter') {
-        e.preventDefault();
-        const day = cell.dataset.day;
-        saveVendorScheduleCell(cell, row, () => {
-            const nextRow = row.nextElementSibling;
-            if (!nextRow) return;
-            const nextCell = nextRow.querySelector(`td[data-day="${day}"][onclick]`);
-            if (nextCell) editVendorScheduleCell(nextCell);
-        });
-        return;
-    }
     if (e.key === 'Tab') {
         e.preventDefault();
-        const day = cell.dataset.day;
-        const forward = !e.shiftKey;
-        saveVendorScheduleCell(cell, row, () => {
-            const idx = VENDOR_SCHEDULE_DAYS.findIndex(([k]) => k === day);
-            const nextIdx = forward ? idx + 1 : idx - 1;
-            if (nextIdx >= 0 && nextIdx < VENDOR_SCHEDULE_DAYS.length) {
-                const nextKey = VENDOR_SCHEDULE_DAYS[nextIdx][0];
-                const nextCell = row.querySelector(`td[data-day="${nextKey}"][onclick]`);
-                if (nextCell) { editVendorScheduleCell(nextCell); return; }
-            }
-            // Wrap to adjacent row
-            const neighborRow = forward ? row.nextElementSibling : row.previousElementSibling;
-            if (!neighborRow) return;
-            const wrapKey = forward ? VENDOR_SCHEDULE_DAYS[0][0] : VENDOR_SCHEDULE_DAYS[VENDOR_SCHEDULE_DAYS.length - 1][0];
-            const wrapCell = neighborRow.querySelector(`td[data-day="${wrapKey}"][onclick]`);
-            if (wrapCell) editVendorScheduleCell(wrapCell);
-        });
+        const direction = e.shiftKey ? -1 : 1;
+        if (isPhantom) {
+            const input = cell.querySelector('.inline-edit-input');
+            const val = input ? input.value.trim() : '';
+            if (val) state.pendingNewVendorRow[field] = val;
+            restoreVendorCellDisplay(cell, true);
+        } else {
+            saveVendorCell(cell, row, true);
+        }
+        navigateVendorCell(row, field, direction);
+    } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (isPhantom) {
+            const input = cell.querySelector('.inline-edit-input');
+            const val = input ? input.value.trim() : '';
+            if (val) state.pendingNewVendorRow[field] = val;
+            restoreVendorCellDisplay(cell, true);
+            commitNewVendorRow(row);
+        } else {
+            saveVendorCell(cell, row, true);
+            navigateVendorNextRowSameColumn(row, field);
+        }
+    } else if (e.key === 'Escape') {
+        e.preventDefault();
+        restoreVendorCellDisplay(cell, isPhantom);
+        row.classList.remove('editing');
+        clearVendorEditingFlag();
     }
 }
 
-async function saveVendorScheduleCell(cell, row, afterSave) {
+function saveVendorCell(cell, row, keepEditing = false) {
     const input = cell.querySelector('.inline-edit-input');
     if (!input) return;
+
+    const field = cell.dataset.field;
     const id = row.dataset.id;
-    const day = cell.dataset.day;
-    const original = cell.dataset.original || '';
+    const item = state.vendors.find(v => v.id === id);
+    if (!item) { restoreVendorCellDisplay(cell, false); return; }
+
     const newValue = input.value.trim();
+    const oldValue = item[field] || '';
 
-    row.classList.remove('editing');
+    cell.dataset.original = newValue;
+    restoreVendorCellDisplay(cell, false);
 
-    if (newValue === original) {
-        restoreVendorScheduleCellDisplay(cell);
-        clearVendorScheduleEditingFlag();
-        if (typeof afterSave === 'function') afterSave();
+    if (!keepEditing && !row.querySelector('.inline-edit-input')) {
+        row.classList.remove('editing');
+        clearVendorEditingFlag();
+    }
+
+    if (newValue === oldValue) return;
+    item[field] = newValue;
+
+    const eventId = state.currentEventId;
+    pushUndo(`Edit ${field}`, async () => {
+        if (eventId !== state.currentEventId) { showToast('Nothing to undo', 'info'); return; }
+        const current = state.vendors.find(v => v.id === id);
+        if (current) current[field] = oldValue;
+        await collections.vendors.doc(id).update({ [field]: oldValue, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    });
+
+    collections.vendors.doc(id).update({ [field]: newValue, updatedAt: firebase.firestore.FieldValue.serverTimestamp() })
+        .catch(err => {
+            console.error('Error saving vendor cell:', err);
+            if (item) item[field] = oldValue;
+            cell.dataset.original = oldValue;
+            showToast('Error saving', 'error');
+        });
+}
+
+function restoreVendorCellDisplay(cell, isPhantom) {
+    const field = cell.dataset.field;
+    if (isPhantom) {
+        const val = state.pendingNewVendorRow[field] || '';
+        cell.innerHTML = val ? escapeHtml(val) : `<span class="phantom-placeholder">+ ${vendorColumnLabel(field).toLowerCase()}</span>`;
+    } else {
+        const original = cell.dataset.original || '';
+        cell.textContent = original;
+    }
+}
+
+function clearVendorEditingFlag() {
+    state.vendorEditingRowId = null;
+    if (state.vendorRenderPending) {
+        state.vendorRenderPending = false;
+        renderVendorLogistics();
+    }
+}
+
+function navigateVendorCell(row, currentField, direction) {
+    const fieldKeys = vendorFieldKeys();
+    const idx = fieldKeys.indexOf(currentField);
+    const nextIdx = idx + direction;
+
+    if (nextIdx >= 0 && nextIdx < fieldKeys.length) {
+        const nextField = fieldKeys[nextIdx];
+        const nextCell = row.querySelector(`td[data-field="${nextField}"]`);
+        if (nextCell) window.editVendorCell(nextCell);
+    } else if (direction > 0) {
+        const isPhantom = row.dataset.phantom === 'true';
+        if (isPhantom) { commitNewVendorRow(row); return; }
+        const nextRow = row.nextElementSibling;
+        if (nextRow && nextRow.querySelector('td[data-field]')) {
+            const firstCell = nextRow.querySelector(`td[data-field="${fieldKeys[0]}"]`);
+            if (firstCell) window.editVendorCell(firstCell);
+        }
+    } else if (direction < 0) {
+        const prevRow = row.previousElementSibling;
+        if (prevRow && prevRow.querySelector('td[data-field]')) {
+            const lastField = fieldKeys[fieldKeys.length - 1];
+            const prevCell = prevRow.querySelector(`td[data-field="${lastField}"]`);
+            if (prevCell) window.editVendorCell(prevCell);
+        }
+    }
+}
+
+function navigateVendorNextRowSameColumn(row, field) {
+    const nextRow = row.nextElementSibling;
+    if (nextRow && nextRow.querySelector('td[data-field]')) {
+        const nextCell = nextRow.querySelector(`td[data-field="${field}"]`);
+        if (nextCell) window.editVendorCell(nextCell);
+    }
+}
+
+async function commitNewVendorRow(phantomRow) {
+    const data = { ...state.pendingNewVendorRow };
+    const fieldKeys = vendorFieldKeys();
+    const hasAnyData = fieldKeys.some(f => data[f] && String(data[f]).trim());
+    if (!hasAnyData) {
+        state.pendingNewVendorRow = {};
+        clearVendorEditingFlag();
+        renderVendorLogistics();
         return;
     }
 
-    const writeValue = newValue === '' ? firebase.firestore.FieldValue.delete() : newValue;
+    const category = phantomRow.dataset.category || 'Uncategorized';
+    data.category = category;
+    fieldKeys.forEach(f => { if (data[f] === undefined) data[f] = ''; });
+    data.order = nextVendorOrderInCategory(category);
+    data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+    data.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
 
-    // Linked pairs: staff is authoritative (see commit 4d48229). Redirect write to the staff doc.
-    const budgetItem = state.budget.find(b => b.id === id);
-    const linkedStaffId = budgetItem && budgetItem.linkedStaffId;
+    state.pendingNewVendorRow = {};
+    state.vendorPendingCategories = state.vendorPendingCategories.filter(c => c !== category);
+    clearVendorEditingFlag();
 
     try {
-        const targetColl = linkedStaffId ? collections.staff : collections.budget;
-        const targetId = linkedStaffId || id;
-        if (linkedStaffId) {
-            await collections.staff.doc(linkedStaffId).update({
-                [`schedule.${day}`]: writeValue,
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        await collections.vendors.add(data);
+        showToast('Vendor added');
+    } catch (error) {
+        console.error('Error adding vendor row:', error);
+        showToast('Error adding row', 'error');
+    }
+}
+
+function exportVendorLogisticsToExcel() {
+    const wb = XLSX.utils.book_new();
+    const columns = state.vendorColumns || DEFAULT_VENDOR_COLUMNS;
+    const categories = vendorCategoryOrder();
+    const rows = [];
+    categories.forEach(category => {
+        state.vendors
+            .filter(v => (v.category || 'Uncategorized') === category)
+            .sort((a, b) => (a.order || 0) - (b.order || 0))
+            .forEach(v => {
+                const row = { Category: category };
+                columns.forEach(col => { row[col.label] = v[col.key] || ''; });
+                rows.push(row);
             });
-        } else {
-            await collections.budget.doc(id).update({
-                [`schedule.${day}`]: writeValue,
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-            });
-        }
-        const eventId = state.currentEventId;
-        pushUndo('Edit schedule', async () => {
-            if (eventId !== state.currentEventId) { showToast('Nothing to undo', 'info'); return; }
-            const revertValue = original === '' ? firebase.firestore.FieldValue.delete() : original;
-            await targetColl.doc(targetId).update({
-                [`schedule.${day}`]: revertValue,
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-            });
-        });
-        cell.dataset.original = newValue;
-        restoreVendorScheduleCellDisplay(cell);
-        showToast('Updated');
-    } catch (err) {
-        console.error('Error saving vendor schedule cell:', err);
-        restoreVendorScheduleCellDisplay(cell);
-        showToast('Error saving', 'error');
-    } finally {
-        clearVendorScheduleEditingFlag();
-        if (typeof afterSave === 'function') afterSave();
-    }
-}
-window.saveVendorScheduleCell = saveVendorScheduleCell;
-
-async function toggleVendorOffSite(id, onSite) {
-    try {
-        await collections.budget.doc(id).update({
-            offSite: !onSite,
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-        showToast(onSite ? 'Marked on-site' : 'Marked off-site');
-    } catch (err) {
-        console.error('Error toggling vendor off-site:', err);
-        showToast('Error updating', 'error');
-    }
-}
-window.toggleVendorOffSite = toggleVendorOffSite;
-
-// ---------- Vendor Schedule Gantt ----------
-
-function setVendorGanttDay(day) {
-    state.vendorGanttDay = day;
-    document.querySelectorAll('.vendor-gantt-day-tab').forEach(tab => {
-        tab.classList.toggle('active', tab.dataset.day === day);
     });
-    renderVendorGantt();
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [{ wch: 18 }, ...columns.map(() => ({ wch: 22 }))];
+    XLSX.utils.book_append_sheet(wb, ws, 'Vendor Logistics');
+    const today = new Date().toISOString().split('T')[0];
+    XLSX.writeFile(wb, `Vendor_Logistics_${today}.xlsx`);
 }
-window.setVendorGanttDay = setVendorGanttDay;
-
-function renderVendorGantt() {
-    const container = document.getElementById('vendor-gantt-container');
-    if (!container) return;
-
-    const day = state.vendorGanttDay;
-    const dayKeys = ['thursday', 'friday', 'saturday', 'sunday'];
-    const dayNames = ['Thu', 'Fri', 'Sat', 'Sun'];
-
-    // Per-day counts for the tab labels
-    const dayCounts = { thursday: 0, friday: 0, saturday: 0, sunday: 0 };
-    for (const b of state.budget) {
-        if (b.offSite === true) continue;
-        const linked = getLinkedStaff(b);
-        const sched = linked ? (linked.schedule || {}) : (b.schedule || {});
-        for (const d of dayKeys) if (sched[d]) dayCounts[d]++;
-    }
-    document.querySelectorAll('.vendor-gantt-day-tab').forEach(tab => {
-        const d = tab.dataset.day;
-        const idx = dayKeys.indexOf(d);
-        if (idx !== -1) tab.textContent = dayNames[idx] + ' (' + dayCounts[d] + ')';
-    });
-
-    // Resolve entries for the selected day
-    const entries = [];
-    for (const item of state.budget) {
-        if (item.offSite === true) continue;
-        const linked = getLinkedStaff(item);
-        const sched = linked ? (linked.schedule || {}) : (item.schedule || {});
-        const timeStr = sched[day];
-        if (!timeStr) continue;
-        entries.push({ item, linked, timeStr });
-    }
-
-    if (entries.length === 0) {
-        container.innerHTML = '<div class="staff-empty-state">No vendors scheduled for this day</div>';
-        return;
-    }
-
-    // Axis — match staff gantt so the two align visually
-    const axisStart = 7;
-    const axisEnd = 27;
-    const axisRange = axisEnd - axisStart;
-
-    const axisLabels = [];
-    for (let h = axisStart; h < axisEnd; h++) {
-        const displayH = h > 24 ? h - 24 : h;
-        const suffix = displayH < 12 || displayH === 24 ? 'a' : 'p';
-        const label = displayH === 0 ? '12a' : displayH === 12 ? '12p' : (displayH > 12 ? displayH - 12 : displayH) + suffix;
-        axisLabels.push(label);
-    }
-
-    const timeAxisHtml = '<div class="vendor-gantt-time-axis">' +
-        axisLabels.map(l => '<span class="vendor-gantt-time-label">' + l + '</span>').join('') +
-        '</div>';
-
-    // Group by category
-    const catMap = new Map();
-    for (const entry of entries) {
-        const cat = entry.item.category || 'Uncategorized';
-        if (!catMap.has(cat)) catMap.set(cat, []);
-        catMap.get(cat).push(entry);
-    }
-    const sortedCats = [...catMap.keys()].sort((a, b) => a.localeCompare(b));
-
-    let html = timeAxisHtml;
-    for (const cat of sortedCats) {
-        const displayCat = cat.replace(/^6811[a-g] - /, '');
-        const color = getTeamColor(cat);
-        const catEntries = catMap.get(cat).sort((a, b) => (a.item.vendor || '').localeCompare(b.item.vendor || ''));
-
-        html += '<div class="vendor-gantt-team">';
-        html += '<div class="vendor-gantt-team-header">' + escapeHtml(displayCat) + '</div>';
-
-        for (const { item, linked, timeStr } of catEntries) {
-            const ranges = parseStaffScheduleRange(timeStr);
-            const onClick = linked
-                ? `openStaffModal('${linked.id}')`
-                : `editBudgetItem('${item.id}')`;
-            const barsHtml = ranges.map(r => {
-                const left = Math.max(0, (r.start - axisStart) / axisRange * 100);
-                const width = Math.min(100 - left, (r.end - r.start) / axisRange * 100);
-                const label = formatScheduleShort(timeStr) || '';
-                const linkedMark = linked ? ' vendor-gantt-bar-linked' : '';
-                const titleText = (item.vendor || 'Unnamed') + ': ' + timeStr + (linked ? ' (staff: ' + linked.name + ')' : '');
-                return '<div class="vendor-gantt-bar' + linkedMark + '"' +
-                    ' style="left:' + left + '%;width:' + width + '%;background:' + color + '"' +
-                    ' onclick="' + onClick + '"' +
-                    ' title="' + escapeHtml(titleText) + '">' +
-                    (ranges.length === 1 ? escapeHtml(label) : '') +
-                '</div>';
-            }).join('');
-
-            const displayName = escapeHtml(item.vendor || 'Unnamed');
-            const linkedTag = linked ? '<span class="multi-team-tag">staff</span>' : '';
-
-            html += '<div class="vendor-gantt-row">' +
-                '<div class="vendor-gantt-name" onclick="' + onClick + '">' +
-                    displayName + linkedTag +
-                '</div>' +
-                '<div class="vendor-gantt-bar-area">' + barsHtml + '</div>' +
-            '</div>';
-        }
-
-        html += '</div>';
-    }
-
-    container.innerHTML = html;
-}
-window.renderVendorGantt = renderVendorGantt;
-
-function setupVendorFilters() {
-    const filterBtns = document.querySelectorAll('#vendor-card-view .vendor-filter-btn');
-    filterBtns.forEach(btn => {
-        btn.addEventListener('click', () => {
-            filterBtns.forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            state.vendorFilter = btn.dataset.filter;
-            renderVendors();
-        });
-    });
-
-    // Dashboard vendor status card clicks
-    ['confirmed', 'pending', 'issues'].forEach(filter => {
-        const link = document.getElementById(`dashboard-${filter}-link`);
-        if (link) {
-            link.addEventListener('click', () => navigateToVendorFilter(filter));
-        }
-    });
-}
-
-function navigateToVendorFilter(filter) {
-    switchPage('vendors');
-
-    // Override the 'all' default that switchPage just set
-    state.vendorFilter = filter;
-
-    // Update nav active state
-    document.querySelectorAll('.nav-link').forEach(link => {
-        link.classList.toggle('active', link.dataset.page === 'vendors');
-    });
-    updateNavGroupIndicators();
-
-    // Update filter button active state
-    document.querySelectorAll('.vendor-filter-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.filter === filter);
-    });
-
-    renderVendors();
-}
-window.navigateToVendorFilter = navigateToVendorFilter;
+window.exportVendorLogisticsToExcel = exportVendorLogisticsToExcel;
 
 function updateTimelineStats() {
     const total = state.timeline.length;
@@ -4216,7 +3985,8 @@ function openBudgetModal(itemId = null) {
             'budget-in-kind': 'inKind',
             'budget-payment-status': 'paymentStatus',
             'budget-notes': 'notes',
-            'budget-confirmed': 'confirmed'
+            'budget-confirmed': 'confirmed',
+            'budget-off-site': 'offSite'
         },
         defaultValues: {
             'budget-payment-status': 'not-paid'
@@ -4430,7 +4200,8 @@ async function handleBudgetSubmit(e) {
             'budget-in-kind': 'inKind',
             'budget-payment-status': 'paymentStatus',
             'budget-notes': 'notes',
-            'budget-confirmed': 'confirmed'
+            'budget-confirmed': 'confirmed',
+            'budget-off-site': 'offSite'
         },
         numericFields: ['budgeted', 'actual']
     });
@@ -5090,7 +4861,7 @@ function setupExportAndPrint() {
 
     const exportVendorsBtn = document.getElementById('export-vendors-btn');
     if (exportVendorsBtn) {
-        exportVendorsBtn.addEventListener('click', exportBudgetToExcel);
+        exportVendorsBtn.addEventListener('click', exportVendorLogisticsToExcel);
     }
 
     const printSetListBtn = document.getElementById('print-setlist-btn');
