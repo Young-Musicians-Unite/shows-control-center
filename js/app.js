@@ -3813,7 +3813,7 @@ function renderTimeline() {
     const filterLabels = { 'all': '', 'production': ' — Production', 'run-of-show': ' — Run of Show' };
     if (dayTitle) {
         const currentDayObj = (state.timelineDays || []).find(d => d.id === state.currentDay);
-        const dayLabel = currentDayObj?.label || state.currentDay;
+        const dayLabel = currentDayObj?.label || 'Untitled';
         dayTitle.textContent = `${dayLabel} Timeline${filterLabels[state.timelineFilter] || ''}`;
     }
     if (dateSubtitle) {
@@ -3984,7 +3984,7 @@ function renderCueSheet() {
     }
 
     const dayId = getCueSheetDayId();
-    const dayLabel = state.timelineDays?.find(d => d.id === dayId)?.label || dayId;
+    const dayLabel = state.timelineDays?.find(d => d.id === dayId)?.label || 'Untitled';
 
     const all = state.timeline.filter(item =>
         item.day === dayId &&
@@ -4995,13 +4995,19 @@ function printCueSheet() {
         document.head.appendChild(pageStyle);
     }
     document.body.classList.add('printing-cue-sheet');
+    let cleaned = false;
+    const cleanup = () => {
+        if (cleaned) return;
+        cleaned = true;
+        document.body.classList.remove('printing-cue-sheet');
+        const el = document.getElementById('cue-sheet-page-rule');
+        if (el) el.remove();
+        window.removeEventListener('afterprint', cleanup);
+    };
+    window.addEventListener('afterprint', cleanup);
     requestAnimationFrame(() => {
         window.print();
-        setTimeout(() => {
-            document.body.classList.remove('printing-cue-sheet');
-            const el = document.getElementById('cue-sheet-page-rule');
-            if (el) el.remove();
-        }, 500);
+        setTimeout(cleanup, 2000);
     });
 }
 window.printCueSheet = printCueSheet;
@@ -5010,10 +5016,23 @@ window.printCueSheet = printCueSheet;
 // customize layout per-page without leaking into other prints.
 function printWithScope(scopeClass) {
     document.body.classList.add(scopeClass);
+    // `afterprint` fires reliably right when the print dialog closes, in any
+    // browser/timing — a flat setTimeout could fire mid-dialog (if the user
+    // takes a while) or, if window.print() ever throws, never fire at all,
+    // leaving the print-only styling (and anything else keyed off this class)
+    // stuck on the live page. The timeout is just a fallback safety net.
+    let cleaned = false;
+    const cleanup = () => {
+        if (cleaned) return;
+        cleaned = true;
+        document.body.classList.remove(scopeClass);
+        window.removeEventListener('afterprint', cleanup);
+    };
+    window.addEventListener('afterprint', cleanup);
     // Some browsers (Safari) don't flush layout before window.print; rAF helps.
     requestAnimationFrame(() => {
         window.print();
-        setTimeout(() => document.body.classList.remove(scopeClass), 500);
+        setTimeout(cleanup, 2000);
     });
 }
 window.printWithScope = printWithScope;
@@ -10111,11 +10130,11 @@ function renderPackingList() {
             <tr>
                 <th class="pl-th-check"></th>
                 <th class="pl-th-img"></th>
-                <th>Item</th>
-                <th>Qty</th>
-                <th>Condition</th>
+                <th class="pl-name-cell">Item</th>
+                <th class="pl-qty-cell">Qty</th>
+                <th class="pl-condition-cell">Condition</th>
                 <th class="pl-th-notes">Notes</th>
-                <th></th>
+                <th class="pl-actions-cell"></th>
             </tr>
         </thead>
         <tbody>${rows}</tbody>
@@ -10427,7 +10446,7 @@ window.handlePackingConditionFilter = function(value) {
 
 // --- Print ---
 window.printPackingList = function() {
-    window.print();
+    printWithScope('printing-packing-list');
 };
 
 // --- Inventory Picker Modal ---
@@ -12614,10 +12633,10 @@ function vmPrintMap() {
     <title>Venue Map - YMU Gala 2026</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'DM Sans', sans-serif; }
-        .header { text-align: center; padding: 12px 0 8px; }
-        .header h1 { font-size: 18px; color: #1a3a35; }
-        .header p { font-size: 12px; color: #718096; margin-top: 2px; }
+        body { font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+        .header { text-align: center; padding: 12px 0 14px; border-bottom: 2px solid #c9a961; margin-bottom: 10px; }
+        .header h1 { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 22px; font-weight: 700; color: #0f2621; letter-spacing: 0.3px; }
+        .header p { font-size: 12px; color: #888; margin-top: 2px; }
         .map { text-align: center; padding: 0 10px; }
         @media print {
             @page { size: landscape; margin: 0.4in; }
@@ -12628,7 +12647,7 @@ function vmPrintMap() {
 <body>
     <div class="header">
         <h1>YMU Gala 2026 - Venue Map</h1>
-        <div style="display:flex;flex-wrap:wrap;justify-content:center;margin-top:4px;font-size:12px;color:#4a5568;">${legendHTML}</div>
+        <div style="display:flex;flex-wrap:wrap;justify-content:center;margin-top:4px;font-size:12px;color:#2d2d2d;">${legendHTML}</div>
     </div>
     <div class="map">
         ${mapHTML}
@@ -13470,8 +13489,8 @@ function generatePerformerContactWindow(items) {
     * { box-sizing: border-box; }
     html, body {
         margin: 0; padding: 0;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-        color: #222;
+        font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        color: #2d2d2d;
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
     }
@@ -13485,7 +13504,7 @@ function generatePerformerContactWindow(items) {
         break-after: auto;
     }
     .contact-header {
-        border-bottom: 3px solid #1a3a35;
+        border-bottom: 2px solid #c9a961;
         padding-bottom: 14px;
         margin-bottom: 22px;
         display: flex;
@@ -13495,18 +13514,20 @@ function generatePerformerContactWindow(items) {
     }
     .contact-name {
         margin: 0;
+        font-family: 'Cormorant Garamond', Georgia, serif;
         font-size: 32pt;
-        font-weight: 800;
+        font-weight: 700;
         letter-spacing: 0.01em;
         line-height: 1.05;
+        color: #0f2621;
     }
     .contact-stage {
         font-size: 11pt;
         font-weight: 700;
         letter-spacing: 0.15em;
         text-transform: uppercase;
-        color: #1a3a35;
-        border: 2px solid #1a3a35;
+        color: #0f2621;
+        border: 2px solid #0f2621;
         padding: 4px 10px;
         border-radius: 4px;
     }
@@ -13518,9 +13539,9 @@ function generatePerformerContactWindow(items) {
         font-weight: 700;
         letter-spacing: 0.1em;
         text-transform: uppercase;
-        color: #6b7280;
+        color: #888;
         margin: 0 0 10px;
-        border-bottom: 1px solid #d1d5db;
+        border-bottom: 1px solid #e5e1d6;
         padding-bottom: 4px;
     }
     table {
@@ -13530,17 +13551,21 @@ function generatePerformerContactWindow(items) {
     }
     th, td {
         padding: 6px 10px;
-        border-bottom: 1px solid #e5e7eb;
+        border-bottom: 1px solid #e5e1d6;
         text-align: left;
         vertical-align: top;
     }
     thead th {
-        background: #faf8f3;
+        background: #fff;
         font-size: 9pt;
         font-weight: 700;
         text-transform: uppercase;
-        letter-spacing: 0.05em;
-        color: #374151;
+        letter-spacing: 0.06em;
+        color: #0f2621;
+        border-bottom: 2px solid #0f2621;
+    }
+    tbody tr:nth-child(even) td {
+        background: #faf8f3;
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
     }
@@ -13555,7 +13580,7 @@ function generatePerformerContactWindow(items) {
         white-space: nowrap;
     }
     .empty-note {
-        color: #9ca3af;
+        color: #888;
         font-style: italic;
         margin: 0;
     }
@@ -13568,7 +13593,7 @@ function generatePerformerContactWindow(items) {
         right: 0;
         text-align: center;
         font-size: 8pt;
-        color: #9ca3af;
+        color: #888;
         letter-spacing: 0.05em;
     }
     @media screen {
@@ -13736,8 +13761,8 @@ function generateStaffPrintWindow(selectedTeams) {
 
         return `
             <section class="team-page">
-                <header class="team-banner" style="background:${color}">
-                    <h1 class="team-name">${esc(team)}</h1>
+                <header class="team-banner" style="border-left-color:${color}">
+                    <h1 class="team-name" style="color:${color}">${esc(team)}</h1>
                     <div class="team-meta">${members.length} STAFF · YMU GALA 2026</div>
                 </header>
                 <table class="staff-table">
@@ -13770,8 +13795,8 @@ function generateStaffPrintWindow(selectedTeams) {
         margin: 0;
         padding: 0;
         background: #fff;
-        color: #222;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        color: #2d2d2d;
+        font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
         -webkit-font-smoothing: antialiased;
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
@@ -13786,17 +13811,17 @@ function generateStaffPrintWindow(selectedTeams) {
         break-after: auto;
     }
     .team-banner {
-        color: #fff;
-        padding: 18px 22px 14px;
+        background: #fff;
+        border-left: 6px solid #0f2621;
+        border-bottom: 2px solid #e5e1d6;
+        padding: 10px 0 14px 16px;
         margin-bottom: 14px;
-        border-radius: 4px;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
     }
     .team-name {
         margin: 0;
-        font-size: 28pt;
-        font-weight: 800;
+        font-family: 'Cormorant Garamond', Georgia, serif;
+        font-size: 26pt;
+        font-weight: 700;
         letter-spacing: 0.01em;
         text-transform: uppercase;
         line-height: 1.05;
@@ -13806,7 +13831,7 @@ function generateStaffPrintWindow(selectedTeams) {
         font-size: 9pt;
         font-weight: 600;
         letter-spacing: 0.15em;
-        opacity: 0.92;
+        color: #888;
     }
     .staff-table {
         width: 100%;
@@ -13816,23 +13841,21 @@ function generateStaffPrintWindow(selectedTeams) {
     .staff-table thead th {
         text-align: left;
         padding: 6px 8px;
-        background: #f3f4f6;
-        border-bottom: 2px solid #222;
+        background: #fff;
+        border-bottom: 2px solid #0f2621;
         font-size: 8pt;
         text-transform: uppercase;
-        letter-spacing: 0.05em;
+        letter-spacing: 0.06em;
         font-weight: 700;
-        color: #374151;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
+        color: #0f2621;
     }
     .staff-table tbody td {
         padding: 5px 8px;
-        border-bottom: 1px solid #e5e7eb;
+        border-bottom: 1px solid #e5e1d6;
         vertical-align: top;
     }
     .staff-table tbody tr:nth-child(even) td {
-        background: #fafafa;
+        background: #faf8f3;
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
     }
@@ -13845,7 +13868,7 @@ function generateStaffPrintWindow(selectedTeams) {
     }
     .staff-table th.other-teams, .staff-table td.other-teams {
         width: 1.5in;
-        color: #6b7280;
+        color: #888;
         font-size: 8.5pt;
     }
     .staff-table th.sched, .staff-table td.sched {
@@ -13854,7 +13877,7 @@ function generateStaffPrintWindow(selectedTeams) {
         font-variant-numeric: tabular-nums;
     }
     .staff-table td.sched.empty {
-        color: #d1d5db;
+        color: transparent;
     }
     tr { page-break-inside: avoid; }
     thead { display: table-header-group; }
@@ -13862,7 +13885,7 @@ function generateStaffPrintWindow(selectedTeams) {
         margin-top: 12px;
         text-align: center;
         font-size: 8pt;
-        color: #9ca3af;
+        color: #888;
         letter-spacing: 0.05em;
     }
     @media screen {
@@ -14101,8 +14124,8 @@ function generateCheckInPrintWindow(days) {
         if (dayPeople.length === 0) {
             return `
                 <section class="team-page">
-                    <header class="team-banner" style="background:${color}">
-                        <h1 class="team-name">${esc(label)} Check-In</h1>
+                    <header class="team-banner" style="border-left-color:${color}">
+                        <h1 class="team-name" style="color:${color}">${esc(label)} Check-In</h1>
                         <div class="team-meta">0 PEOPLE · YMU GALA 2026 · PRINTED ${printedDate}</div>
                     </header>
                     <div class="empty-day">No one scheduled for ${esc(label)}.</div>
@@ -14133,8 +14156,8 @@ function generateCheckInPrintWindow(days) {
                 <table class="staff-table">
                     <thead>
                         <tr class="running-header">
-                            <th colspan="7" class="running-banner" style="background:${color}">
-                                <span class="rb-title">${esc(label)} Check-In</span>
+                            <th colspan="7" class="running-banner" style="border-left-color:${color}">
+                                <span class="rb-title" style="color:${color}">${esc(label)} Check-In</span>
                                 <span class="rb-meta">${dayPeople.length} people · YMU Gala 2026 · Printed ${printedDate}</span>
                             </th>
                         </tr>
@@ -14163,8 +14186,8 @@ function generateCheckInPrintWindow(days) {
     @page { size: letter landscape; margin: 0; }
     * { box-sizing: border-box; }
     html, body {
-        margin: 0; padding: 0; background: #fff; color: #222;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        margin: 0; padding: 0; background: #fff; color: #2d2d2d;
+        font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
         -webkit-font-smoothing: antialiased;
         -webkit-print-color-adjust: exact; print-color-adjust: exact;
     }
@@ -14176,62 +14199,60 @@ function generateCheckInPrintWindow(days) {
 
     /* Empty-day section still uses the old big banner (no table means nothing to repeat) */
     .team-banner {
-        color: #fff; padding: 18px 22px 14px; margin-bottom: 14px; border-radius: 4px;
-        -webkit-print-color-adjust: exact; print-color-adjust: exact;
+        background: #fff; border-left: 6px solid #0f2621; border-bottom: 2px solid #e5e1d6;
+        padding: 10px 0 14px 16px; margin-bottom: 14px;
     }
-    .team-name { margin: 0; font-size: 28pt; font-weight: 800; letter-spacing: 0.01em; text-transform: uppercase; line-height: 1.05; }
-    .team-meta { margin-top: 4px; font-size: 9pt; font-weight: 600; letter-spacing: 0.15em; opacity: 0.92; }
+    .team-name { margin: 0; font-family: 'Cormorant Garamond', Georgia, serif; font-size: 24pt; font-weight: 700; letter-spacing: 0.01em; text-transform: uppercase; line-height: 1.05; }
+    .team-meta { margin-top: 4px; font-size: 9pt; font-weight: 600; letter-spacing: 0.15em; color: #888; }
 
     .staff-table { width: 100%; border-collapse: collapse; font-size: 9.5pt; }
 
     /* Running header: lives inside <thead>, repeats on every physical page automatically */
     .running-banner {
-        color: #fff; text-align: left; padding: 10px 14px 9px;
-        border-bottom: 0; border-radius: 3px 3px 0 0;
-        -webkit-print-color-adjust: exact; print-color-adjust: exact;
+        background: #fff; text-align: left; padding: 8px 14px 9px 14px;
+        border-left: 6px solid #0f2621; border-bottom: 2px solid #e5e1d6;
     }
     .running-banner .rb-title {
-        font-size: 15pt; font-weight: 800; letter-spacing: 0.01em;
+        font-family: 'Cormorant Garamond', Georgia, serif;
+        font-size: 14pt; font-weight: 700; letter-spacing: 0.01em;
         text-transform: uppercase; margin-right: 12px;
     }
     .running-banner .rb-meta {
         font-size: 8.5pt; font-weight: 500; letter-spacing: 0.08em;
-        opacity: 0.92; text-transform: uppercase;
+        color: #888; text-transform: uppercase;
     }
 
     .col-headers th {
-        text-align: left; padding: 6px 8px; background: #f3f4f6;
-        border-bottom: 2px solid #222; font-size: 8pt; text-transform: uppercase;
-        letter-spacing: 0.05em; font-weight: 700; color: #374151;
-        -webkit-print-color-adjust: exact; print-color-adjust: exact;
+        text-align: left; padding: 6px 8px; background: #fff;
+        border-bottom: 2px solid #0f2621; font-size: 8pt; text-transform: uppercase;
+        letter-spacing: 0.06em; font-weight: 700; color: #0f2621;
     }
-    .staff-table tbody td { padding: 5px 8px; border-bottom: 1px solid #e5e7eb; vertical-align: top; }
+    .staff-table tbody td { padding: 5px 8px; border-bottom: 1px solid #e5e1d6; vertical-align: top; }
     .staff-table tbody tr:nth-child(even) td {
-        background: #fafafa;
+        background: #faf8f3;
         -webkit-print-color-adjust: exact; print-color-adjust: exact;
     }
     .staff-table th.check, .staff-table td.check { width: 0.35in; text-align: center; }
-    .checkbox-cell { display: inline-block; width: 14px; height: 14px; border: 1.5px solid #222; border-radius: 2px; }
+    .checkbox-cell { display: inline-block; width: 14px; height: 14px; border: 1.5px solid #0f2621; border-radius: 2px; }
     .staff-table th.name, .staff-table td.name { width: 1.85in; font-weight: 600; }
-    .staff-table th.role, .staff-table td.role { width: 1.9in; color: #374151; }
-    .staff-table th.team, .staff-table td.team { width: 0.85in; color: #6b7280; font-size: 8.5pt; }
+    .staff-table th.role, .staff-table td.role { width: 1.9in; color: #2d2d2d; }
+    .staff-table th.team, .staff-table td.team { width: 0.85in; color: #888; font-size: 8.5pt; }
     .staff-table th.sched, .staff-table td.sched { width: 1.3in; white-space: nowrap; font-variant-numeric: tabular-nums; }
     .staff-table th.phone, .staff-table td.phone { width: 1.15in; white-space: nowrap; font-variant-numeric: tabular-nums; }
     .staff-table th.email, .staff-table td.email { font-size: 8.5pt; overflow-wrap: break-word; word-break: normal; }
-    .empty { color: #cbd1d8; }
-    .placeholder-row td.name { color: #6b7280; }
-    .placeholder-row td { background: #fbfbf8 !important; }
+    .empty { color: transparent; }
+    .placeholder-row td.name { color: #888; }
+    .placeholder-row td { background: #faf8f3 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .tbd-tag {
         display: inline-block; font-size: 7.5pt; font-weight: 700;
         letter-spacing: 0.04em; padding: 1px 5px; margin-right: 4px;
-        background: #d97706; color: #fff; border-radius: 2px; vertical-align: 1px;
-        -webkit-print-color-adjust: exact; print-color-adjust: exact;
+        background: #fff; color: #0f2621; border: 1px solid #0f2621; border-radius: 2px; vertical-align: 1px;
     }
     tr { page-break-inside: avoid; }
     thead { display: table-header-group; }
     .empty-day {
-        padding: 40px 20px; text-align: center; color: #9ca3af;
-        font-size: 11pt; font-style: italic; border: 1px dashed #e5e7eb; border-radius: 4px;
+        padding: 40px 20px; text-align: center; color: #888;
+        font-size: 11pt; font-style: italic; border: 1px dashed #e5e1d6; border-radius: 4px;
     }
     @media screen {
         body { background: #e5e7eb; padding: 20px; }
@@ -16714,15 +16735,21 @@ window.printQuote = function() {
         }
     });
     document.body.classList.add('printing-quote');
+    let cleaned = false;
+    const cleanup = () => {
+        if (cleaned) return;
+        cleaned = true;
+        document.body.classList.remove('printing-quote');
+        window.removeEventListener('afterprint', cleanup);
+        stripped.forEach(el => {
+            el.setAttribute('placeholder', el.dataset.printPlaceholder);
+            delete el.dataset.printPlaceholder;
+        });
+    };
+    window.addEventListener('afterprint', cleanup);
     requestAnimationFrame(() => {
         window.print();
-        setTimeout(() => {
-            document.body.classList.remove('printing-quote');
-            stripped.forEach(el => {
-                el.setAttribute('placeholder', el.dataset.printPlaceholder);
-                delete el.dataset.printPlaceholder;
-            });
-        }, 500);
+        setTimeout(cleanup, 2000);
     });
 };
 
