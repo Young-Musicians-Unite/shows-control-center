@@ -16737,9 +16737,11 @@ window.printQuote = function() {
             stripped.push(el);
         }
     });
+    document.body.classList.add('printing-quote');
     requestAnimationFrame(() => {
         window.print();
         setTimeout(() => {
+            document.body.classList.remove('printing-quote');
             stripped.forEach(el => {
                 el.setAttribute('placeholder', el.dataset.printPlaceholder);
                 delete el.dataset.printPlaceholder;

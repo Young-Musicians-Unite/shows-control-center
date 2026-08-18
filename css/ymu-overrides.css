@@ -765,6 +765,13 @@ label {
   opacity: 1 !important;
   pointer-events: auto !important;
 }
+/* This overlay is always display:flex — closed state is opacity:0 only,
+   which print rendering doesn't reliably honor the way it does on
+   screen. Without this, the (invisible on-screen) modal shell can show
+   up full-opacity over whatever page you're actually trying to print. */
+@media print {
+  .si-overlay { display: none !important; }
+}
 .ymu-staff-modal {
   background: #1a1d22 !important;
   border: 0.5px solid rgba(255,255,255,0.09) !important;
