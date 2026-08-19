@@ -1,5 +1,21 @@
 {
   "storage": {
     "rules": "storage.rules"
+  },
+  "hosting": {
+    "public": ".",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**",
+      "scripts/**",
+      "documents/**",
+      "docs/**",
+      "shows-control-center/**",
+      "*.md",
+      "Dockerfile",
+      "Caddyfile",
+      "deploy.sh"
+    ]
   }
 }
