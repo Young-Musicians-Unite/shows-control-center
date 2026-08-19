@@ -8568,6 +8568,7 @@ window.togglePerfContactPopover = togglePerfContactPopover;
 
 let _gTokenClient = null;
 let _gAccessToken  = null;
+let _gAccessTokenExpiresAt = 0; // ms epoch — access tokens are short-lived (~1hr); don't reuse past this
 
 function buildCalendarDescription() {
     const d  = state.intake || {};
@@ -8727,11 +8728,16 @@ function initGoogleTokenClient(callback) {
                 return;
             }
             _gAccessToken = resp.access_token;
+            // 60s safety buffer so a request doesn't start right as it expires
+            _gAccessTokenExpiresAt = Date.now() + ((resp.expires_in || 0) * 1000) - 60000;
             callback(resp.access_token);
         },
     });
-    // If we already have a valid token, skip the prompt
-    if (_gAccessToken) { callback(_gAccessToken); return; }
+    // Reuse the cached token only if it's still actually valid — an expired
+    // one gets silently rejected by Google with a cryptic "invalid
+    // authentication credentials" error deep in the fetch call instead.
+    if (_gAccessToken && Date.now() < _gAccessTokenExpiresAt) { callback(_gAccessToken); return; }
+    _gAccessToken = null;
     _gTokenClient.requestAccessToken({ prompt: '' });
 }
 
@@ -9190,6 +9196,7 @@ async function sendCrewCalendarInvites() {
         } catch (err) {
             console.error('Crew invite error:', err);
             if (statusEl) { statusEl.textContent = 'Error: ' + err.message; statusEl.className = 'si-auth-status si-auth-error'; }
+            _gAccessToken = null; // reset token so next attempt re-authorizes
         }
     });
 }
