@@ -8735,6 +8735,14 @@ function initGoogleTokenClient(callback) {
     _gTokenClient.requestAccessToken({ prompt: '' });
 }
 
+// All Send Invites flows create events on this shared calendar (falls back
+// to the signed-in account's own primary calendar if unset) rather than
+// whichever staff member happens to be sending — see js/config.js.
+function calendarEventsUrl() {
+    const calendarId = (typeof SHARED_CALENDAR_ID !== 'undefined' && SHARED_CALENDAR_ID) ? SHARED_CALENDAR_ID : 'primary';
+    return 'https://www.googleapis.com/calendar/v3/calendars/' + encodeURIComponent(calendarId) + '/events';
+}
+
 function openIntakeCalendarPanel() {
     const modal = document.getElementById('intake-cal-modal');
     if (!modal) return;
@@ -8983,11 +8991,11 @@ async function sendIntakeCalendarInvites() {
                 start: { dateTime: date + 'T' + start + ':00', timeZone: tz },
                 end:   { dateTime: date + 'T' + end   + ':00', timeZone: tz },
                 attendees: Array.from(emails).map(email => ({ email })),
-                guestsCanSeeOtherGuests: false,
+                guestsCanSeeOtherGuests: true,
                 sendUpdates: 'all',
             };
             const resp = await fetch(
-                'https://www.googleapis.com/calendar/v3/calendars/primary/events?sendUpdates=all',
+                calendarEventsUrl() + '?sendUpdates=all',
                 { method: 'POST', headers: { 'Authorization': 'Bearer ' + accessToken, 'Content-Type': 'application/json' }, body: JSON.stringify(event) }
             );
             if (!resp.ok) { const err = await resp.json(); throw new Error(err.error?.message || resp.statusText); }
@@ -9169,9 +9177,9 @@ async function sendCrewCalendarInvites() {
                 start: { dateTime: date + 'T' + start + ':00', timeZone: tz },
                 end:   { dateTime: date + 'T' + end   + ':00', timeZone: tz },
                 attendees: Array.from(emails).map(email => ({ email })),
-                guestsCanSeeOtherGuests: false,
+                guestsCanSeeOtherGuests: true,
             };
-            const res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events?sendUpdates=all', {
+            const res = await fetch(calendarEventsUrl() + '?sendUpdates=all', {
                 method: 'POST',
                 headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' },
                 body: JSON.stringify(event),
@@ -9301,12 +9309,12 @@ async function sendCalendarInvites() {
                 start: { dateTime: startISO, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone },
                 end:   { dateTime: endISO,   timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone },
                 attendees: Array.from(emails).map(email => ({ email })),
-                guestsCanSeeOtherGuests: false,
+                guestsCanSeeOtherGuests: true,
                 sendUpdates: 'all',
             };
 
             const resp = await fetch(
-                'https://www.googleapis.com/calendar/v3/calendars/primary/events?sendUpdates=all&conferenceDataVersion=0',
+                calendarEventsUrl() + '?sendUpdates=all&conferenceDataVersion=0',
                 {
                     method: 'POST',
                     headers: {
