@@ -560,11 +560,6 @@ body {
     color: #2196f3;
 }
 
-.vendor-icon {
-    background-color: #f3e5f5;
-    color: #9c27b0;
-}
-
 .stat-content {
     flex: 1;
 }
@@ -2484,7 +2479,6 @@ tr.task-completed td:not(.checkbox-col):not(.actions-col) {
     .stats-grid,
     .budget-search-bar,
     .page-search-bar,
-    .vendor-filters,
     .timeline-toolbar {
         display: none !important;
     }
@@ -2861,9 +2855,6 @@ body.printing-vendors .navbar,
 body.printing-vendors .no-print,
 body.printing-vendors .page-header .header-actions,
 body.printing-vendors .page-search-bar,
-body.printing-vendors .vendor-filters,
-body.printing-vendors .vendor-schedule-filters,
-body.printing-vendors #vendor-gantt-section,
 body.printing-packing-list .navbar,
 body.printing-packing-list .no-print,
 body.printing-packing-list .page-header .header-actions,
@@ -2919,7 +2910,8 @@ body.printing-packing-list .container {
 
 /* Hide the inline "+ time / + event" phantom add row during print */
 body.printing-timeline .tl-phantom-row,
-body.printing-stage-inputs .stage-phantom-row {
+body.printing-stage-inputs .stage-phantom-row,
+body.printing-vendors .vl-phantom-row {
     display: none !important;
 }
 
@@ -2927,7 +2919,8 @@ body.printing-stage-inputs .stage-phantom-row {
    so blank cells print as truly blank instead of leaking the editor hint. */
 body.printing-timeline .phantom-placeholder,
 body.printing-stage-inputs .phantom-placeholder,
-body.printing-cue-sheet .phantom-placeholder {
+body.printing-cue-sheet .phantom-placeholder,
+body.printing-vendors .phantom-placeholder {
     display: none !important;
 }
 
@@ -2954,7 +2947,8 @@ body.printing-timeline #timeline .card .table-container,
 body.printing-timeline .timeline-card .table-container,
 body.printing-stage-inputs .card,
 body.printing-stage-inputs .table-container,
-body.printing-stage-inputs #input-lists .card .table-container {
+body.printing-stage-inputs #input-lists .card .table-container,
+body.printing-vendors .table-container {
     display: block !important;
     overflow: visible !important;
     box-shadow: none !important;
@@ -3298,7 +3292,7 @@ body.printing-stage-inputs .card-header h2 {
     letter-spacing: 0.3px !important;
 }
 
-/* ---------- Vendors: branded contact sheet ---------- */
+/* ---------- Vendors: branded logistics sheet ---------- */
 body.printing-vendors .page-header {
     padding: 0 0 10px 0 !important;
     border-bottom: 2px solid #c9a961 !important;
@@ -3311,23 +3305,25 @@ body.printing-vendors .page-header h1 {
     color: #0f2621 !important;
     letter-spacing: 0.3px !important;
 }
-body.printing-vendors .vendor-view-toggle { display: none !important; }
+body.printing-vendors .vl-add-category-btn,
+body.printing-vendors .vl-remove-category,
+body.printing-vendors .vl-th-remove,
+body.printing-vendors .vl-th-add { display: none !important; }
 
-/* Force every category open regardless of on-screen collapse state, and
-   drop the collapse arrow / hover chrome that means nothing on paper. */
-body.printing-vendors .vendor-category-content {
-    display: block !important;
+body.printing-vendors .vl-category-section {
+    page-break-inside: auto !important;
+    break-inside: auto !important;
+    margin-bottom: 18px !important;
 }
-body.printing-vendors .category-arrow { display: none !important; }
-body.printing-vendors .vendor-category-header {
-    cursor: default !important;
+body.printing-vendors .vl-category-header {
     padding: 8px 0 !important;
     border-bottom: 1px solid #e5e1d6 !important;
     margin: 14px 0 8px 0 !important;
 }
-body.printing-vendors .vendor-category-header h3 {
+body.printing-vendors .vl-category-header h3 {
     font-family: 'Cormorant Garamond', Georgia, serif !important;
     font-size: 13pt !important;
+    font-weight: 700 !important;
     color: #0f2621 !important;
 }
 body.printing-vendors .category-count {
@@ -3335,76 +3331,23 @@ body.printing-vendors .category-count {
     font-size: 8.5pt !important;
 }
 
-/* Cards: two-column flow instead of full hover-shadow tiles */
-body.printing-vendors .vendor-grid {
-    display: grid !important;
-    grid-template-columns: 1fr 1fr !important;
-    gap: 10px !important;
-}
-body.printing-vendors .vendor-card {
-    background: #fff !important;
-    border: 1px solid #e5e1d6 !important;
-    box-shadow: none !important;
-    border-radius: 4px !important;
-    padding: 10px 12px !important;
-    animation: none !important;
-    page-break-inside: avoid !important;
-    break-inside: avoid !important;
-}
-body.printing-vendors .vendor-card-title {
-    font-weight: 700 !important;
-    color: #0f2621 !important;
-    font-size: 10.5pt !important;
-}
-body.printing-vendors .vendor-card-description,
-body.printing-vendors .vendor-card-category,
-body.printing-vendors .vendor-detail,
-body.printing-vendors .vendor-linked-staff {
-    color: #2d2d2d !important;
-    font-size: 8.5pt !important;
-}
-body.printing-vendors .vendor-card-category { color: #888 !important; }
-body.printing-vendors .status-badge {
-    border: 1px solid #0f2621 !important;
-    background: #fff !important;
-    color: #0f2621 !important;
-}
-body.printing-vendors .status-badge.confirmed {
-    border-color: #0f2621 !important;
-    color: #0f2621 !important;
-}
-body.printing-vendors .status-badge.pending {
-    border-color: #888 !important;
-    color: #888 !important;
-}
-body.printing-vendors .vendor-card-budget {
-    border-top: 1px solid #e5e1d6 !important;
-    margin-top: 6px !important;
-    padding-top: 6px !important;
-    color: #2d2d2d !important;
-    font-size: 8.5pt !important;
-}
-body.printing-vendors .vendor-card-actions,
-body.printing-vendors .action-icon,
-body.printing-vendors .vendor-issues { display: none !important; }
-
-/* Schedule view table */
-body.printing-vendors .vendor-sched-table {
+body.printing-vendors .vl-table {
     width: 100% !important;
     border-collapse: collapse !important;
     background: #fff !important;
     font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
 }
-body.printing-vendors .vendor-sched-table th,
-body.printing-vendors .vendor-sched-table td {
+body.printing-vendors .vl-table th,
+body.printing-vendors .vl-table td {
     padding: 6px 8px !important;
     font-size: 9pt !important;
     border: none !important;
     border-bottom: 1px solid #e5e1d6 !important;
     background: #fff !important;
     color: #2d2d2d !important;
+    vertical-align: top !important;
 }
-body.printing-vendors .vendor-sched-table th {
+body.printing-vendors .vl-table th {
     color: #0f2621 !important;
     font-weight: 700 !important;
     text-transform: uppercase !important;
@@ -3412,10 +3355,14 @@ body.printing-vendors .vendor-sched-table th {
     font-size: 7.5pt !important;
     border-bottom: 2px solid #0f2621 !important;
 }
-body.printing-vendors .vendor-sched-table tbody tr:nth-child(even) td {
+body.printing-vendors .vl-table tbody tr:nth-child(even) td {
     background: #faf8f3 !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
+}
+body.printing-vendors .vl-table tr {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
 }
 
 /* ---------- Packing List: branded compact table ---------- */
@@ -3821,6 +3768,113 @@ tr.editing td {
 .category-section-content {
     overflow: hidden;
     transition: all 0.3s ease-out;
+}
+
+/* =============================================
+   VENDORS PAGE — Vendor Logistics (independent of Budget/Staff)
+   ============================================= */
+.vl-category-section {
+    margin-bottom: 0.75rem;
+}
+
+/* Not collapsible, so drop the pointer cursor .category-section-header
+   implies for the (currently unused) toggle affordance. Padding/font-size
+   are trimmed down from the shared .category-section-header base (Budget's
+   version needs more room for its collapse arrow + progress bar) — Vendors
+   pages tend to have many categories in one long scroll, so compact headers
+   let more of the list fit on screen at once. */
+.vl-category-header {
+    cursor: default;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.5rem 1rem;
+}
+.vl-category-header h3 {
+    font-size: 0.95rem;
+}
+.vl-category-header .category-count {
+    font-size: 0.72rem;
+    padding: 0.15rem 0.6rem;
+}
+
+.vl-remove-category {
+    margin-left: auto;
+    color: #8a8778;
+    cursor: pointer;
+    font-size: 1.1rem;
+    line-height: 1;
+    padding: 0 0.25rem;
+    transition: color 0.15s ease;
+}
+.vl-remove-category:hover { color: #c0392b; }
+
+.vl-table .phantom-placeholder {
+    color: #c9c5b8;
+    font-style: italic;
+}
+
+.vl-add-category-btn {
+    margin-top: 0.5rem;
+}
+
+.vl-th-inner {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.vl-th-label {
+    cursor: text;
+    border-bottom: 1px dashed transparent;
+    transition: border-color 0.15s ease;
+}
+.vl-th-label:hover {
+    border-bottom-color: rgba(240, 236, 227, 0.5);
+}
+.vl-th-remove {
+    margin-left: auto;
+    color: rgba(240, 236, 227, 0.45);
+    font-size: 0.95rem;
+    line-height: 1;
+    padding: 0 2px;
+    cursor: pointer;
+    transition: color 0.15s ease;
+}
+.vl-th-remove:hover { color: #e07a7a; }
+.vl-th-add {
+    width: 1%;
+    white-space: nowrap;
+}
+.vl-add-col-btn {
+    background: none;
+    border: 1px dashed rgba(240, 236, 227, 0.35);
+    border-radius: 6px;
+    color: #f0ece3;
+    font-size: 0.85rem;
+    line-height: 1;
+    padding: 2px 8px;
+    cursor: pointer;
+    text-transform: none;
+    letter-spacing: normal;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+.vl-add-col-btn:hover {
+    background: rgba(201, 169, 97, 0.2);
+    border-color: rgba(201, 169, 97, 0.6);
+}
+.vl-th-rename-input {
+    background: transparent;
+    border: none;
+    border-bottom: 1.5px solid #c9a961;
+    color: #f0ece3;
+    font-family: inherit;
+    font-size: 0.82rem;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    padding: 0 2px;
+    outline: none;
+    width: 100%;
+    min-width: 60px;
 }
 
 /* Budget table specific styles */
@@ -4837,8 +4891,7 @@ body.menu-open::after {
    ============================================= */
 
 /* View toggle */
-.staff-view-toggle,
-.vendor-view-toggle {
+.staff-view-toggle {
     display: flex;
     background: #f0ece3;
     border-radius: 8px;
@@ -4846,8 +4899,7 @@ body.menu-open::after {
     gap: 2px;
 }
 
-.staff-view-btn,
-.vendor-view-btn {
+.staff-view-btn {
     padding: 6px 16px;
     border: none;
     background: transparent;
@@ -4859,8 +4911,7 @@ body.menu-open::after {
     transition: all 0.2s ease;
 }
 
-.staff-view-btn.active,
-.vendor-view-btn.active {
+.staff-view-btn.active {
     background: #c9a961;
     color: #fff;
     box-shadow: 0 1px 3px rgba(0,0,0,0.1);
@@ -5053,8 +5104,7 @@ body.menu-open::after {
     align-items: center;
 }
 
-.staff-day-tab,
-.vendor-gantt-day-tab {
+.staff-day-tab {
     padding: 6px 18px;
     border: none;
     background: #f0ece3;
@@ -5066,8 +5116,7 @@ body.menu-open::after {
     transition: all 0.2s ease;
 }
 
-.staff-day-tab.active,
-.vendor-gantt-day-tab.active {
+.staff-day-tab.active {
     background: #c9a961;
     color: #fff;
 }
@@ -5079,13 +5128,11 @@ body.menu-open::after {
 }
 
 /* Gantt chart */
-.staff-gantt-team,
-.vendor-gantt-team {
+.staff-gantt-team {
     margin-bottom: 1.25rem;
 }
 
-.staff-gantt-team-header,
-.vendor-gantt-team-header {
+.staff-gantt-team-header {
     font-family: 'Cormorant Garamond', Georgia, serif;
     font-size: 1.1rem;
     font-weight: 700;
@@ -5095,8 +5142,7 @@ body.menu-open::after {
     margin-bottom: 0.5rem;
 }
 
-.staff-gantt-time-axis,
-.vendor-gantt-time-axis {
+.staff-gantt-time-axis {
     display: flex;
     margin-left: 140px;
     margin-right: 4px;
@@ -5105,28 +5151,24 @@ body.menu-open::after {
     color: #8a8778;
 }
 
-.staff-gantt-time-label,
-.vendor-gantt-time-label {
+.staff-gantt-time-label {
     flex: 1;
     text-align: left;
 }
 
-.staff-gantt-row,
-.vendor-gantt-row {
+.staff-gantt-row {
     display: flex;
     align-items: center;
     margin-bottom: 3px;
     height: 26px;
 }
 
-.staff-gantt-row:hover,
-.vendor-gantt-row:hover {
+.staff-gantt-row:hover {
     background: rgba(201, 169, 97, 0.04);
     border-radius: 4px;
 }
 
-.staff-gantt-name,
-.vendor-gantt-name {
+.staff-gantt-name {
     width: 140px;
     min-width: 140px;
     font-size: 0.8rem;
@@ -5138,8 +5180,7 @@ body.menu-open::after {
     cursor: pointer;
 }
 
-.staff-gantt-name:hover,
-.vendor-gantt-name:hover {
+.staff-gantt-name:hover {
     color: #c9a961;
 }
 
@@ -5148,8 +5189,7 @@ body.menu-open::after {
     font-style: italic;
 }
 
-.staff-gantt-name .multi-team-tag,
-.vendor-gantt-name .multi-team-tag {
+.staff-gantt-name .multi-team-tag {
     font-size: 0.65rem;
     color: #8888cc;
     margin-left: 4px;
@@ -5161,8 +5201,7 @@ body.menu-open::after {
     margin-left: 2px;
 }
 
-.staff-gantt-bar-area,
-.vendor-gantt-bar-area {
+.staff-gantt-bar-area {
     flex: 1;
     position: relative;
     height: 100%;
@@ -5176,8 +5215,7 @@ body.menu-open::after {
     border-radius: 4px;
 }
 
-.staff-gantt-bar,
-.vendor-gantt-bar {
+.staff-gantt-bar {
     position: absolute;
     top: 3px;
     bottom: 3px;
@@ -5195,38 +5233,12 @@ body.menu-open::after {
     transition: filter 0.15s ease;
 }
 
-.staff-gantt-bar:hover,
-.vendor-gantt-bar:hover {
+.staff-gantt-bar:hover {
     filter: brightness(1.1);
 }
 
 .staff-gantt-bar.placeholder-bar {
     opacity: 0.4;
-}
-
-.vendor-gantt-bar-linked {
-    box-shadow: inset 0 0 0 2px rgba(255,255,255,0.35);
-}
-
-.vendor-gantt-heading {
-    font-family: 'Cormorant Garamond', Georgia, serif;
-    color: #1a3a35;
-    font-size: 1.15rem;
-    font-weight: 700;
-    margin: 0 0 0.75rem 0;
-}
-
-.vendor-gantt-day-tabs {
-    display: flex;
-    gap: 0.5rem;
-    margin-bottom: 0.75rem;
-    flex-wrap: wrap;
-}
-
-#vendor-gantt-section {
-    margin-top: 2rem;
-    padding-top: 1.5rem;
-    border-top: 1px solid #e8e3d8;
 }
 
 /* Modal team tags input */
@@ -5854,26 +5866,22 @@ body.menu-open::after {
         gap: 0.75rem;
     }
 
-    .staff-view-toggle,
-    .vendor-view-toggle {
+    .staff-view-toggle {
         width: 100%;
     }
 
-    .staff-view-btn,
-    .vendor-view-btn {
+    .staff-view-btn {
         flex: 1;
         text-align: center;
     }
 
-    .staff-gantt-name,
-    .vendor-gantt-name {
+    .staff-gantt-name {
         width: 90px;
         min-width: 90px;
         font-size: 0.7rem;
     }
 
-    .staff-gantt-time-axis,
-    .vendor-gantt-time-axis {
+    .staff-gantt-time-axis {
         margin-left: 90px;
         font-size: 0.6rem;
     }
@@ -6238,559 +6246,6 @@ body.menu-open::after {
     .setlist-accordion-body { display: block !important; }
     .setlist-expand-controls { display: none; }
     .setlist-header-actions { display: none; }
-}
-
-/* =============================================
-   VENDORS PAGE
-   Card-based vendor view with issue tracking
-   ============================================= */
-
-/* Vendor Filter Buttons - Pill Group */
-.vendor-filters {
-    display: flex;
-    gap: 4px;
-    margin-bottom: 1.5rem;
-    background: #faf8f3;
-    border-radius: 10px;
-    padding: 3px;
-    border: 1px solid #f0ece3;
-}
-
-.vendor-filter-btn {
-    flex: 1;
-    padding: 0.55rem 1.25rem;
-    background: transparent;
-    border: none;
-    border-radius: 8px;
-    color: #7a8a9b;
-    font-size: 0.9rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-    font-family: 'DM Sans', sans-serif;
-}
-
-.vendor-filter-btn:hover {
-    background: #f0ece3;
-    color: #1a3a35;
-}
-
-.vendor-filter-btn.active {
-    background: #1a3a35;
-    color: #c9a961;
-    font-weight: 600;
-}
-
-.vendor-filter-btn[data-filter="issues"].active {
-    background: #5a3a2a;
-    color: #f0d8c0;
-}
-
-.vendor-filter-count {
-    display: inline-block;
-    background: rgba(0, 0, 0, 0.08);
-    color: inherit;
-    font-size: 0.75rem;
-    font-weight: 700;
-    padding: 0.1rem 0.45rem;
-    border-radius: 10px;
-    margin-left: 0.25rem;
-    min-width: 1.2rem;
-    text-align: center;
-}
-
-.vendor-filter-btn.active .vendor-filter-count {
-    background: rgba(255, 255, 255, 0.2);
-    color: inherit;
-}
-
-.vendor-filter-btn[data-filter="issues"] .vendor-filter-count {
-    background: rgba(180, 90, 60, 0.15);
-    color: #8b4532;
-}
-
-.vendor-filter-btn[data-filter="issues"].active .vendor-filter-count {
-    background: rgba(255,255,255,0.2);
-    color: #f0d8c0;
-}
-
-/* Vendor Category Section (collapsible groups) */
-.vendor-category-section {
-    margin-bottom: 1.5rem;
-}
-
-.vendor-category-header {
-    cursor: pointer;
-    user-select: none;
-    padding: 1rem 1.5rem;
-    background: #faf8f3;
-    border: 1px solid #f0ece3;
-    border-radius: 12px 12px 0 0;
-    border-bottom: 2px solid #f0ece3;
-    transition: all 0.2s ease;
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    flex-wrap: wrap;
-}
-
-.vendor-category-header:hover {
-    background: #f5f1ea;
-}
-
-.vendor-category-header h3 {
-    font-family: 'Cormorant Garamond', Georgia, serif;
-    color: #1a3a35;
-    font-size: 1.15rem;
-    font-weight: 700;
-    margin: 0;
-    flex: 1;
-}
-
-.vendor-category-content {
-    overflow: hidden;
-    transition: all 0.3s ease-out;
-}
-
-/* Vendor Grid */
-.vendor-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-    gap: 1.5rem;
-    padding: 1.5rem 0;
-}
-
-/* Vendor Schedule view */
-.vendor-schedule-filters {
-    display: flex;
-    gap: 0.5rem;
-    margin-bottom: 1rem;
-    flex-wrap: wrap;
-}
-
-.vendor-sched-table {
-    width: 100%;
-    border-collapse: separate;
-    border-spacing: 0;
-    background: #faf8f3;
-    border: 1px solid #f0ece3;
-    border-top: none;
-    border-radius: 0 0 12px 12px;
-    margin-bottom: 1.5rem;
-    overflow: hidden;
-}
-
-.vendor-sched-table thead th {
-    position: sticky;
-    top: 0;
-    background: #f0ece3;
-    padding: 0.6rem 0.75rem;
-    text-align: left;
-    font-size: 0.78rem;
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    color: #6b675b;
-    text-transform: uppercase;
-    border-bottom: 2px solid #e5dfd0;
-    z-index: 1;
-}
-
-.vendor-sched-table tbody td {
-    padding: 0.55rem 0.75rem;
-    border-bottom: 1px solid #f0ece3;
-    font-size: 0.9rem;
-    color: #2a2a2a;
-    vertical-align: middle;
-}
-
-.vendor-sched-table tbody tr:last-child td {
-    border-bottom: none;
-}
-
-.vendor-sched-table tbody tr:hover {
-    background-color: rgba(250, 248, 243, 0.7);
-}
-
-.vendor-sched-vendor {
-    font-weight: 600;
-    color: #1a3a35;
-    cursor: pointer;
-}
-
-.vendor-sched-vendor:hover {
-    text-decoration: underline;
-}
-
-.vendor-sched-subtitle {
-    display: block;
-    font-weight: 400;
-    font-size: 0.78rem;
-    color: #8a8778;
-    margin-top: 2px;
-}
-
-.vendor-sched-cell[data-field="day"] {
-    min-width: 110px;
-    cursor: cell;
-    color: #2a2a2a;
-}
-
-.vendor-sched-cell[data-field="day"]:hover {
-    background-color: rgba(201, 169, 97, 0.1);
-}
-
-.vendor-sched-row.editing .vendor-sched-cell .inline-edit-input {
-    padding: 0.35rem 0.5rem;
-    font-size: 0.88rem;
-}
-
-.vendor-sched-row.off-site td:not(.vendor-sched-onsite-cell) {
-    opacity: 0.5;
-    pointer-events: none;
-}
-
-.vendor-sched-row.off-site .vendor-sched-vendor {
-    text-decoration: line-through;
-    color: #8a8778;
-}
-
-.vendor-sched-row.linked .vendor-sched-cell[data-field="day"] {
-    background-color: rgba(201, 169, 97, 0.05);
-    cursor: cell;
-    color: #6b675b;
-}
-
-.vendor-sched-row.linked .vendor-sched-cell[data-field="day"]:hover {
-    background-color: rgba(201, 169, 97, 0.12);
-}
-
-.vendor-sched-linked-badge {
-    display: inline-block;
-    margin-left: 0.5rem;
-    padding: 2px 8px;
-    background: rgba(201, 169, 97, 0.18);
-    color: #8a6e2f;
-    font-size: 0.7rem;
-    font-weight: 600;
-    border-radius: 10px;
-    cursor: pointer;
-    letter-spacing: 0.02em;
-    vertical-align: middle;
-}
-
-.vendor-sched-linked-badge:hover {
-    background: rgba(201, 169, 97, 0.3);
-}
-
-.vendor-sched-onsite-cell {
-    text-align: center;
-    width: 70px;
-}
-
-.vendor-onsite-switch {
-    cursor: pointer;
-    accent-color: #c9a961;
-    transform: scale(1.1);
-}
-
-.vendor-onsite-switch:disabled {
-    cursor: not-allowed;
-    opacity: 0.5;
-}
-
-.vendor-sched-offsite-pill {
-    display: inline-block;
-    padding: 2px 8px;
-    background: rgba(138, 135, 120, 0.2);
-    color: #6b675b;
-    font-size: 0.7rem;
-    font-weight: 600;
-    border-radius: 10px;
-    margin-left: 0.5rem;
-    letter-spacing: 0.02em;
-    vertical-align: middle;
-}
-
-.vendor-sched-contact {
-    font-size: 0.82rem;
-    color: #6b675b;
-}
-
-.vendor-sched-empty {
-    padding: 2rem;
-    text-align: center;
-    color: #8a8778;
-    font-style: italic;
-}
-
-@keyframes vendor-card-in {
-    from { opacity: 0; transform: translateY(6px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-
-/* Vendor Card */
-.vendor-card {
-    background: #faf8f3;
-    border-radius: 14px;
-    padding: 1.5rem;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-    border: 1px solid #f0ece3;
-    border-left: 4px solid #8a8778;
-    transition: transform 0.2s ease, box-shadow 0.2s ease, border-left-color 0.2s ease;
-    animation: vendor-card-in 0.35s ease both;
-}
-
-.vendor-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(201, 169, 97, 0.15);
-    border-left-color: #c9a961;
-}
-
-.vendor-confirmed {
-    border-left-color: #1a3a35;
-}
-
-.vendor-pending {
-    border-left-color: #c9a961;
-}
-
-.vendor-has-issues {
-    border-left-color: #8b4532;
-}
-
-.vendor-card-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: 0.5rem;
-    gap: 0.5rem;
-}
-
-.vendor-card-title {
-    font-family: 'Cormorant Garamond', Georgia, serif;
-    font-size: 1.3rem;
-    font-weight: 700;
-    color: #1a3a35;
-}
-
-.vendor-card-description {
-    color: #7f8c8d;
-    font-size: 0.9rem;
-    margin-bottom: 0.5rem;
-}
-
-.vendor-card-category {
-    display: inline-block;
-    font-size: 0.78rem;
-    color: #8a7234;
-    background: rgba(201, 169, 97, 0.12);
-    padding: 0.2rem 0.6rem;
-    border-radius: 12px;
-    font-weight: 500;
-    margin-bottom: 0.75rem;
-}
-
-.vendor-card-details {
-    display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
-    margin-bottom: 0.75rem;
-}
-
-.vendor-detail {
-    font-size: 0.9rem;
-    color: #2c3e50;
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-}
-
-.vendor-detail-icon {
-    width: 18px;
-    text-align: center;
-    flex-shrink: 0;
-}
-
-.vendor-detail a {
-    color: #1a3a35;
-    text-decoration: none;
-}
-
-.vendor-detail a:hover {
-    color: #c9a961;
-    text-decoration: underline;
-}
-
-.vendor-card-budget {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 1.5rem;
-    font-size: 0.9rem;
-    color: #555;
-    margin-bottom: 0.75rem;
-    padding-top: 0.5rem;
-    border-top: 1px solid #f0ece3;
-}
-
-.vendor-in-kind-badge {
-    display: inline-block;
-    background: rgba(95, 135, 95, 0.12);
-    color: #3f6b4a;
-    font-size: 0.72rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    padding: 0.15rem 0.5rem;
-    border-radius: 999px;
-    border: 1px solid rgba(95, 135, 95, 0.3);
-}
-
-/* Issue Pills */
-.vendor-issues {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.35rem;
-    margin-bottom: 0.75rem;
-}
-
-.vendor-issues-label {
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: #8b4532;
-    margin-right: 0.15rem;
-}
-
-.vendor-issue-pill {
-    display: inline-block;
-    background: rgba(180, 90, 60, 0.1);
-    color: #8b4532;
-    font-size: 0.75rem;
-    font-weight: 600;
-    padding: 0.15rem 0.55rem;
-    border-radius: 10px;
-    border: 1px solid rgba(180, 90, 60, 0.2);
-}
-
-/* Vendor Card Actions */
-.vendor-card-actions {
-    padding-top: 0.75rem;
-    border-top: 1px solid #f0ece3;
-    display: flex;
-    gap: 0.5rem;
-}
-
-.vendor-card-actions .btn {
-    font-size: 0.85rem;
-    padding: 0.5rem 1rem;
-}
-
-/* Hover-reveal icon actions on vendor cards */
-.vendor-card-actions .vendor-action-icons {
-    display: flex;
-    gap: 4px;
-    opacity: 0;
-    transition: opacity 0.2s ease;
-}
-
-.vendor-card:hover .vendor-action-icons {
-    opacity: 1;
-}
-
-.vendor-action-icons .action-icon {
-    background: none;
-    border: none;
-    cursor: pointer;
-    padding: 5px;
-    border-radius: 6px;
-    transition: all 0.15s ease;
-    line-height: 1;
-    color: #8a8778;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1rem;
-}
-
-.vendor-action-icons .action-icon:hover {
-    background: rgba(26, 58, 53, 0.08);
-    color: #1a3a35;
-}
-
-.vendor-action-icons .action-icon.action-icon-danger:hover {
-    background: rgba(139, 69, 50, 0.08);
-    color: #8b4532;
-}
-
-.btn-fix-issues {
-    background-color: #5a3a2a;
-    color: #f0d8c0;
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all 0.3s;
-    font-weight: 500;
-}
-
-.btn-fix-issues:hover {
-    background-color: #6b4535;
-    transform: translateY(-1px);
-    box-shadow: 0 4px 8px rgba(90, 58, 42, 0.3);
-}
-
-/* Clickable dashboard status item */
-.status-item-clickable {
-    cursor: pointer;
-    transition: all 0.3s ease;
-}
-
-.status-item-clickable:hover {
-    transform: scale(1.05);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-}
-
-#dashboard .status-item-clickable:hover {
-    border-color: rgba(201, 169, 97, 0.5);
-    background: rgba(42, 74, 69, 0.6);
-}
-
-/* Vendor page mobile */
-@media (max-width: 768px) {
-    .vendor-grid {
-        grid-template-columns: 1fr;
-        gap: 1rem;
-    }
-
-    .vendor-card {
-        padding: 1.25rem;
-    }
-
-    .vendor-card-title {
-        font-size: 1.1rem;
-    }
-
-    .vendor-card-budget {
-        flex-direction: column;
-        gap: 0.25rem;
-    }
-
-    .vendor-filters {
-        flex-wrap: wrap;
-    }
-
-    .vendor-filter-btn {
-        padding: 0.7rem 1rem;
-        font-size: 0.9rem;
-    }
-
-    .vendor-category-header {
-        padding: 0.85rem 1rem;
-    }
-
-    .vendor-card-actions .vendor-action-icons {
-        opacity: 1;
-    }
 }
 
 /* ========================================
@@ -9185,18 +8640,6 @@ body.menu-open::after {
     font-size: 0.78rem;
 }
 
-.vendor-linked-staff {
-    font-size: 0.82rem;
-    color: #4a7a4a;
-    padding: 2px 0;
-    margin-bottom: 0.25rem;
-}
-
-.vendor-linked-staff .vendor-detail-icon {
-    font-size: 0.75rem;
-    margin-right: 2px;
-}
-
 /* ============================
    Seating
    ============================ */
@@ -10700,7 +10143,6 @@ body {
 table th,
 .timeline-table th,
 .budget-table th,
-.vendor-list-header,
 .staff-list-header,
 .hub-table thead th,
 .packing-table th,
