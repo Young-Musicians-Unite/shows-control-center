@@ -236,6 +236,18 @@ h1, h2, h3 {
   border-color: var(--border-medium) !important;
 }
 
+/* The Performers list (styles.css .performer-*) still uses the original
+   light "Clean Professional" card, not this dark redesign — the global
+   .btn-secondary white text above is unreadable on its cream background
+   ("View Stage Plot" link). Revert to the brand's dark green there. */
+.setlist-stage-plot-link .btn-secondary {
+  color: #0f2621 !important;
+  border-color: rgba(15,38,33,0.25) !important;
+}
+.setlist-stage-plot-link .btn-secondary:hover {
+  background: rgba(15,38,33,0.06) !important;
+}
+
 /* Icon buttons */
 .btn-icon,
 .btn.btn-icon {
