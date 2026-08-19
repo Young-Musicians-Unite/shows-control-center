@@ -1,6 +1,7 @@
 # Firebase credentials and config
 config/firebase-credentials.json
 js/config.js
+.firebase/
 
 # Node modules
 node_modules/
