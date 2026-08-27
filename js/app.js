@@ -1422,40 +1422,82 @@ const EVENT_SUBCOLLECTIONS = [
     'digitalAssets', 'guests', 'seatingTables', 'invitees', 'intake',
 ];
 
-async function deleteEventWithSubcollections(eventId) {
-    const eventRef = eventsCollection.doc(eventId);
-
-    for (const collName of EVENT_SUBCOLLECTIONS) {
-        const snap = await eventRef.collection(collName).get();
-        if (snap.empty) continue;
-
-        // For stagePlots, delete the nested objects subcollection first
-        if (collName === 'stagePlots') {
-            for (const plotDoc of snap.docs) {
-                const objSnap = await plotDoc.ref.collection('objects').get();
-                for (let i = 0; i < objSnap.docs.length; i += 499) {
-                    const batch = db.batch();
-                    objSnap.docs.slice(i, i + 499).forEach(d => batch.delete(d.ref));
-                    await batch.commit();
-                }
-            }
-        }
-
-        for (let i = 0; i < snap.docs.length; i += 499) {
-            const batch = db.batch();
-            snap.docs.slice(i, i + 499).forEach(d => batch.delete(d.ref));
-            await batch.commit();
-        }
+async function deleteSubcollectionDocs(coll, docs) {
+    for (let i = 0; i < docs.length; i += 499) {
+        const batch = db.batch();
+        docs.slice(i, i + 499).forEach(d => batch.delete(coll.doc(d.id)));
+        await batch.commit();
     }
+}
+
+// Reads + deletes each subcollection in one pass (no separate snapshot-then-delete
+// traversal) and does all subcollections concurrently so deleting a real event with
+// lots of data doesn't take minutes.
+async function deleteEventCapturingSnapshot(eventId) {
+    const eventRef = eventsCollection.doc(eventId);
+    const eventSnap = await eventRef.get();
+    const eventData = eventSnap.exists ? eventSnap.data() : null;
+
+    const subcollections = {};
+    await Promise.all(EVENT_SUBCOLLECTIONS.map(async (collName) => {
+        const coll = eventRef.collection(collName);
+        const snap = await coll.get();
+        const docs = snap.docs.map(d => ({ id: d.id, data: d.data() }));
+
+        if (collName === 'stagePlots') {
+            await Promise.all(docs.map(async (plotDoc) => {
+                const objColl = coll.doc(plotDoc.id).collection('objects');
+                const objSnap = await objColl.get();
+                plotDoc.objects = objSnap.docs.map(od => ({ id: od.id, data: od.data() }));
+                await deleteSubcollectionDocs(objColl, plotDoc.objects);
+            }));
+        }
+
+        await deleteSubcollectionDocs(coll, docs);
+        subcollections[collName] = docs;
+    }));
 
     await eventRef.delete();
+    return { eventData, subcollections };
+}
+
+async function restoreEventFromSnapshot(eventId, snapshot) {
+    const eventRef = eventsCollection.doc(eventId);
+    if (snapshot.eventData) {
+        await eventRef.set(snapshot.eventData);
+    }
+
+    await Promise.all(Object.entries(snapshot.subcollections).map(async ([collName, docs]) => {
+        const coll = eventRef.collection(collName);
+        for (let i = 0; i < docs.length; i += 499) {
+            const batch = db.batch();
+            docs.slice(i, i + 499).forEach(d => batch.set(coll.doc(d.id), d.data));
+            await batch.commit();
+        }
+
+        if (collName === 'stagePlots') {
+            await Promise.all(docs.map(async (plotDoc) => {
+                if (!plotDoc.objects || !plotDoc.objects.length) return;
+                const objRef = coll.doc(plotDoc.id).collection('objects');
+                for (let i = 0; i < plotDoc.objects.length; i += 499) {
+                    const batch = db.batch();
+                    plotDoc.objects.slice(i, i + 499).forEach(od => batch.set(objRef.doc(od.id), od.data));
+                    await batch.commit();
+                }
+            }));
+        }
+    }));
 }
 
 window.deleteEvent = async function(eventId, eventName) {
-    if (!confirm(`Delete "${eventName}"?\n\nThis will permanently remove the event. This cannot be undone.`)) return;
+    if (!confirm(`Delete "${eventName}"?\n\nThis will remove the event. You can undo with Cmd+Z right after.`)) return;
+    showToast(`Deleting "${eventName}"…`, 'info');
     try {
-        await deleteEventWithSubcollections(eventId);
-        showToast(`"${eventName}" deleted`);
+        const snapshot = await deleteEventCapturingSnapshot(eventId);
+        pushUndo(`Delete event "${eventName}"`, async () => {
+            await restoreEventFromSnapshot(eventId, snapshot);
+        });
+        showToast(`"${eventName}" deleted — Cmd+Z to undo`);
     } catch (e) {
         showToast('Error deleting event. Please try again.', 'error');
     }
@@ -1464,11 +1506,15 @@ window.deleteEvent = async function(eventId, eventName) {
 window.deleteCurrentEvent = async function() {
     const event = state.activeEvent;
     if (!event) return;
-    if (!confirm(`Delete "${event.name}"?\n\nThis will permanently remove the event. This cannot be undone.`)) return;
+    if (!confirm(`Delete "${event.name}"?\n\nThis will remove the event. You can undo with Cmd+Z right after.`)) return;
     closeEventSettings();
+    showToast(`Deleting "${event.name}"…`, 'info');
     try {
-        await deleteEventWithSubcollections(event.id);
-        showToast(`"${event.name}" deleted`);
+        const snapshot = await deleteEventCapturingSnapshot(event.id);
+        pushUndo(`Delete event "${event.name}"`, async () => {
+            await restoreEventFromSnapshot(event.id, snapshot);
+        });
+        showToast(`"${event.name}" deleted — Cmd+Z to undo`);
         backToHub();
     } catch (e) {
         showToast('Error deleting event. Please try again.', 'error');
