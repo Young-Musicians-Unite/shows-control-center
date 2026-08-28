@@ -10503,10 +10503,10 @@ body {
     flex-shrink: 0;
 }
 
-/* Bottom two-panel row */
+/* Bottom panel row */
 .db2-bottom {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
     gap: 14px;
 }
 .db2-panel {
@@ -10657,6 +10657,48 @@ body {
     transition: color 150ms;
 }
 .db-res-remove:hover { color: var(--amber-text); }
+
+.db-res-panel { border-left: 3px solid rgba(201,169,97,0.4); }
+.db-res-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 16px;
+    border-bottom: 0.5px solid var(--border-subtle);
+    transition: background 150ms;
+}
+.db-res-row:last-child { border-bottom: none; }
+.db-res-row:hover { background: var(--bg-hover); }
+.db-res-link {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: var(--font-body);
+    font-size: var(--text-ui);
+    color: var(--text-secondary);
+    text-decoration: none;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    transition: color 150ms;
+}
+.db-res-link:hover { color: var(--blue-text); }
+.db-res-link svg { flex-shrink: 0; opacity: 0.6; }
+.db-res-link:hover svg { opacity: 1; }
+.db-res-add-btn {
+    background: none;
+    border: none;
+    color: var(--text-tertiary);
+    font-size: 1.1rem;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 2px;
+    transition: color 150ms;
+    flex-shrink: 0;
+}
+.db-res-add-btn:hover { color: #c9a961; }
 
 @media (max-width: 860px) {
     .db2-stats { grid-template-columns: repeat(2, 1fr); }
