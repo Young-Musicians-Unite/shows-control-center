@@ -1,0 +1,70 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function myRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && myRole() == 'admin';
+    }
+
+    // Anyone signed in who isn't a viewer can write.
+    function canWrite() {
+      return isSignedIn() && myRole() != 'viewer';
+    }
+
+    // ── Accounts ──────────────────────────────────────────────────
+    match /users/{uid} {
+      allow read: if isSignedIn();
+      // Self-signup only, and never as admin (blocks devtools privilege escalation).
+      allow create: if isSignedIn() && request.auth.uid == uid
+                     && request.resource.data.role in ['viewer', 'editor'];
+      // Only admins can change a role, and only the role field.
+      allow update: if isAdmin()
+                     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role']);
+      allow delete: if false;
+    }
+
+    // ── Activity / audit log ──────────────────────────────────────
+    match /activityLog/{id} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      // Only non-viewers can patch a log entry, and only to mark it restored.
+      allow update: if canWrite()
+                     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['restoredAt', 'restoredBy', 'restoredByName']);
+      allow delete: if false;
+    }
+
+    // ── Events + everything nested under an event ─────────────────
+    match /events/{eventId} {
+      allow read: if isSignedIn();
+      allow write: if canWrite();
+
+      match /{subcollection}/{docId} {
+        allow read: if isSignedIn();
+        allow write: if canWrite();
+
+        // Nested one level deeper (e.g. stagePlots/{id}/objects/{objId}).
+        match /{nested}/{nestedId} {
+          allow read: if isSignedIn();
+          allow write: if canWrite();
+        }
+      }
+    }
+
+    // ── Remaining top-level collections ────────────────────────────
+    match /blockDates/{id}          { allow read: if isSignedIn(); allow write: if canWrite(); }
+    match /jobTemplates/{id}        { allow read: if isSignedIn(); allow write: if canWrite(); }
+    match /performerDirectory/{id}  { allow read: if isSignedIn(); allow write: if canWrite(); }
+    match /staffDirectory/{id}      { allow read: if isSignedIn(); allow write: if canWrite(); }
+    match /inventory/{id}           { allow read: if isSignedIn(); allow write: if canWrite(); }
+    match /seasons/{id}             { allow read: if isSignedIn(); allow write: if canWrite(); }
+    match /config/{id}              { allow read: if isSignedIn(); allow write: if canWrite(); }
+  }
+}

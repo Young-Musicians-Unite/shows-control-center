@@ -12,6 +12,61 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
 </head>
 <body>
+    <!-- Auth gate — shown until a signed-in user is confirmed -->
+    <div id="auth-gate">
+        <div class="auth-card">
+            <div class="sb-eyebrow">YMU Shows</div>
+            <h1 class="auth-title">Sign in to continue</h1>
+
+            <form id="auth-signin-form" class="auth-form">
+                <div class="auth-field">
+                    <label for="auth-signin-email">Email</label>
+                    <input type="email" id="auth-signin-email" autocomplete="username" required>
+                </div>
+                <div class="auth-field">
+                    <label for="auth-signin-password">Password</label>
+                    <input type="password" id="auth-signin-password" autocomplete="current-password" required>
+                </div>
+                <p class="auth-error" id="auth-signin-error"></p>
+                <button type="submit" class="btn-primary auth-submit">Sign In</button>
+                <p class="auth-switch">Need an account? <a href="#" onclick="showAuthSignup(event)">Create one</a></p>
+            </form>
+
+            <form id="auth-signup-form" class="auth-form" style="display:none">
+                <div class="auth-field">
+                    <label for="auth-signup-name">Name</label>
+                    <input type="text" id="auth-signup-name" autocomplete="name" required>
+                </div>
+                <div class="auth-field">
+                    <label for="auth-signup-email">Email</label>
+                    <input type="email" id="auth-signup-email" autocomplete="username" required>
+                </div>
+                <div class="auth-field">
+                    <label for="auth-signup-password">Password</label>
+                    <input type="password" id="auth-signup-password" autocomplete="new-password" required minlength="6">
+                </div>
+                <div class="auth-field">
+                    <label>I am a…</label>
+                    <div class="auth-role-picker">
+                        <label class="auth-role-card">
+                            <input type="radio" name="auth-signup-role" value="editor" required>
+                            <span class="auth-role-title">Editor</span>
+                            <span class="auth-role-desc">Can add, edit, and delete data</span>
+                        </label>
+                        <label class="auth-role-card">
+                            <input type="radio" name="auth-signup-role" value="viewer" required>
+                            <span class="auth-role-title">Viewer</span>
+                            <span class="auth-role-desc">Can look, but not change anything</span>
+                        </label>
+                    </div>
+                </div>
+                <p class="auth-error" id="auth-signup-error"></p>
+                <button type="submit" class="btn-primary auth-submit">Create Account</button>
+                <p class="auth-switch">Already have an account? <a href="#" onclick="showAuthSignin(event)">Sign in</a></p>
+            </form>
+        </div>
+    </div>
+
     <!-- Navigation -->
     <nav class="navbar">
         <div class="nav-container">
@@ -157,15 +212,25 @@
                 <div class="sb-user-menu-item" onclick="openStaffIndex(); closeSbUserMenu()">
                     <i class="ti ti-address-book"></i> Staff Directory
                 </div>
-                <div class="sb-user-menu-item" onclick="openJobTemplates(); closeSbUserMenu()">
+                <div class="sb-user-menu-item role-hidden" id="sb-menu-job-titles" onclick="openJobTemplates(); closeSbUserMenu()">
                     <i class="ti ti-briefcase"></i> Job Titles
                 </div>
                 <div class="sb-user-menu-item" onclick="openManageInventory(); closeSbUserMenu()">
                     <i class="ti ti-box"></i> Manage Inventory
                 </div>
                 <div class="sb-user-menu-divider"></div>
-                <div class="sb-user-menu-item" id="sb-menu-manage-pages" onclick="openEventSettings(); closeSbUserMenu()" style="display:none">
+                <div class="sb-user-menu-item hidden" id="sb-menu-manage-pages" onclick="openEventSettings(); closeSbUserMenu()">
                     <i class="ti ti-layout-grid"></i> Manage Pages
+                </div>
+                <div class="sb-user-menu-item role-hidden" id="sb-menu-manage-users" onclick="openManageUsers(); closeSbUserMenu()">
+                    <i class="ti ti-users-group"></i> Manage Users
+                </div>
+                <div class="sb-user-menu-item role-hidden" id="sb-menu-activity-log" onclick="openActivityLog(); closeSbUserMenu()">
+                    <i class="ti ti-history"></i> Activity Log
+                </div>
+                <div class="sb-user-menu-divider"></div>
+                <div class="sb-user-menu-item" onclick="signOutUser(); closeSbUserMenu()">
+                    <i class="ti ti-logout"></i> Sign Out
                 </div>
             </div>
 
@@ -173,8 +238,9 @@
             <div class="sb-foot">
                 <div class="sb-foot-row">
                     <div class="sb-user" onclick="toggleSbUserMenu(event)">
-                        <div class="sb-avatar" id="sb-avatar-initials">EP</div>
-                        <span class="sb-uname" id="sb-user-display">Estelle</span>
+                        <div class="sb-avatar" id="sb-avatar-initials">–</div>
+                        <span class="sb-uname" id="sb-user-display">Signing in…</span>
+                        <span class="viewer-mode-badge" id="viewer-mode-badge">Viewer</span>
                         <i class="ti ti-chevron-up" id="sb-user-chevron" style="font-size:10px;color:rgba(255,255,255,0.25)"></i>
                     </div>
                     <button id="sb-event-settings-btn" class="sb-settings-btn" onclick="openEventSettings()" title="Event Settings" style="display:none">
@@ -374,7 +440,11 @@
         <div id="events-hub" class="page active">
             <div class="page-header hub-page-header">
                 <h1>Events</h1>
-                <button class="hub-new-btn" onclick="openNewEventModal()">+ New Event</button>
+                <div class="header-actions">
+                    <input type="file" id="events-import-file" accept=".xlsx,.csv" style="display:none" onchange="handleEventsImport(event)">
+                    <button class="btn btn-secondary" id="admin-import-events-btn" style="display:none" onclick="document.getElementById('events-import-file').click()" title="Upload a multi-tab workbook — each tab becomes a page's data for one new event">Import</button>
+                    <button class="hub-new-btn" onclick="openNewEventModal()">+ New Event</button>
+                </div>
             </div>
             <div id="events-hub-content">
                 <div class="hub-loading">Loading events…</div>
@@ -447,6 +517,8 @@
                     <button class="btn btn-icon" id="export-budget-btn" title="Export to Excel">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                     </button>
+                    <input type="file" id="budget-import-file" accept=".xlsx,.csv" style="display:none" onchange="handleBudgetImport(event)">
+                    <button class="btn btn-secondary" id="admin-import-budget-btn" style="display:none" onclick="document.getElementById('budget-import-file').click()">Import from Excel</button>
                     <button class="btn btn-secondary" onclick="openStaffIndex()">Staff Index</button>
                     <button class="btn btn-primary-gold" id="add-budget-item-btn">+ Add Item</button>
                 </div>
@@ -512,6 +584,8 @@
                     <button class="btn btn-icon" id="export-timeline-btn" title="Export to Excel">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                     </button>
+                    <input type="file" id="timeline-import-file" accept=".xlsx,.csv" style="display:none" onchange="handleTimelineImport(event)">
+                    <button class="btn btn-secondary" id="admin-import-timeline-btn" style="display:none" onclick="document.getElementById('timeline-import-file').click()">Import from Excel</button>
                     <button class="btn btn-primary-gold" id="add-timeline-item-btn">+ Add Task</button>
                 </div>
             </div>
@@ -2451,6 +2525,7 @@
 
     <!-- Firebase SDKs -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js"></script>
 
@@ -2524,7 +2599,7 @@
                         <i class="ti ti-search"></i>
                         <input type="text" id="staff-index-search" class="sm-search" placeholder="Search by name or role…" oninput="renderStaffIndex()">
                     </div>
-                    <button class="btn-ctrl" onclick="toggleRoleMappings()"><i class="ti ti-template"></i> Job templates</button>
+                    <button class="btn-ctrl" id="staff-job-templates-btn" style="display:none" onclick="toggleRoleMappings()"><i class="ti ti-template"></i> Job templates</button>
                     <button class="btn-ctrl" onclick="syncStaffToDirectory()"><i class="ti ti-refresh"></i> Sync from event</button>
                     <button class="btn-add-contact" onclick="toggleAddDirectoryContact()"><i class="ti ti-plus"></i> Add contact</button>
                 </div>
@@ -2555,6 +2630,36 @@
                 </div>
                 <!-- Directory rows -->
                 <div id="staff-index-content"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Manage Users Modal (admin only) -->
+    <div id="manage-users-modal" class="si-overlay" onclick="if(event.target===this)closeManageUsers()">
+        <div class="ymu-staff-modal">
+            <div class="sm-head">
+                <div class="sm-title-row">
+                    <span class="sm-title">Manage users</span>
+                    <button class="sm-close" onclick="closeManageUsers()"><i class="ti ti-x"></i></button>
+                </div>
+            </div>
+            <div class="sm-body">
+                <div id="manage-users-content"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Activity Log Modal (admin only) -->
+    <div id="activity-log-modal" class="si-overlay" onclick="if(event.target===this)closeActivityLog()">
+        <div class="ymu-staff-modal">
+            <div class="sm-head">
+                <div class="sm-title-row">
+                    <span class="sm-title">Activity log</span>
+                    <button class="sm-close" onclick="closeActivityLog()"><i class="ti ti-x"></i></button>
+                </div>
+            </div>
+            <div class="sm-body">
+                <div id="activity-log-content"></div>
             </div>
         </div>
     </div>
