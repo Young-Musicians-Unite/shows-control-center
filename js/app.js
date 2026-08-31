@@ -2361,6 +2361,19 @@ function renderDashboard() {
           }).join('')
         : `<div class="db2-empty">No crew added yet</div>`;
 
+    // ── Resources ────────────────────────────────────────────────
+    const resources = state.activeEvent.resources || [];
+    const resourceRows = resources.length > 0
+        ? resources.map((r, i) => `
+            <div class="db-res-row">
+                <a href="${escapeHtml(r.url)}" target="_blank" rel="noopener noreferrer" class="db-res-link" onclick="event.stopPropagation()">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                    ${escapeHtml(r.name)}
+                </a>
+                <button class="db-res-remove" onclick="removeDashboardResource(${i})" title="Remove">×</button>
+            </div>`).join('')
+        : `<div class="db2-empty">No resources yet — add links, docs, or briefs</div>`;
+
     // ── Render ───────────────────────────────────────────────────
     dash.innerHTML = `
         <div class="db2-wrap">
@@ -2415,6 +2428,18 @@ function renderDashboard() {
                     </div>
                     ${crewRows}
                 </div>` : ''}
+                <div class="db2-panel db-res-panel">
+                    <div class="db2-panel-hdr">
+                        <span>Resources</span>
+                        <button class="db-res-add-btn" onclick="toggleDashResourceForm()" title="Add resource">+</button>
+                    </div>
+                    <div class="db-res-form" id="db-res-form">
+                        <input class="db-res-input" id="db-res-name" placeholder="Name…" autocomplete="off" />
+                        <input class="db-res-input" id="db-res-url" placeholder="https://…" autocomplete="off" onkeydown="if(event.key==='Enter')addDashboardResource()" />
+                        <button class="db-res-submit" onclick="addDashboardResource()">Add</button>
+                    </div>
+                    <div class="db-res-list">${resourceRows}</div>
+                </div>
             </div>
 
         </div>`;
