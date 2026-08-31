@@ -410,6 +410,13 @@ h1, h2, h3 {
   padding: 10px 12px !important;
 }
 
+/* tr.editing (styles.css) highlights the active row with a light cream
+   background regardless of theme — cells need dark text there or the
+   forced-white text above is unreadable on it. */
+.data-table tr.editing td {
+  color: #2d2d2d !important;
+}
+
 .data-table tbody tr:hover {
   background: var(--bg-hover) !important;
 }
@@ -667,17 +674,11 @@ label {
   border-color: var(--border-medium) !important;
 }
 
-/* Same bug, same fix — .vendor-view-btn's inactive text is also forced
-   light by the shared rule below, and was sitting on this same kind of
-   light cream track. .staff-view-btn keeps its own warm-toned text
-   unaffected either way, but shares this container so it comes along too. */
-.staff-view-toggle,
-.vendor-view-toggle {
+.staff-view-toggle {
   background: var(--bg-page) !important;
 }
 
 .filter-btn,
-.vendor-view-btn,
 .day-tab {
   background: transparent !important;
   border: 0.5px solid var(--border-medium) !important;
@@ -692,14 +693,12 @@ label {
 }
 
 .filter-btn:hover,
-.vendor-view-btn:hover,
 .day-tab:hover {
   background: var(--bg-hover) !important;
   color: var(--text-primary) !important;
 }
 
 .filter-btn.active,
-.vendor-view-btn.active,
 .day-tab.active {
   background: var(--text-primary) !important;
   color: var(--bg-surface) !important;
@@ -1355,6 +1354,87 @@ label {
   border-color: rgba(248,113,113,0.20) !important;
 }
 .act i { font-size: 10px !important; }
+
+/* ── Vendors page ───────────────────────────────────────────────────
+   Vendor Logistics reused the legacy cream .category-section-header /
+   .data-table look (styles.css), which predates this dark redesign — the
+   Budget page already moved to its own .cat-card/.line-table treatment
+   (above), so bring Vendors' cards, headers, and table to match that same
+   language instead of standing out as the one light component on an
+   otherwise all-dark page. Every selector is guarded with
+   body:not(.printing-vendors) — the print output (body.printing-vendors,
+   styles.css) is intentionally light/ink-friendly and unrelated to this
+   on-screen dark theme; without the guard these dark !important rules
+   would bleed straight into the printed page. */
+body:not(.printing-vendors) .vl-category-section {
+  background: #1a1d22 !important;
+  border: 0.5px solid rgba(255,255,255,0.07) !important;
+  border-radius: 10px !important;
+  overflow: hidden !important;
+}
+body:not(.printing-vendors) .vl-category-header {
+  background: transparent !important;
+  border-bottom: 0.5px solid rgba(255,255,255,0.07) !important;
+  padding: 13px 18px !important;
+}
+body:not(.printing-vendors) .vl-category-header h3 {
+  font-family: 'Inter', 'DM Sans', sans-serif !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  color: rgba(255,255,255,0.80) !important;
+}
+body:not(.printing-vendors) .vl-category-header .category-count {
+  background: transparent !important;
+  border: none !important;
+  color: rgba(255,255,255,0.28) !important;
+  font-size: 11px !important;
+  font-weight: 400 !important;
+  font-family: 'Inter', sans-serif !important;
+  padding: 0 !important;
+}
+body:not(.printing-vendors) .vl-remove-category { color: rgba(255,255,255,0.25) !important; }
+body:not(.printing-vendors) .vl-remove-category:hover { color: #f87171 !important; }
+
+/* .data-table thead th / .data-table tbody td (above) tie or beat a bare
+   .vl-table th/td on specificity — add tbody/thead so these reliably win. */
+body:not(.printing-vendors) .vl-table thead th {
+  background: rgba(255,255,255,0.015) !important;
+  border-bottom: 0.5px solid rgba(255,255,255,0.06) !important;
+  color: rgba(255,255,255,0.22) !important;
+  font-family: 'IBM Plex Mono', monospace !important;
+  font-size: 9px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.09em !important;
+  text-transform: uppercase !important;
+  padding: 7px 10px !important;
+}
+body:not(.printing-vendors) .vl-table tbody td {
+  border-bottom: 0.5px solid rgba(255,255,255,0.04) !important;
+  color: rgba(255,255,255,0.55) !important;
+  font-family: 'Inter', sans-serif !important;
+  font-size: 11.5px !important;
+  padding: 8px 10px !important;
+  background: transparent !important;
+}
+body:not(.printing-vendors) .vl-table tbody tr:hover td { background: rgba(255,255,255,0.025) !important; }
+body:not(.printing-vendors) .vl-table tbody tr:hover .row-actions { opacity: 1 !important; }
+body:not(.printing-vendors) .vl-table .phantom-placeholder { color: rgba(255,255,255,0.22) !important; }
+
+body:not(.printing-vendors) .vl-th-label:hover { border-bottom-color: rgba(255,255,255,0.3) !important; }
+body:not(.printing-vendors) .vl-th-remove { color: rgba(255,255,255,0.2) !important; }
+body:not(.printing-vendors) .vl-th-remove:hover { color: #f87171 !important; }
+body:not(.printing-vendors) .vl-add-col-btn {
+  border-color: rgba(255,255,255,0.15) !important;
+  color: rgba(255,255,255,0.5) !important;
+}
+body:not(.printing-vendors) .vl-add-col-btn:hover {
+  background: rgba(255,255,255,0.06) !important;
+  border-color: rgba(255,255,255,0.25) !important;
+}
+body:not(.printing-vendors) .vl-th-rename-input {
+  color: rgba(255,255,255,0.8) !important;
+  border-bottom-color: #c9a961 !important;
+}
 
 .stat-card--clickable {
   cursor: pointer !important;
