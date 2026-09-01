@@ -22,12 +22,17 @@ try {
 // Initialize Firestore
 const db = firebase.firestore();
 const storage = firebase.storage();
+const auth = firebase.auth();
 
 // Note: offline persistence intentionally disabled — it blocks ALL Firestore operations
 // until the IndexedDB lock is acquired, which hangs the hub when multiple tabs compete.
 
 // Top-level events collection for the hub
 const eventsCollection = db.collection('events');
+
+// Accounts, roles, and the admin activity/audit log
+const usersCollection = db.collection('users');
+const activityLogCollection = db.collection('activityLog');
 
 // Per-event collection references — rebuilt by setActiveEvent() in app.js
 let collections = {};

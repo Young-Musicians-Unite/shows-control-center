@@ -6,6 +6,9 @@ const CLIENT_ID = sessionStorage.getItem('clientId');
 
 // Global state
 const state = {
+    // Account / role
+    currentUser: null,   // { uid, email, name, role }
+    userRole: null,       // 'viewer' | 'editor' | 'admin'
     // Multi-event hub
     events: [],
     blockDates: [],
@@ -32,14 +35,14 @@ const state = {
     currentPage: 'events-hub',
     currentDay: 'Thursday',  // For timeline filtering
     timelineDays: null,       // [{id, label}] — null until initialized
-    vendorFilter: 'all',  // For vendor page filtering (all/confirmed/pending/issues)
+    vendors: [],             // Independent vendor logistics rows (not budget items)
+    vendorColumns: null,     // [{key, label}] — null until initialized, per-event
+    vendorCategorySequence: null,   // string[] — persisted category display order, null until initialized, per-event
     vendorSearch: '',
-    vendorView: 'grid',                     // 'grid' | 'schedule'
-    vendorScheduleFilter: 'all',            // 'all' | 'needs-schedule'
-    vendorScheduleEditingRowId: null,       // blocks re-render during cell edit
-    vendorScheduleRenderPending: false,     // deferred re-render flag
-    pendingVendorScheduleEdit: null,        // { id, day, originalValue } — for Esc revert
-    vendorGanttDay: 'saturday',             // selected day for Vendor Schedule gantt
+    vendorEditingRowId: null,        // blocks re-render during inline cell edit
+    vendorRenderPending: false,      // deferred re-render flag
+    pendingNewVendorRow: {},         // draft fields for whichever phantom row is active
+    vendorPendingCategories: [],     // categories added but with no saved row yet (ephemeral)
     staffSearch: '',
     staffFilter: 'all',  // 'all' or 'unfilled'
     staffView: 'team',
@@ -89,6 +92,10 @@ const state = {
     _pendingPackingImageItemId: null,
     _pendingPackingImageInventoryId: null,
     _inventoryPickerSelected: new Set(),
+    // Marketing & Decor list state
+    marketingPackingList: [],
+    marketingPackingSearch: '',
+    marketingPackingCategoryFilter: 'all',
     // Quote state
     quoteLines: [],
     // Menu state
@@ -301,6 +308,7 @@ const ALL_PAGES = [
     { id: 'budget',              label: 'Budget' },
     { id: 'staff',               label: 'Staff' },
     { id: 'packing-list',        label: 'Packing List' },
+    { id: 'marketing-packing-list', label: 'Marketing & Decor List' },
     { id: 'seating',             label: 'Seating' },
     { id: 'printed-materials',   label: 'Printed Materials' },
     { id: 'digital-assets',      label: 'Digital Assets' },
@@ -434,6 +442,7 @@ function setActiveEvent(eventId) {
         setLists:              ref.collection('setLists'),
         packingList:           ref.collection('packingList'),
         packingCategoryColors: ref.collection('packingCategoryColors'),
+        marketingPackingList:  ref.collection('marketingPackingList'),
         menuItems:             ref.collection('menuItems'),
         printedMaterials:      ref.collection('printedMaterials'),
         digitalAssets:         ref.collection('digitalAssets'),
@@ -446,12 +455,191 @@ function setActiveEvent(eventId) {
     state.currentEventId = eventId;
 }
 
-// Initialize app when DOM is ready
+// Initialize app when DOM is ready — the app itself doesn't start until
+// auth resolves (see initAuthGate below); this just wires up the gate.
 document.addEventListener('DOMContentLoaded', () => {
-    initializeApp();
+    initAuthGate();
 });
 
-function initializeApp() {
+// ── Accounts / roles ────────────────────────────────────────────────
+function isViewer() { return state.userRole === 'viewer'; }
+function isAdmin() { return state.userRole === 'admin'; }
+
+function blockIfViewer() {
+    if (!isViewer()) return false;
+    showToast("You're in view-only mode", 'error');
+    return true;
+}
+
+async function logActivity({ action, collection, eventId = null, docId, label, changes = null, snapshot = null }) {
+    try {
+        await activityLogCollection.add({
+            action, collection, eventId, docId, label, changes, snapshot,
+            actorUid: state.currentUser?.uid || null,
+            actorEmail: state.currentUser?.email || null,
+            actorName: state.currentUser?.name || 'Unknown',
+            timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+            restoredAt: null, restoredBy: null, restoredByName: null,
+        });
+    } catch (e) {
+        console.error('logActivity failed:', e);
+    }
+}
+
+function applyUserRoleToUI() {
+    const nameEl = document.getElementById('sb-user-display');
+    const avatarEl = document.getElementById('sb-avatar-initials');
+    const badgeEl = document.getElementById('viewer-mode-badge');
+    const manageUsersItem = document.getElementById('sb-menu-manage-users');
+    const activityLogItem = document.getElementById('sb-menu-activity-log');
+    const name = state.currentUser?.name || state.currentUser?.email || 'Signed in';
+    if (nameEl) nameEl.textContent = name;
+    if (avatarEl) avatarEl.textContent = name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+    if (badgeEl) {
+        badgeEl.textContent = state.userRole ? state.userRole.charAt(0).toUpperCase() + state.userRole.slice(1) : '';
+        badgeEl.classList.remove('role-viewer', 'role-editor', 'role-admin');
+        if (state.userRole) badgeEl.classList.add('role-' + state.userRole);
+    }
+    if (manageUsersItem) manageUsersItem.classList.toggle('role-hidden', !isAdmin());
+    if (activityLogItem) activityLogItem.classList.toggle('role-hidden', !isAdmin());
+    document.getElementById('sb-menu-job-titles')?.classList.toggle('role-hidden', !isAdmin());
+    document.querySelectorAll('#admin-import-budget-btn, #admin-import-timeline-btn, #admin-import-events-btn, #staff-job-templates-btn')
+        .forEach(el => { el.style.display = isAdmin() ? '' : 'none'; });
+}
+
+async function loadCurrentUserRole(user) {
+    let doc = await usersCollection.doc(user.uid).get();
+    if (!doc.exists) {
+        // Shouldn't normally happen (signup always creates this doc), but
+        // guard with a safe default so a stray account isn't locked out.
+        await usersCollection.doc(user.uid).set({
+            uid: user.uid, email: user.email, name: user.email, role: 'viewer',
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        });
+        doc = await usersCollection.doc(user.uid).get();
+    }
+    const data = doc.data();
+    state.currentUser = { uid: user.uid, email: data.email, name: data.name, role: data.role };
+    state.userRole = data.role;
+    applyUserRoleToUI();
+}
+
+function showAuthError(formId, message) {
+    const el = document.getElementById(formId === 'signin' ? 'auth-signin-error' : 'auth-signup-error');
+    if (el) el.textContent = message || '';
+}
+
+window.showAuthSignin = function(e) {
+    if (e) e.preventDefault();
+    document.getElementById('auth-signup-form').style.display = 'none';
+    document.getElementById('auth-signin-form').style.display = '';
+    showAuthError('signin', ''); showAuthError('signup', '');
+};
+
+window.showAuthSignup = function(e) {
+    if (e) e.preventDefault();
+    document.getElementById('auth-signin-form').style.display = 'none';
+    document.getElementById('auth-signup-form').style.display = '';
+    showAuthError('signin', ''); showAuthError('signup', '');
+};
+
+function friendlyAuthError(err) {
+    switch (err.code) {
+        case 'auth/invalid-email': return 'That email address looks invalid.';
+        case 'auth/user-not-found':
+        case 'auth/wrong-password':
+        case 'auth/invalid-credential': return 'Incorrect email or password.';
+        case 'auth/email-already-in-use': return 'An account with that email already exists.';
+        case 'auth/weak-password': return 'Password must be at least 6 characters.';
+        default: return err.message || 'Something went wrong. Please try again.';
+    }
+}
+
+async function handleAuthSignIn(e) {
+    e.preventDefault();
+    showAuthError('signin', '');
+    const email = document.getElementById('auth-signin-email').value.trim();
+    const password = document.getElementById('auth-signin-password').value;
+    try {
+        await auth.signInWithEmailAndPassword(email, password);
+    } catch (err) {
+        showAuthError('signin', friendlyAuthError(err));
+    }
+}
+
+// createUserWithEmailAndPassword fires onAuthStateChanged before this function's
+// own doc write below lands, so the auth-gate's listener would otherwise race it,
+// find no doc yet, and fall back to creating one with role 'viewer' — silently
+// overriding whatever the signup form actually selected. Recording the write here
+// as a promise lets the listener await the real result instead of re-reading too early.
+let _pendingSignup = null;
+
+async function handleAuthSignUp(e) {
+    e.preventDefault();
+    showAuthError('signup', '');
+    const name = document.getElementById('auth-signup-name').value.trim();
+    const email = document.getElementById('auth-signup-email').value.trim();
+    const password = document.getElementById('auth-signup-password').value;
+    const roleInput = document.querySelector('input[name="auth-signup-role"]:checked');
+    if (!roleInput) { showAuthError('signup', 'Pick Editor or Viewer.'); return; }
+    const role = roleInput.value;
+    let resolvePending;
+    _pendingSignup = new Promise(r => { resolvePending = r; });
+    try {
+        const cred = await auth.createUserWithEmailAndPassword(email, password);
+        await usersCollection.doc(cred.user.uid).set({
+            uid: cred.user.uid, email, name, role,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        });
+        resolvePending({ uid: cred.user.uid, email, name, role });
+    } catch (err) {
+        showAuthError('signup', friendlyAuthError(err));
+        resolvePending(null);
+    }
+}
+
+window.signOutUser = async function() {
+    try { await auth.signOut(); } catch (e) { console.error('Sign out failed:', e); }
+};
+
+function initAuthGate() {
+    document.getElementById('auth-signin-form').addEventListener('submit', handleAuthSignIn);
+    document.getElementById('auth-signup-form').addEventListener('submit', handleAuthSignUp);
+
+    let appStarted = false;
+    auth.onAuthStateChanged(async (user) => {
+        const gate = document.getElementById('auth-gate');
+        if (user) {
+            try {
+                if (_pendingSignup) {
+                    const fresh = await _pendingSignup;
+                    _pendingSignup = null;
+                    if (fresh && fresh.uid === user.uid) {
+                        state.currentUser = fresh;
+                        state.userRole = fresh.role;
+                        applyUserRoleToUI();
+                    } else {
+                        await loadCurrentUserRole(user);
+                    }
+                } else {
+                    await loadCurrentUserRole(user);
+                }
+            } catch (e) {
+                console.error('Failed to load user role:', e);
+                showAuthError('signin', 'Signed in, but failed to load your account. Please refresh.');
+                return;
+            }
+            if (gate) gate.classList.add('hidden');
+            if (!appStarted) { appStarted = true; startApp(); }
+        } else {
+            state.currentUser = null;
+            state.userRole = null;
+            if (gate) gate.classList.remove('hidden');
+        }
+    });
+}
+
+function startApp() {
     const _setup = (name, fn) => { try { fn(); } catch(e) { console.error('SETUP CRASH in ' + name + ':', e); } };
     _setup('setupNavigation', setupNavigation);
     _setup('setupHamburgerMenu', setupHamburgerMenu);
@@ -459,12 +647,12 @@ function initializeApp() {
     _setup('setupCountdown', setupCountdown);
     _setup('setupFormHandlers', setupFormHandlers);
     _setup('setupDayTabs', setupDayTabs);
-    _setup('setupVendorFilters', setupVendorFilters);
     _setup('setupStageTabs', setupStageTabs);
     _setup('setupExportAndPrint', setupExportAndPrint);
     _setup('setupKeyboardShortcuts', setupKeyboardShortcuts);
     _setup('setupVenueMap', setupVenueMap);
     _setup('setupSetListPage', setupSetListPage);
+    _setup('setupHubImportDropzone', setupHubImportDropzone);
 
     // Read saved session before anything else runs
     const savedEventId = localStorage.getItem('lastEventId');
@@ -640,27 +828,10 @@ function switchPage(pageName) {
         if (pageName === 'dashboard') updateDashboard();
         if (pageName === 'guests') initGuestPage();
         if (pageName === 'vendors') {
-            state.vendorFilter = 'all';
             state.vendorSearch = '';
-            state.vendorView = 'grid';
-            state.vendorScheduleFilter = 'all';
-            state.vendorScheduleEditingRowId = null;
-            state.vendorScheduleRenderPending = false;
-            state.pendingVendorScheduleEdit = null;
-            state.vendorGanttDay = 'saturday';
             const vendorSearchInput = document.getElementById('vendor-search-input');
             if (vendorSearchInput) vendorSearchInput.value = '';
-            const vendorFilterBtns = document.querySelectorAll('#vendor-card-view .vendor-filter-btn');
-            vendorFilterBtns.forEach(b => b.classList.toggle('active', b.dataset.filter === 'all'));
-            const vendorCardBtn = document.getElementById('vendor-card-view-btn');
-            const vendorScheduleBtn = document.getElementById('vendor-schedule-view-btn');
-            if (vendorCardBtn) vendorCardBtn.classList.add('active');
-            if (vendorScheduleBtn) vendorScheduleBtn.classList.remove('active');
-            const vendorCardContainer = document.getElementById('vendor-card-view');
-            const vendorScheduleContainer = document.getElementById('vendor-schedule-view');
-            if (vendorCardContainer) vendorCardContainer.style.display = '';
-            if (vendorScheduleContainer) vendorScheduleContainer.style.display = 'none';
-            renderVendors();
+            renderVendorLogistics();
         }
         if (pageName === 'staff') {
             state.staffSearch = '';
@@ -795,14 +966,16 @@ function setupCollectionListener(collectionKey, stateKey, renderCallbacks = []) 
 // Load all data from Firestore (tears down any existing listeners first)
 function loadAllData() {
     teardownListeners();
-    setupCollectionListener('budget', 'budget', [renderBudget, renderVendors, updateDashboard, renderStaff, backfillLinkedContactInfo]);
+    setupCollectionListener('budget', 'budget', [renderBudget, updateDashboard, renderStaff, backfillLinkedContactInfo]);
     setupCollectionListener('timeline', 'timeline', [backfillTimelineOrder, renderTimeline, renderCueSheet, updateDashboard]);
     setupCollectionListener('mainStageInputs', 'mainStageInputs', [renderStageInputs]);
     setupCollectionListener('cocktailStageInputs', 'cocktailStageInputs', [renderStageInputs]);
-    setupCollectionListener('staff', 'staff', [renderStaff, renderVendors, backfillLinkedContactInfo]);
+    setupCollectionListener('staff', 'staff', [renderStaff, backfillLinkedContactInfo]);
+    setupCollectionListener('vendors', 'vendors', [renderVendorLogistics]);
     setupCollectionListener('setLists', 'setLists', [renderSetLists, updateDashboard, renderTimeline]);
     setupCollectionListener('packingList', 'packingList', [renderPackingList]);
     setupCollectionListener('packingCategoryColors', 'packingCategoryColors', [renderPackingList]);
+    setupCollectionListener('marketingPackingList', 'marketingPackingList', [renderMarketingPackingList]);
     setupCollectionListener('menuItems', 'menuItems', [renderMenu, updateDashboard]);
     setupCollectionListener('printedMaterials', 'printedMaterials', [renderPrintedMaterials]);
     setupCollectionListener('digitalAssets', 'digitalAssets', [renderDigitalAssets]);
@@ -1139,6 +1312,7 @@ function renderHub() {
 
 // ── Block Dates ───────────────────────────────────────────────────
 window.deleteBlockDate = async function(id) {
+    if (blockIfViewer()) return;
     if (!confirm('Delete this date marker?')) return;
     const b = state.blockDates.find(b => b.id === id);
     if (b) {
@@ -1147,6 +1321,10 @@ window.deleteBlockDate = async function(id) {
     }
     try {
         await db.collection('blockDates').doc(id).delete();
+        if (b) {
+            const { id: _id, ...data } = b;
+            logActivity({ action: 'delete', collection: 'blockDates', docId: id, label: `${data.label || 'date marker'}`, snapshot: data });
+        }
         showToast('Date marker deleted — Cmd+Z to undo');
     } catch(e) {
         console.error('Failed to delete block date:', e);
@@ -1418,7 +1596,7 @@ window.updateEventPhase = async function(eventId, phaseId, selectEl) {
 const EVENT_SUBCOLLECTIONS = [
     'vendors', 'budget', 'timeline', 'mainStageInputs', 'cocktailStageInputs',
     'staff', 'event-info', 'stagePlots', 'venueMapLayers', 'setLists',
-    'packingList', 'packingCategoryColors', 'menuItems', 'printedMaterials',
+    'packingList', 'packingCategoryColors', 'marketingPackingList', 'menuItems', 'printedMaterials',
     'digitalAssets', 'guests', 'seatingTables', 'invitees', 'intake',
 ];
 
@@ -1490,6 +1668,7 @@ async function restoreEventFromSnapshot(eventId, snapshot) {
 }
 
 window.deleteEvent = async function(eventId, eventName) {
+    if (blockIfViewer()) return;
     if (!confirm(`Delete "${eventName}"?\n\nThis will remove the event. You can undo with Cmd+Z right after.`)) return;
     showToast(`Deleting "${eventName}"…`, 'info');
     try {
@@ -1497,6 +1676,7 @@ window.deleteEvent = async function(eventId, eventName) {
         pushUndo(`Delete event "${eventName}"`, async () => {
             await restoreEventFromSnapshot(eventId, snapshot);
         });
+        logActivity({ action: 'delete', collection: 'events', eventId, docId: eventId, label: `${eventName} — event (with all its data)`, snapshot });
         showToast(`"${eventName}" deleted — Cmd+Z to undo`);
     } catch (e) {
         showToast('Error deleting event. Please try again.', 'error');
@@ -1504,6 +1684,7 @@ window.deleteEvent = async function(eventId, eventName) {
 };
 
 window.deleteCurrentEvent = async function() {
+    if (blockIfViewer()) return;
     const event = state.activeEvent;
     if (!event) return;
     if (!confirm(`Delete "${event.name}"?\n\nThis will remove the event. You can undo with Cmd+Z right after.`)) return;
@@ -1514,6 +1695,7 @@ window.deleteCurrentEvent = async function() {
         pushUndo(`Delete event "${event.name}"`, async () => {
             await restoreEventFromSnapshot(event.id, snapshot);
         });
+        logActivity({ action: 'delete', collection: 'events', eventId: event.id, docId: event.id, label: `${event.name} — event (with all its data)`, snapshot });
         showToast(`"${event.name}" deleted — Cmd+Z to undo`);
         backToHub();
     } catch (e) {
@@ -1530,6 +1712,9 @@ async function enterEvent(eventId) {
     // Reset timeline days — will be initialized lazily on first renderTimeline()
     state.timelineDays = null;
     state.currentDay = 'Thursday';
+    // Reset vendor columns/category order — will be initialized lazily on first renderVendorLogistics()
+    state.vendorColumns = null;
+    state.vendorCategorySequence = null;
 
     setActiveEvent(eventId);
     localStorage.setItem('lastEventId', eventId);
@@ -1560,9 +1745,9 @@ async function enterEvent(eventId) {
     // restored page never briefly shows the previous event's rows.
     [
         'budget', 'timeline', 'mainStageInputs', 'cocktailStageInputs',
-        'staff', 'setLists', 'packingList', 'packingCategoryColors',
+        'staff', 'setLists', 'packingList', 'packingCategoryColors', 'marketingPackingList',
         'menuItems', 'printedMaterials', 'digitalAssets', 'guests', 'seatingTables',
-        'invitees',
+        'invitees', 'vendors',
     ].forEach(k => { state[k] = []; });
 
     loadAllData();
@@ -1683,6 +1868,7 @@ window.closeNewEventModal = function() {
 };
 
 window.createNewEvent = async function() {
+    if (blockIfViewer()) return;
     const isMarker = document.getElementById('new-event-is-marker').checked;
     const name  = document.getElementById('new-event-name').value.trim();
     const date  = document.getElementById('new-event-date').value;
@@ -1702,12 +1888,13 @@ window.createNewEvent = async function() {
         const endDate = document.getElementById('new-event-marker-end').value;
         const type    = document.getElementById('new-event-marker-type').value;
         try {
-            await db.collection('blockDates').add({
+            const ref = await db.collection('blockDates').add({
                 label: name, startDate: date,
                 endDate: endDate || date,
                 type, season: state.currentSeason,
                 createdAt: firebase.firestore.FieldValue.serverTimestamp(),
             });
+            logActivity({ action: 'create', collection: 'blockDates', docId: ref.id, label: `${name} — date marker` });
             closeNewEventModal();
         } catch(e) {
             console.error('Failed to save date marker:', e);
@@ -1729,6 +1916,7 @@ window.createNewEvent = async function() {
         createdAt: firebase.firestore.FieldValue.serverTimestamp(),
         updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
     });
+    logActivity({ action: 'create', collection: 'events', eventId: id, docId: id, label: `${name} — event` });
 
     closeNewEventModal();
     await loadEvents();
@@ -1756,6 +1944,7 @@ window.closeDuplicateEventModal = function() {
 };
 
 window.confirmDuplicateEvent = async function() {
+    if (blockIfViewer()) return;
     const sourceEvent = state.activeEvent;
     if (!sourceEvent) return;
 
@@ -1776,7 +1965,7 @@ window.confirmDuplicateEvent = async function() {
 
     const SUBCOLLECTIONS = [
         'budget', 'timeline', 'mainStageInputs', 'cocktailStageInputs',
-        'staff', 'setLists', 'packingList', 'packingCategoryColors',
+        'staff', 'setLists', 'packingList', 'packingCategoryColors', 'marketingPackingList',
         'menuItems', 'printedMaterials', 'digitalAssets', 'guests', 'seatingTables',
         'invitees', 'vendors', 'venueMapLayers', 'event-info',
     ];
@@ -1813,6 +2002,7 @@ window.confirmDuplicateEvent = async function() {
             }
         }
 
+        logActivity({ action: 'create', collection: 'events', eventId: newId, docId: newId, label: `${name} — event (duplicated from ${sourceEvent.name})` });
         showToast(`"${name}" ready`, 'success');
         await loadEvents();
         enterEvent(newId);
@@ -2163,7 +2353,6 @@ window.removeIntakeRow = function(sectionId, rowIdx) {
 // Dashboard
 function updateDashboard() {
     updateBudgetStats();
-    updateVendorStats();
     updateTimelineStats();
     renderDashboard();
 }
@@ -2564,775 +2753,575 @@ window.saveSetBudget = async function() {
     }
 };
 
-function updateVendorStats() {
-    const confirmed = state.budget.filter(b => b.confirmed).length;
-    const total = state.budget.length;
-    const pending = total - confirmed;
-    const issueCount = state.budget.filter(b => getVendorIssues(b).length > 0).length;
-
-    // (dashboard elements removed — counts rendered dynamically by renderDashboard)
-
-    // Update filter button count badges
-    const el = (id) => document.getElementById(id);
-    const setCount = (id, count) => { const e = el(id); if (e) e.textContent = count > 0 ? count : ''; };
-    setCount('vendor-filter-all-count', total);
-    setCount('vendor-filter-confirmed-count', confirmed);
-    setCount('vendor-filter-pending-count', pending);
-    setCount('vendor-filter-issue-count', issueCount);
-
-}
-
-// Vendor Issues
-function getVendorIssues(item) {
-    const issues = [];
-    if (!item.vendor) issues.push('vendor/item');
-    if (!item.description) issues.push('description');
-    if (!item.inKind && !item.budgeted) issues.push('budgeted');
-    if (!item.noContactNeeded && !item.offSite) {
-        if (!item.phone) issues.push('phone');
-        if (!item.email) issues.push('email');
-    }
-    return issues;
-}
-
-function vendorItemMatchesSearch(item, query) {
-    if (!query) return true;
-    const tokens = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
-    if (tokens.length === 0) return true;
-    const fields = [
-        item.vendor || '', item.description || '', item.category || '',
-        item.contact || '', item.email || '', item.phone || '', item.owner || '', item.notes || ''
-    ];
-    const text = fields.join(' ').toLowerCase();
-    return tokens.every(t => text.includes(t));
-}
-
-function handleVendorSearch(value) {
-    clearTimeout(vendorSearchDebounce);
-    vendorSearchDebounce = setTimeout(() => {
-        state.vendorSearch = value;
-        renderVendors();
-    }, 150);
-}
-
-function clearVendorSearch() {
-    const input = document.getElementById('vendor-search-input');
-    if (input) input.value = '';
-    state.vendorSearch = '';
-    renderVendors();
-}
-
-window.handleVendorSearch = handleVendorSearch;
-window.clearVendorSearch = clearVendorSearch;
-
-function toggleVendorCategorySection(categoryId) {
-    const content = document.getElementById(`vendor-content-${categoryId}`);
-    const arrow = document.getElementById(`vendor-arrow-${categoryId}`);
-    if (content.style.display === 'none') {
-        content.style.display = 'block';
-        arrow.textContent = '▼';
-    } else {
-        content.style.display = 'none';
-        arrow.textContent = '▶';
-    }
-}
-window.toggleVendorCategorySection = toggleVendorCategorySection;
-
-function summarizeVendorSchedule(sched) {
-    if (!sched) return '';
-    const days = [
-        ['thursday', 'Thu'], ['friday', 'Fri'], ['saturday', 'Sat'], ['sunday', 'Sun']
-    ].filter(([k]) => sched[k]).map(([, label]) => label);
-    if (days.length === 0) return '';
-    return `<div class="vendor-detail"><span class="vendor-detail-icon">📅</span> On-site ${days.join(', ')}</div>`;
-}
-
-function renderVendors() {
-    if (state.vendorView === 'schedule') {
-        renderVendorSchedule();
-    } else {
-        renderVendorCards();
-    }
-}
-
-function setVendorView(view) {
-    state.vendorView = view;
-    const cardBtn = document.getElementById('vendor-card-view-btn');
-    const schedBtn = document.getElementById('vendor-schedule-view-btn');
-    const cardView = document.getElementById('vendor-card-view');
-    const schedView = document.getElementById('vendor-schedule-view');
-    if (cardBtn) cardBtn.classList.toggle('active', view === 'grid');
-    if (schedBtn) schedBtn.classList.toggle('active', view === 'schedule');
-    if (cardView) cardView.style.display = view === 'grid' ? '' : 'none';
-    if (schedView) schedView.style.display = view === 'schedule' ? '' : 'none';
-    renderVendors();
-}
-window.setVendorView = setVendorView;
-
-function setVendorScheduleFilter(filter) {
-    state.vendorScheduleFilter = filter;
-    document.querySelectorAll('#vendor-schedule-view [data-schedule-filter]').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.scheduleFilter === filter);
-    });
-    renderVendorSchedule();
-}
-window.setVendorScheduleFilter = setVendorScheduleFilter;
-
-function renderVendorCards() {
-    const container = document.getElementById('vendor-grid');
-    if (!container) return;
-
-    // Capture expanded categories and scroll position before re-render
-    const expandedCategories = new Set();
-    container.querySelectorAll('.vendor-category-content').forEach(el => {
-        if (el.style.display !== 'none') {
-            expandedCategories.add(el.id);
-        }
-    });
-    const scrollY = window.scrollY;
-
-    let items = [...state.budget];
-
-    // Apply status filter
-    if (state.vendorFilter === 'confirmed') {
-        items = items.filter(b => b.confirmed);
-    } else if (state.vendorFilter === 'pending') {
-        items = items.filter(b => !b.confirmed);
-    } else if (state.vendorFilter === 'issues') {
-        items = items.filter(b => getVendorIssues(b).length > 0);
-    }
-
-    // Apply search
-    const searchQuery = state.vendorSearch;
-    const isSearching = searchQuery && searchQuery.trim().length > 0;
-    if (isSearching) {
-        items = items.filter(item => vendorItemMatchesSearch(item, searchQuery));
-    }
-
-    // Update search count
-    const countEl = document.getElementById('vendor-search-count');
-    if (countEl) {
-        const totalFiltered = state.budget.length;
-        countEl.textContent = isSearching
-            ? `${items.length} of ${totalFiltered} vendors`
-            : `${totalFiltered} vendors`;
-        countEl.style.display = totalFiltered > 0 ? '' : 'none';
-    }
-    const clearBtn = document.getElementById('vendor-search-clear');
-    if (clearBtn) clearBtn.style.display = isSearching ? '' : 'none';
-
-    if (items.length === 0) {
-        if (state.vendorFilter === 'issues') {
-            container.innerHTML = '<div class="staff-empty-state">All clear — no missing vendor information!</div>';
-        } else if (isSearching) {
-            container.innerHTML = `<div class="staff-empty-state">No vendors match "${escapeHtml(searchQuery)}"</div>`;
-        } else {
-            container.innerHTML = '<div class="staff-empty-state">No vendors found</div>';
-        }
-        return;
-    }
-
-    // Group by category
-    const categorized = {};
-    items.forEach(item => {
-        const cat = item.category || 'Uncategorized';
-        if (!categorized[cat]) categorized[cat] = [];
-        categorized[cat].push(item);
-    });
-
-    const sortedCategories = Object.entries(categorized).sort((a, b) => a[0].localeCompare(b[0]));
-
-    let cardIdx = 0;
-    container.innerHTML = sortedCategories.map(([category, catItems]) => {
-        const categoryId = category.replace(/[^a-zA-Z0-9]/g, '_');
-        const displayName = category.replace(/^6811[a-g] - /, '');
-        const budgetTotal = catItems.reduce((sum, item) => sum + (parseFloat(item.budgeted) || 0), 0);
-
-        const cardsHtml = catItems.map(item => {
-            const issues = getVendorIssues(item);
-            const hasIssues = issues.length > 0;
-            const isConfirmed = item.confirmed;
-            const itemCategory = (item.category || '').replace(/^6811[a-g] - /, '');
-
-            let statusClass = isConfirmed ? 'vendor-confirmed' : 'vendor-pending';
-            if (hasIssues) statusClass = 'vendor-has-issues';
-
-            const linkedStaff = getLinkedStaff(item);
-
-            const issuePills = hasIssues ? `
-                <div class="vendor-issues">
-                    <span class="vendor-issues-label">Missing:</span>
-                    ${issues.map(i => `<span class="vendor-issue-pill">${escapeHtml(i)}</span>`).join('')}
-                </div>
-            ` : '';
-
-            const delay = cardIdx * 40;
-            cardIdx++;
-
-            return `
-                <div class="vendor-card ${statusClass}" style="animation-delay: ${delay}ms">
-                    <div class="vendor-card-header">
-                        <div class="vendor-card-title">${escapeHtml(item.vendor || 'Unnamed')}</div>
-                        <span class="status-badge ${isConfirmed ? 'confirmed' : 'pending'}">${isConfirmed ? 'Confirmed' : 'Pending'}</span>
-                    </div>
-                    ${item.description ? `<div class="vendor-card-description">${escapeHtml(item.description)}</div>` : ''}
-                    <div class="vendor-card-category">${escapeHtml(itemCategory)}</div>
-                    ${linkedStaff ? `<div class="vendor-linked-staff"><span class="vendor-detail-icon">👥</span> Staff: ${escapeHtml(linkedStaff.name)}${linkedStaff.role ? ' (' + escapeHtml(linkedStaff.role) + ')' : ''}</div>` : ''}
-                    <div class="vendor-card-details">
-                        ${item.noContactNeeded ? `<div class="vendor-detail"><span class="vendor-detail-icon">🌐</span> Online vendor</div>` : ''}
-                        ${item.offSite ? `<div class="vendor-detail"><span class="vendor-detail-icon">🚫</span> Off-site</div>` : ''}
-                        ${item.contact ? `<div class="vendor-detail"><span class="vendor-detail-icon">👤</span> ${escapeHtml(item.contact)}</div>` : ''}
-                        ${item.phone ? `<div class="vendor-detail"><span class="vendor-detail-icon">📞</span> <a href="tel:${escapeHtml(item.phone)}">${escapeHtml(item.phone)}</a></div>` : ''}
-                        ${item.email ? `<div class="vendor-detail"><span class="vendor-detail-icon">✉</span> <a href="mailto:${escapeHtml(item.email)}">${escapeHtml(item.email)}</a></div>` : ''}
-                        ${summarizeVendorSchedule(linkedStaff ? linkedStaff.schedule : item.schedule)}
-                    </div>
-                    <div class="vendor-card-budget">
-                        ${item.inKind ? '<span class="vendor-in-kind-badge">In-Kind</span>' : ''}
-                        <span>Budgeted: <strong>${formatCurrency(item.budgeted)}</strong></span>
-                        ${item.actual ? `<span>Actual: <strong>${formatCurrency(item.actual)}</strong></span>` : ''}
-                    </div>
-                    ${issuePills}
-                    <div class="vendor-card-actions">
-                        ${hasIssues
-                            ? `<button class="btn btn-fix-issues" onclick="editBudgetItem('${item.id}')">Fix Issues</button>`
-                            : `<button class="btn btn-edit" onclick="editBudgetItem('${item.id}')">Edit</button>`}
-                        <div class="vendor-action-icons">
-                            <button class="action-icon" onclick="editBudgetItem('${item.id}')" title="Edit">
-                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                            </button>
-                            <button class="action-icon action-icon-danger" onclick="deleteBudgetItem('${item.id}')" title="Delete">
-                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            `;
-        }).join('');
-
-        return `
-            <div class="vendor-category-section">
-                <div class="vendor-category-header" onclick="toggleVendorCategorySection('${categoryId}')">
-                    <span class="category-arrow" id="vendor-arrow-${categoryId}">${isSearching ? '▼' : '▶'}</span>
-                    <h3>${escapeHtml(displayName)}</h3>
-                    <span class="category-count">${catItems.length} vendors</span>
-                    <span style="font-size: 0.9rem; color: #8a8778; margin-left: auto;"><strong>Budget:</strong> ${formatCurrency(budgetTotal)}</span>
-                </div>
-                <div class="vendor-category-content" id="vendor-content-${categoryId}" style="display: ${isSearching ? 'block' : 'none'};">
-                    <div class="vendor-grid">
-                        ${cardsHtml}
-                    </div>
-                </div>
-            </div>
-        `;
-    }).join('');
-
-    // Restore expanded categories and scroll position after re-render
-    expandedCategories.forEach(id => {
-        const el = document.getElementById(id);
-        if (el) {
-            el.style.display = 'block';
-            const arrow = document.getElementById(id.replace('vendor-content-', 'vendor-arrow-'));
-            if (arrow) arrow.textContent = '▼';
-        }
-    });
-    requestAnimationFrame(() => window.scrollTo(0, scrollY));
-}
-
-// ---------- Vendor Schedule view (inline day-cell edit) ----------
-
-const VENDOR_SCHEDULE_DAYS = [
-    ['thursday', 'Thu'],
-    ['friday', 'Fri'],
-    ['saturday', 'Sat'],
-    ['sunday', 'Sun']
+// ── Vendor Logistics ──────────────────────────────────────────────
+// Independent of Budget/Staff — day-of coordination info only (who's
+// showing up, what they need from us, how long they need). Financial
+// tracking (payments, contracts) stays on the Budget page.
+const DEFAULT_VENDOR_COLUMNS = [
+    { key: 'description', label: 'Description' },
+    { key: 'vendor', label: 'Vendor' },
+    { key: 'contactName', label: 'Contact Name' },
+    { key: 'contactNumber', label: 'Contact Number' },
+    { key: 'notes', label: 'Notes' },
+    { key: 'requirements', label: 'Requirements' },
+    { key: 'serviceTime', label: 'Service Time' },
 ];
 
-function vendorHasFullSchedule(sched) {
-    if (!sched) return false;
-    return VENDOR_SCHEDULE_DAYS.every(([k]) => sched[k] && String(sched[k]).trim());
+function vendorFieldKeys() {
+    return (state.vendorColumns || DEFAULT_VENDOR_COLUMNS).map(c => c.key);
 }
 
-function renderVendorSchedule() {
-    const container = document.getElementById('vendor-schedule-container');
+function vendorColumnLabel(key) {
+    const col = (state.vendorColumns || DEFAULT_VENDOR_COLUMNS).find(c => c.key === key);
+    return col ? col.label : key;
+}
+
+async function initVendorColumns() {
+    if (state.vendorColumns !== null) return;
+    const event = state.activeEvent;
+    if (!event) return;
+
+    if (event.vendorColumns && event.vendorColumns.length > 0) {
+        state.vendorColumns = event.vendorColumns;
+        return;
+    }
+
+    const columns = DEFAULT_VENDOR_COLUMNS;
+    state.vendorColumns = columns;
+    await eventsCollection.doc(event.id).update({ vendorColumns: columns });
+    state.activeEvent.vendorColumns = columns;
+}
+
+window.addVendorColumn = async function() {
+    if (blockIfViewer()) return;
+    const label = prompt('New column name:');
+    if (!label || !label.trim()) return;
+    const trimmed = label.trim();
+    const key = 'col-' + Date.now();
+    const columns = [...(state.vendorColumns || DEFAULT_VENDOR_COLUMNS), { key, label: trimmed }];
+    state.vendorColumns = columns;
+    state.activeEvent.vendorColumns = columns;
+    await eventsCollection.doc(state.activeEvent.id).update({ vendorColumns: columns });
+    renderVendorLogistics();
+};
+
+window.removeVendorColumn = async function(e, key) {
+    e.stopPropagation();
+    if (blockIfViewer()) return;
+    const columns = state.vendorColumns || DEFAULT_VENDOR_COLUMNS;
+    if (columns.length <= 1) { showToast('At least one column is required', 'error'); return; }
+    const label = columns.find(c => c.key === key)?.label || 'this column';
+    if (!confirm(`Remove the "${label}" column? Any data already saved in it won't be deleted, just hidden.`)) return;
+    const updated = columns.filter(c => c.key !== key);
+    state.vendorColumns = updated;
+    state.activeEvent.vendorColumns = updated;
+    await eventsCollection.doc(state.activeEvent.id).update({ vendorColumns: updated });
+    renderVendorLogistics();
+};
+
+window.startRenameVendorColumn = function(e, key) {
+    e.stopPropagation();
+    if (blockIfViewer()) return;
+    const span = e.target;
+    if (span.tagName === 'INPUT') return;
+    const current = vendorColumnLabel(key);
+    const input = document.createElement('input');
+    input.className = 'vl-th-rename-input';
+    input.value = current;
+    input.placeholder = 'Column name…';
+    span.replaceWith(input);
+    input.focus();
+    input.select();
+    const save = async () => {
+        const newLabel = input.value.trim() || current;
+        const columns = (state.vendorColumns || DEFAULT_VENDOR_COLUMNS).map(c => c.key === key ? { ...c, label: newLabel } : c);
+        state.vendorColumns = columns;
+        state.activeEvent.vendorColumns = columns;
+        await eventsCollection.doc(state.activeEvent.id).update({ vendorColumns: columns });
+        renderVendorLogistics();
+    };
+    input.addEventListener('blur', save);
+    input.addEventListener('keydown', ev => {
+        if (ev.key === 'Enter') { ev.preventDefault(); input.blur(); }
+        if (ev.key === 'Escape') { input.value = current; input.blur(); }
+    });
+};
+
+function vendorItemMatchesSearch(item, query) {
+    const q = query.toLowerCase();
+    return vendorFieldKeys().some(f => (item[f] || '').toLowerCase().includes(q));
+}
+
+window.handleVendorSearch = function(value) {
+    state.vendorSearch = value;
+    const clearBtn = document.getElementById('vendor-search-clear');
+    if (clearBtn) clearBtn.style.display = value ? '' : 'none';
+    renderVendorLogistics();
+};
+
+window.clearVendorSearch = function() {
+    state.vendorSearch = '';
+    const input = document.getElementById('vendor-search-input');
+    if (input) input.value = '';
+    const clearBtn = document.getElementById('vendor-search-clear');
+    if (clearBtn) clearBtn.style.display = 'none';
+    renderVendorLogistics();
+};
+
+function nextVendorOrderInCategory(category) {
+    const inCat = state.vendors.filter(v => v.category === category);
+    if (inCat.length === 0) return 1000;
+    return Math.max(...inCat.map(v => (typeof v.order === 'number' ? v.order : 0))) + 1000;
+}
+
+// Category display order is tracked explicitly (state.vendorCategorySequence,
+// persisted on the event doc) rather than derived from row `order` values —
+// every category's first row starts at order 1000, so deriving display order
+// from min-row-order caused categories to reshuffle unpredictably as soon as
+// a second category got its first row.
+async function initVendorCategorySequence() {
+    if (state.vendorCategorySequence !== null) return;
+    const event = state.activeEvent;
+    if (!event) return;
+
+    if (event.vendorCategoryOrder && event.vendorCategoryOrder.length > 0) {
+        state.vendorCategorySequence = event.vendorCategoryOrder;
+        return;
+    }
+
+    // No sequence saved yet — establish a baseline from whatever categories
+    // already exist, in first-seen order, so nothing already in use is lost.
+    const seen = [];
+    state.vendors.forEach(v => {
+        const cat = v.category || 'Uncategorized';
+        if (!seen.includes(cat)) seen.push(cat);
+    });
+    state.vendorCategorySequence = seen;
+    if (seen.length > 0) {
+        await eventsCollection.doc(event.id).update({ vendorCategoryOrder: seen });
+        state.activeEvent.vendorCategoryOrder = seen;
+    }
+}
+
+async function persistVendorCategorySequence(sequence) {
+    state.vendorCategorySequence = sequence;
+    if (!state.activeEvent) return;
+    state.activeEvent.vendorCategoryOrder = sequence;
+    await eventsCollection.doc(state.activeEvent.id).update({ vendorCategoryOrder: sequence });
+}
+
+function vendorCategoryOrder() {
+    const sequence = state.vendorCategorySequence || [];
+    const realCats = new Set(state.vendors.map(v => v.category || 'Uncategorized'));
+    const ordered = sequence.filter(cat => realCats.has(cat) || state.vendorPendingCategories.includes(cat));
+    realCats.forEach(cat => { if (!ordered.includes(cat)) ordered.push(cat); });
+    state.vendorPendingCategories.forEach(cat => {
+        if (!ordered.includes(cat)) ordered.push(cat);
+    });
+    return ordered;
+}
+
+window.addVendorCategory = async function() {
+    if (blockIfViewer()) return;
+    const name = prompt('New category name (e.g. "Food Vendors"):');
+    if (!name || !name.trim()) return;
+    const trimmed = name.trim();
+    const exists = state.vendors.some(v => (v.category || 'Uncategorized').toLowerCase() === trimmed.toLowerCase()) ||
+        state.vendorPendingCategories.some(c => c.toLowerCase() === trimmed.toLowerCase());
+    if (exists) { showToast(`"${trimmed}" already exists — scroll down to find it`, 'error'); return; }
+    state.vendorPendingCategories.push(trimmed);
+    await persistVendorCategorySequence([...(state.vendorCategorySequence || []), trimmed]);
+    renderVendorLogistics();
+    showToast(`"${trimmed}" category added`);
+    setTimeout(() => {
+        const header = [...document.querySelectorAll('.vl-category-header h3')].find(h => h.textContent === trimmed);
+        if (header) header.closest('.vl-category-section').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 50);
+};
+
+window.removePendingVendorCategory = async function(category) {
+    if (blockIfViewer()) return;
+    state.vendorPendingCategories = state.vendorPendingCategories.filter(c => c !== category);
+    await persistVendorCategorySequence((state.vendorCategorySequence || []).filter(c => c !== category));
+    renderVendorLogistics();
+};
+
+window.deleteVendorItem = async function(id) {
+    if (blockIfViewer()) return;
+    const item = state.vendors.find(v => v.id === id);
+    if (!item) return;
+    if (!confirm(`Delete "${item.description || item.vendor || 'this row'}"?`)) return;
+    const { id: _id, ...data } = item;
+    const eventId = state.currentEventId;
+    pushUndo('Delete vendor row', async () => {
+        if (eventId !== state.currentEventId) { showToast('Nothing to undo', 'info'); return; }
+        await collections.vendors.doc(id).set(data);
+    });
+    try {
+        await collections.vendors.doc(id).delete();
+        logActivity({ action: 'delete', collection: 'vendors', eventId, docId: id, label: `${describeRecord(data)} — vendor`, snapshot: data });
+        showToast('Deleted — Cmd+Z to undo');
+    } catch (err) {
+        console.error('Error deleting vendor row:', err);
+        showToast('Error deleting row', 'error');
+    }
+};
+
+function renderVendorLogistics() {
+    if (state.vendorEditingRowId) { state.vendorRenderPending = true; return; }
+    const container = document.getElementById('vendor-logistics-container');
     if (!container) return;
 
-    // Skip re-render if a cell is being inline-edited (Firestore listener may fire mid-edit)
-    if (state.vendorScheduleEditingRowId) {
-        state.vendorScheduleRenderPending = true;
+    if (state.vendorColumns === null) {
+        initVendorColumns().then(() => renderVendorLogistics());
+        return;
+    }
+    if (state.vendorCategorySequence === null) {
+        initVendorCategorySequence().then(() => renderVendorLogistics());
         return;
     }
 
-    // Remember expanded categories (reuses same id prefix as cards view — they're never mounted together)
-    const expandedCategories = new Set();
-    container.querySelectorAll('.vendor-category-content').forEach(el => {
-        if (el.style.display !== 'none') expandedCategories.add(el.id);
-    });
+    const columns = state.vendorColumns;
+    const fieldKeys = columns.map(c => c.key);
 
-    let items = [...state.budget];
-
-    // Apply needs-schedule filter
-    if (state.vendorScheduleFilter === 'needs-schedule') {
-        items = items.filter(item => {
-            if (item.offSite) return false;
-            const linked = getLinkedStaff(item);
-            const sched = linked ? (linked.schedule || {}) : (item.schedule || {});
-            return !vendorHasFullSchedule(sched);
-        });
+    const search = (state.vendorSearch || '').trim();
+    let items = [...state.vendors];
+    const countEl = document.getElementById('vendor-search-count');
+    const isSearching = search.length > 0;
+    if (isSearching) items = items.filter(item => vendorItemMatchesSearch(item, search));
+    if (countEl) {
+        countEl.textContent = isSearching ? `${items.length} of ${state.vendors.length} rows` : `${state.vendors.length} rows`;
+        countEl.style.display = state.vendors.length > 0 ? '' : 'none';
     }
 
-    if (items.length === 0) {
-        container.innerHTML = state.vendorScheduleFilter === 'needs-schedule'
-            ? '<div class="vendor-sched-empty">All vendors have complete schedules (or are marked off-site).</div>'
-            : '<div class="vendor-sched-empty">No vendors yet.</div>';
+    const headerRow = `
+        <tr>
+            ${columns.map(col => `
+                <th data-col-key="${col.key}">
+                    <div class="vl-th-inner">
+                        <span class="vl-th-label" ondblclick="startRenameVendorColumn(event,'${col.key}')">${escapeHtml(col.label)}</span>
+                        ${columns.length > 1 ? `<span class="vl-th-remove" onclick="removeVendorColumn(event,'${col.key}')" title="Remove column">&times;</span>` : ''}
+                    </div>
+                </th>
+            `).join('')}
+            <th class="no-print vl-th-add"><button class="vl-add-col-btn" onclick="addVendorColumn()" title="Add column">+</button></th>
+        </tr>
+    `;
+
+    const categories = vendorCategoryOrder();
+
+    if (categories.length === 0) {
+        container.innerHTML = `
+            <div class="table-container">
+                <table class="data-table vl-table">
+                    <thead>${headerRow}</thead>
+                    <tbody>
+                        <tr><td colspan="${columns.length + 1}" class="empty-state">No vendor categories yet — click "+ Add Category" below to get started.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        `;
+        renderVendorAddCategoryRow(container);
         return;
     }
 
-    // Group by category (same ordering as card view)
-    const categorized = {};
-    items.forEach(item => {
-        const cat = item.category || 'Uncategorized';
-        if (!categorized[cat]) categorized[cat] = [];
-        categorized[cat].push(item);
-    });
-    const sortedCategories = Object.entries(categorized).sort((a, b) => a[0].localeCompare(b[0]));
+    container.innerHTML = categories.map(category => {
+        const catItems = items
+            .filter(v => (v.category || 'Uncategorized') === category)
+            .sort((a, b) => (a.order || 0) - (b.order || 0));
+        const isPending = state.vendorPendingCategories.includes(category) &&
+            !state.vendors.some(v => (v.category || 'Uncategorized') === category);
 
-    const html = sortedCategories.map(([category, catItems]) => {
-        const categoryId = category.replace(/[^a-zA-Z0-9]/g, '_');
-        const displayName = category.replace(/^6811[a-g] - /, '');
-
-        // Sort rows: unlinked, on-site, needs-schedule first; then linked; then off-site
-        catItems.sort((a, b) => {
-            const offA = a.offSite ? 1 : 0;
-            const offB = b.offSite ? 1 : 0;
-            if (offA !== offB) return offA - offB;
-            const linkA = a.linkedStaffId ? 1 : 0;
-            const linkB = b.linkedStaffId ? 1 : 0;
-            if (linkA !== linkB) return linkA - linkB;
-            return (a.vendor || '').localeCompare(b.vendor || '');
-        });
-
-        const rowsHtml = catItems.map(item => {
-            const linked = getLinkedStaff(item);
-            const sched = linked ? (linked.schedule || {}) : (item.schedule || {});
-            const isOffSite = item.offSite === true;
-            const isLinked = !!linked;
-            const rowClasses = ['vendor-sched-row'];
-            if (isOffSite) rowClasses.push('off-site');
-            if (isLinked) rowClasses.push('linked');
-
-            const dayCells = VENDOR_SCHEDULE_DAYS.map(([key]) => {
-                const raw = sched[key] || '';
-                const display = raw ? escapeHtml(normalizeTimeForPrint(raw) || raw)
-                                    : '<span class="phantom-placeholder">—</span>';
-                if (isOffSite) {
-                    return `<td class="vendor-sched-cell" data-field="day" data-day="${key}"><span class="phantom-placeholder">—</span></td>`;
-                }
-                if (isLinked) {
-                    return `<td class="vendor-sched-cell" data-field="day" data-day="${key}" data-original="${escapeHtml(raw)}" title="Also editable on staff tab" onclick="editVendorScheduleCell(this)">${display}</td>`;
-                }
-                return `<td class="vendor-sched-cell" data-field="day" data-day="${key}" data-original="${escapeHtml(raw)}" onclick="editVendorScheduleCell(this)">${display}</td>`;
-            }).join('');
-
-            const vendorLabel = escapeHtml(item.vendor || 'Unnamed');
-            const subtitleParts = [];
-            if (item.description) subtitleParts.push(escapeHtml(item.description));
-            const subtitle = subtitleParts.length ? `<span class="vendor-sched-subtitle">${subtitleParts.join(' · ')}</span>` : '';
-
-            const linkedBadge = isLinked
-                ? ` <span class="vendor-sched-linked-badge" onclick="event.stopPropagation(); openStaffModal('${linked.id}')" title="Open staff entry">also on staff tab</span>`
-                : '';
-            const offSitePill = isOffSite ? ` <span class="vendor-sched-offsite-pill">Off-site</span>` : '';
-
-            const switchDisabled = isLinked ? 'disabled' : '';
-            const switchChecked = !isOffSite ? 'checked' : '';
-            const switchTitle = isLinked
-                ? 'Linked to staff — presence controlled by staff entry'
-                : (isOffSite ? 'Off-site (hidden from check-in list)' : 'On-site (shown on check-in list)');
-
-            const contactLine = item.contact ? escapeHtml(item.contact) : '';
-
-            return `
-                <tr class="${rowClasses.join(' ')}" data-id="${item.id}">
-                    <td>
-                        <span class="vendor-sched-vendor" onclick="editBudgetItem('${item.id}')">${vendorLabel}</span>${linkedBadge}${offSitePill}
-                        ${subtitle}
+        const rowsHtml = catItems.map(item => `
+            <tr data-id="${item.id}">
+                ${fieldKeys.map(f => `
+                    <td data-field="${f}" data-original="${escapeHtml(item[f] || '')}" onclick="editVendorCell(this)">
+                        ${item[f] ? escapeHtml(item[f]) : ''}
                     </td>
-                    <td class="vendor-sched-onsite-cell">
-                        <input type="checkbox" class="vendor-onsite-switch" ${switchChecked} ${switchDisabled}
-                            title="${switchTitle}"
-                            onchange="toggleVendorOffSite('${item.id}', this.checked)">
-                    </td>
-                    ${dayCells}
-                    <td class="vendor-sched-contact">${contactLine}</td>
-                </tr>`;
-        }).join('');
+                `).join('')}
+                <td class="no-print">
+                    <div class="row-actions">
+                        <div class="act del" onclick="deleteVendorItem('${item.id}')" title="Delete"><i class="ti ti-trash"></i></div>
+                    </div>
+                </td>
+            </tr>
+        `).join('');
+
+        const phantomRow = `
+            <tr class="vl-phantom-row" data-phantom="true" data-category="${escapeHtml(category)}">
+                ${fieldKeys.map(f => `
+                    <td data-field="${f}" onclick="editVendorCell(this)"><span class="phantom-placeholder">+ ${vendorColumnLabel(f).toLowerCase()}</span></td>
+                `).join('')}
+                <td class="no-print"></td>
+            </tr>
+        `;
 
         return `
-            <div class="vendor-category-section">
-                <div class="vendor-category-header" onclick="toggleVendorCategorySection('${categoryId}')">
-                    <span class="category-arrow" id="vendor-arrow-${categoryId}">▼</span>
-                    <h3>${escapeHtml(displayName)}</h3>
-                    <span class="category-count">${catItems.length} vendors</span>
+            <div class="vl-category-section">
+                <div class="category-section-header vl-category-header">
+                    <h3>${escapeHtml(category)}</h3>
+                    <span class="category-count">${catItems.length} ${catItems.length === 1 ? 'vendor' : 'vendors'}</span>
+                    ${isPending ? `<span class="vl-remove-category" onclick="removePendingVendorCategory('${escapeHtml(category)}')" title="Remove empty category">&times;</span>` : ''}
                 </div>
-                <div class="vendor-category-content" id="vendor-content-${categoryId}" style="display:block;">
-                    <table class="vendor-sched-table">
-                        <thead>
-                            <tr>
-                                <th>Vendor</th>
-                                <th class="vendor-sched-onsite-cell">On-site</th>
-                                <th>Thu</th>
-                                <th>Fri</th>
-                                <th>Sat</th>
-                                <th>Sun</th>
-                                <th>Contact</th>
-                            </tr>
-                        </thead>
-                        <tbody>${rowsHtml}</tbody>
+                <div class="table-container">
+                    <table class="data-table vl-table">
+                        <thead>${headerRow}</thead>
+                        <tbody>${rowsHtml}${phantomRow}</tbody>
                     </table>
                 </div>
             </div>
         `;
     }).join('');
 
-    container.innerHTML = html;
-
-    // Restore collapsed/expanded state from previous render (default: expanded on first render)
-    if (expandedCategories.size > 0) {
-        container.querySelectorAll('.vendor-category-content').forEach(el => {
-            const isExpanded = expandedCategories.has(el.id);
-            el.style.display = isExpanded ? 'block' : 'none';
-            const arrow = document.getElementById(el.id.replace('vendor-content-', 'vendor-arrow-'));
-            if (arrow) arrow.textContent = isExpanded ? '▼' : '▶';
-        });
-    }
-
-    renderVendorGantt();
+    renderVendorAddCategoryRow(container);
+    state.pendingNewVendorRow = {};
 }
 
-function editVendorScheduleCell(cell) {
+function renderVendorAddCategoryRow(container) {
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-secondary vl-add-category-btn';
+    btn.textContent = '+ Add Category';
+    btn.onclick = () => window.addVendorCategory();
+    container.appendChild(btn);
+}
+
+window.editVendorCell = function(cell) {
     if (cell.querySelector('.inline-edit-input')) return;
     const row = cell.closest('tr');
-    if (!row) return;
-    const id = row.dataset.id;
-    const day = cell.dataset.day;
-    const original = cell.dataset.original || '';
+    const field = cell.dataset.field;
+    if (!field) return;
 
-    state.vendorScheduleEditingRowId = id;
-    state.pendingVendorScheduleEdit = { id, day, originalValue: original };
+    const isPhantom = row.dataset.phantom === 'true';
+    const rowId = row.dataset.id;
+    state.vendorEditingRowId = isPhantom ? 'phantom' : rowId;
     row.classList.add('editing');
+
+    const original = isPhantom ? (state.pendingNewVendorRow[field] || '') : (cell.dataset.original || '');
 
     const input = document.createElement('input');
     input.type = 'text';
-    input.className = 'inline-edit-input';
     input.value = original;
-    input.placeholder = 'e.g. 10am-6pm';
+    input.className = 'inline-edit-input';
+    input.dataset.field = field;
     cell.textContent = '';
     cell.appendChild(input);
     input.focus();
     input.select();
 
-    input.addEventListener('keydown', (e) => handleVendorScheduleKeydown(e, cell, row));
+    input.addEventListener('keydown', (e) => handleVendorCellKeydown(e, cell, row));
     input.addEventListener('blur', () => {
         setTimeout(() => {
-            if (cell.querySelector('.inline-edit-input')) saveVendorScheduleCell(cell, row);
+            const activeEl = document.activeElement;
+            if (row.contains(activeEl) && activeEl.classList.contains('inline-edit-input')) return;
+            if (!cell.querySelector('.inline-edit-input')) return;
+            if (isPhantom) {
+                const val = input.value.trim();
+                if (val) state.pendingNewVendorRow[field] = val;
+                restoreVendorCellDisplay(cell, true);
+                if (!row.querySelector('.inline-edit-input')) {
+                    row.classList.remove('editing');
+                    const hasData = vendorFieldKeys().some(f => state.pendingNewVendorRow[f] && String(state.pendingNewVendorRow[f]).trim());
+                    if (hasData) commitNewVendorRow(row); else clearVendorEditingFlag();
+                }
+            } else {
+                saveVendorCell(cell, row);
+            }
         }, 50);
     });
-}
-window.editVendorScheduleCell = editVendorScheduleCell;
+};
 
-function restoreVendorScheduleCellDisplay(cell) {
-    const raw = cell.dataset.original || '';
-    const display = raw
-        ? escapeHtml(normalizeTimeForPrint(raw) || raw)
-        : '<span class="phantom-placeholder">—</span>';
-    cell.innerHTML = display;
-}
+function handleVendorCellKeydown(e, cell, row) {
+    const field = cell.dataset.field;
+    const isPhantom = row.dataset.phantom === 'true';
 
-function clearVendorScheduleEditingFlag() {
-    state.vendorScheduleEditingRowId = null;
-    state.pendingVendorScheduleEdit = null;
-    if (state.vendorScheduleRenderPending) {
-        state.vendorScheduleRenderPending = false;
-        renderVendors();
-    }
-}
-
-function handleVendorScheduleKeydown(e, cell, row) {
-    if (e.key === 'Escape') {
-        e.preventDefault();
-        row.classList.remove('editing');
-        restoreVendorScheduleCellDisplay(cell);
-        clearVendorScheduleEditingFlag();
-        return;
-    }
-    if (e.key === 'Enter') {
-        e.preventDefault();
-        const day = cell.dataset.day;
-        saveVendorScheduleCell(cell, row, () => {
-            const nextRow = row.nextElementSibling;
-            if (!nextRow) return;
-            const nextCell = nextRow.querySelector(`td[data-day="${day}"][onclick]`);
-            if (nextCell) editVendorScheduleCell(nextCell);
-        });
-        return;
-    }
     if (e.key === 'Tab') {
         e.preventDefault();
-        const day = cell.dataset.day;
-        const forward = !e.shiftKey;
-        saveVendorScheduleCell(cell, row, () => {
-            const idx = VENDOR_SCHEDULE_DAYS.findIndex(([k]) => k === day);
-            const nextIdx = forward ? idx + 1 : idx - 1;
-            if (nextIdx >= 0 && nextIdx < VENDOR_SCHEDULE_DAYS.length) {
-                const nextKey = VENDOR_SCHEDULE_DAYS[nextIdx][0];
-                const nextCell = row.querySelector(`td[data-day="${nextKey}"][onclick]`);
-                if (nextCell) { editVendorScheduleCell(nextCell); return; }
-            }
-            // Wrap to adjacent row
-            const neighborRow = forward ? row.nextElementSibling : row.previousElementSibling;
-            if (!neighborRow) return;
-            const wrapKey = forward ? VENDOR_SCHEDULE_DAYS[0][0] : VENDOR_SCHEDULE_DAYS[VENDOR_SCHEDULE_DAYS.length - 1][0];
-            const wrapCell = neighborRow.querySelector(`td[data-day="${wrapKey}"][onclick]`);
-            if (wrapCell) editVendorScheduleCell(wrapCell);
-        });
+        const direction = e.shiftKey ? -1 : 1;
+        if (isPhantom) {
+            const input = cell.querySelector('.inline-edit-input');
+            const val = input ? input.value.trim() : '';
+            if (val) state.pendingNewVendorRow[field] = val;
+            restoreVendorCellDisplay(cell, true);
+        } else {
+            saveVendorCell(cell, row, true);
+        }
+        navigateVendorCell(row, field, direction);
+    } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (isPhantom) {
+            const input = cell.querySelector('.inline-edit-input');
+            const val = input ? input.value.trim() : '';
+            if (val) state.pendingNewVendorRow[field] = val;
+            restoreVendorCellDisplay(cell, true);
+            commitNewVendorRow(row);
+        } else {
+            saveVendorCell(cell, row, true);
+            navigateVendorNextRowSameColumn(row, field);
+        }
+    } else if (e.key === 'Escape') {
+        e.preventDefault();
+        restoreVendorCellDisplay(cell, isPhantom);
+        row.classList.remove('editing');
+        clearVendorEditingFlag();
     }
 }
 
-async function saveVendorScheduleCell(cell, row, afterSave) {
+function saveVendorCell(cell, row, keepEditing = false) {
     const input = cell.querySelector('.inline-edit-input');
     if (!input) return;
+
+    const field = cell.dataset.field;
     const id = row.dataset.id;
-    const day = cell.dataset.day;
-    const original = cell.dataset.original || '';
-    const newValue = input.value.trim();
+    const item = state.vendors.find(v => v.id === id);
+    if (!item) { restoreVendorCellDisplay(cell, false); return; }
 
-    row.classList.remove('editing');
+    let newValue = input.value.trim();
+    const oldValue = item[field] || '';
 
-    if (newValue === original) {
-        restoreVendorScheduleCellDisplay(cell);
-        clearVendorScheduleEditingFlag();
-        if (typeof afterSave === 'function') afterSave();
+    if (newValue !== oldValue && blockIfViewer()) newValue = oldValue;
+
+    cell.dataset.original = newValue;
+    restoreVendorCellDisplay(cell, false);
+
+    if (!keepEditing && !row.querySelector('.inline-edit-input')) {
+        row.classList.remove('editing');
+        clearVendorEditingFlag();
+    }
+
+    if (newValue === oldValue) return;
+    item[field] = newValue;
+
+    const eventId = state.currentEventId;
+    pushUndo(`Edit ${field}`, async () => {
+        if (eventId !== state.currentEventId) { showToast('Nothing to undo', 'info'); return; }
+        const current = state.vendors.find(v => v.id === id);
+        if (current) current[field] = oldValue;
+        await collections.vendors.doc(id).update({ [field]: oldValue, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    });
+
+    logActivity({
+        action: 'edit', collection: 'vendors', eventId, docId: id,
+        label: `${describeRecord(item)} — vendor`,
+        changes: [{ field, before: oldValue, after: newValue }],
+    });
+
+    collections.vendors.doc(id).update({ [field]: newValue, updatedAt: firebase.firestore.FieldValue.serverTimestamp() })
+        .catch(err => {
+            console.error('Error saving vendor cell:', err);
+            if (item) item[field] = oldValue;
+            cell.dataset.original = oldValue;
+            showToast('Error saving', 'error');
+        });
+}
+
+function restoreVendorCellDisplay(cell, isPhantom) {
+    const field = cell.dataset.field;
+    if (isPhantom) {
+        const val = state.pendingNewVendorRow[field] || '';
+        cell.innerHTML = val ? escapeHtml(val) : `<span class="phantom-placeholder">+ ${vendorColumnLabel(field).toLowerCase()}</span>`;
+    } else {
+        const original = cell.dataset.original || '';
+        cell.textContent = original;
+    }
+}
+
+function clearVendorEditingFlag() {
+    state.vendorEditingRowId = null;
+    if (state.vendorRenderPending) {
+        state.vendorRenderPending = false;
+        renderVendorLogistics();
+    }
+}
+
+function navigateVendorCell(row, currentField, direction) {
+    const fieldKeys = vendorFieldKeys();
+    const idx = fieldKeys.indexOf(currentField);
+    const nextIdx = idx + direction;
+
+    if (nextIdx >= 0 && nextIdx < fieldKeys.length) {
+        const nextField = fieldKeys[nextIdx];
+        const nextCell = row.querySelector(`td[data-field="${nextField}"]`);
+        if (nextCell) window.editVendorCell(nextCell);
+    } else if (direction > 0) {
+        const isPhantom = row.dataset.phantom === 'true';
+        if (isPhantom) { commitNewVendorRow(row); return; }
+        const nextRow = row.nextElementSibling;
+        if (nextRow && nextRow.querySelector('td[data-field]')) {
+            const firstCell = nextRow.querySelector(`td[data-field="${fieldKeys[0]}"]`);
+            if (firstCell) window.editVendorCell(firstCell);
+        }
+    } else if (direction < 0) {
+        const prevRow = row.previousElementSibling;
+        if (prevRow && prevRow.querySelector('td[data-field]')) {
+            const lastField = fieldKeys[fieldKeys.length - 1];
+            const prevCell = prevRow.querySelector(`td[data-field="${lastField}"]`);
+            if (prevCell) window.editVendorCell(prevCell);
+        }
+    }
+}
+
+function navigateVendorNextRowSameColumn(row, field) {
+    const nextRow = row.nextElementSibling;
+    if (nextRow && nextRow.querySelector('td[data-field]')) {
+        const nextCell = nextRow.querySelector(`td[data-field="${field}"]`);
+        if (nextCell) window.editVendorCell(nextCell);
+    }
+}
+
+async function commitNewVendorRow(phantomRow) {
+    const data = { ...state.pendingNewVendorRow };
+    const fieldKeys = vendorFieldKeys();
+    const hasAnyData = fieldKeys.some(f => data[f] && String(data[f]).trim());
+    if (!hasAnyData || blockIfViewer()) {
+        state.pendingNewVendorRow = {};
+        clearVendorEditingFlag();
+        renderVendorLogistics();
         return;
     }
 
-    const writeValue = newValue === '' ? firebase.firestore.FieldValue.delete() : newValue;
+    const category = phantomRow.dataset.category || 'Uncategorized';
+    data.category = category;
+    fieldKeys.forEach(f => { if (data[f] === undefined) data[f] = ''; });
+    data.order = nextVendorOrderInCategory(category);
+    data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+    data.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
 
-    // Linked pairs: staff is authoritative (see commit 4d48229). Redirect write to the staff doc.
-    const budgetItem = state.budget.find(b => b.id === id);
-    const linkedStaffId = budgetItem && budgetItem.linkedStaffId;
+    state.pendingNewVendorRow = {};
+    state.vendorPendingCategories = state.vendorPendingCategories.filter(c => c !== category);
+    clearVendorEditingFlag();
 
     try {
-        const targetColl = linkedStaffId ? collections.staff : collections.budget;
-        const targetId = linkedStaffId || id;
-        if (linkedStaffId) {
-            await collections.staff.doc(linkedStaffId).update({
-                [`schedule.${day}`]: writeValue,
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        const docRef = await collections.vendors.add(data);
+        logActivity({ action: 'create', collection: 'vendors', eventId: state.currentEventId, docId: docRef.id, label: `${describeRecord(data)} — vendor` });
+        showToast('Vendor added');
+    } catch (error) {
+        console.error('Error adding vendor row:', error);
+        showToast('Error adding row', 'error');
+    }
+}
+
+function exportVendorLogisticsToExcel() {
+    const wb = XLSX.utils.book_new();
+    const columns = state.vendorColumns || DEFAULT_VENDOR_COLUMNS;
+    const categories = vendorCategoryOrder();
+    const rows = [];
+    categories.forEach(category => {
+        state.vendors
+            .filter(v => (v.category || 'Uncategorized') === category)
+            .sort((a, b) => (a.order || 0) - (b.order || 0))
+            .forEach(v => {
+                const row = { Category: category };
+                columns.forEach(col => { row[col.label] = v[col.key] || ''; });
+                rows.push(row);
             });
-        } else {
-            await collections.budget.doc(id).update({
-                [`schedule.${day}`]: writeValue,
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-            });
-        }
-        const eventId = state.currentEventId;
-        pushUndo('Edit schedule', async () => {
-            if (eventId !== state.currentEventId) { showToast('Nothing to undo', 'info'); return; }
-            const revertValue = original === '' ? firebase.firestore.FieldValue.delete() : original;
-            await targetColl.doc(targetId).update({
-                [`schedule.${day}`]: revertValue,
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-            });
-        });
-        cell.dataset.original = newValue;
-        restoreVendorScheduleCellDisplay(cell);
-        showToast('Updated');
-    } catch (err) {
-        console.error('Error saving vendor schedule cell:', err);
-        restoreVendorScheduleCellDisplay(cell);
-        showToast('Error saving', 'error');
-    } finally {
-        clearVendorScheduleEditingFlag();
-        if (typeof afterSave === 'function') afterSave();
-    }
-}
-window.saveVendorScheduleCell = saveVendorScheduleCell;
-
-async function toggleVendorOffSite(id, onSite) {
-    try {
-        await collections.budget.doc(id).update({
-            offSite: !onSite,
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-        showToast(onSite ? 'Marked on-site' : 'Marked off-site');
-    } catch (err) {
-        console.error('Error toggling vendor off-site:', err);
-        showToast('Error updating', 'error');
-    }
-}
-window.toggleVendorOffSite = toggleVendorOffSite;
-
-// ---------- Vendor Schedule Gantt ----------
-
-function setVendorGanttDay(day) {
-    state.vendorGanttDay = day;
-    document.querySelectorAll('.vendor-gantt-day-tab').forEach(tab => {
-        tab.classList.toggle('active', tab.dataset.day === day);
     });
-    renderVendorGantt();
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [{ wch: 18 }, ...columns.map(() => ({ wch: 22 }))];
+    XLSX.utils.book_append_sheet(wb, ws, 'Vendor Logistics');
+    const today = new Date().toISOString().split('T')[0];
+    XLSX.writeFile(wb, `Vendor_Logistics_${today}.xlsx`);
 }
-window.setVendorGanttDay = setVendorGanttDay;
-
-function renderVendorGantt() {
-    const container = document.getElementById('vendor-gantt-container');
-    if (!container) return;
-
-    const day = state.vendorGanttDay;
-    const dayKeys = ['thursday', 'friday', 'saturday', 'sunday'];
-    const dayNames = ['Thu', 'Fri', 'Sat', 'Sun'];
-
-    // Per-day counts for the tab labels
-    const dayCounts = { thursday: 0, friday: 0, saturday: 0, sunday: 0 };
-    for (const b of state.budget) {
-        if (b.offSite === true) continue;
-        const linked = getLinkedStaff(b);
-        const sched = linked ? (linked.schedule || {}) : (b.schedule || {});
-        for (const d of dayKeys) if (sched[d]) dayCounts[d]++;
-    }
-    document.querySelectorAll('.vendor-gantt-day-tab').forEach(tab => {
-        const d = tab.dataset.day;
-        const idx = dayKeys.indexOf(d);
-        if (idx !== -1) tab.textContent = dayNames[idx] + ' (' + dayCounts[d] + ')';
-    });
-
-    // Resolve entries for the selected day
-    const entries = [];
-    for (const item of state.budget) {
-        if (item.offSite === true) continue;
-        const linked = getLinkedStaff(item);
-        const sched = linked ? (linked.schedule || {}) : (item.schedule || {});
-        const timeStr = sched[day];
-        if (!timeStr) continue;
-        entries.push({ item, linked, timeStr });
-    }
-
-    if (entries.length === 0) {
-        container.innerHTML = '<div class="staff-empty-state">No vendors scheduled for this day</div>';
-        return;
-    }
-
-    // Axis — match staff gantt so the two align visually
-    const axisStart = 7;
-    const axisEnd = 27;
-    const axisRange = axisEnd - axisStart;
-
-    const axisLabels = [];
-    for (let h = axisStart; h < axisEnd; h++) {
-        const displayH = h > 24 ? h - 24 : h;
-        const suffix = displayH < 12 || displayH === 24 ? 'a' : 'p';
-        const label = displayH === 0 ? '12a' : displayH === 12 ? '12p' : (displayH > 12 ? displayH - 12 : displayH) + suffix;
-        axisLabels.push(label);
-    }
-
-    const timeAxisHtml = '<div class="vendor-gantt-time-axis">' +
-        axisLabels.map(l => '<span class="vendor-gantt-time-label">' + l + '</span>').join('') +
-        '</div>';
-
-    // Group by category
-    const catMap = new Map();
-    for (const entry of entries) {
-        const cat = entry.item.category || 'Uncategorized';
-        if (!catMap.has(cat)) catMap.set(cat, []);
-        catMap.get(cat).push(entry);
-    }
-    const sortedCats = [...catMap.keys()].sort((a, b) => a.localeCompare(b));
-
-    let html = timeAxisHtml;
-    for (const cat of sortedCats) {
-        const displayCat = cat.replace(/^6811[a-g] - /, '');
-        const color = getTeamColor(cat);
-        const catEntries = catMap.get(cat).sort((a, b) => (a.item.vendor || '').localeCompare(b.item.vendor || ''));
-
-        html += '<div class="vendor-gantt-team">';
-        html += '<div class="vendor-gantt-team-header">' + escapeHtml(displayCat) + '</div>';
-
-        for (const { item, linked, timeStr } of catEntries) {
-            const ranges = parseStaffScheduleRange(timeStr);
-            const onClick = linked
-                ? `openStaffModal('${linked.id}')`
-                : `editBudgetItem('${item.id}')`;
-            const barsHtml = ranges.map(r => {
-                const left = Math.max(0, (r.start - axisStart) / axisRange * 100);
-                const width = Math.min(100 - left, (r.end - r.start) / axisRange * 100);
-                const label = formatScheduleShort(timeStr) || '';
-                const linkedMark = linked ? ' vendor-gantt-bar-linked' : '';
-                const titleText = (item.vendor || 'Unnamed') + ': ' + timeStr + (linked ? ' (staff: ' + linked.name + ')' : '');
-                return '<div class="vendor-gantt-bar' + linkedMark + '"' +
-                    ' style="left:' + left + '%;width:' + width + '%;background:' + color + '"' +
-                    ' onclick="' + onClick + '"' +
-                    ' title="' + escapeHtml(titleText) + '">' +
-                    (ranges.length === 1 ? escapeHtml(label) : '') +
-                '</div>';
-            }).join('');
-
-            const displayName = escapeHtml(item.vendor || 'Unnamed');
-            const linkedTag = linked ? '<span class="multi-team-tag">staff</span>' : '';
-
-            html += '<div class="vendor-gantt-row">' +
-                '<div class="vendor-gantt-name" onclick="' + onClick + '">' +
-                    displayName + linkedTag +
-                '</div>' +
-                '<div class="vendor-gantt-bar-area">' + barsHtml + '</div>' +
-            '</div>';
-        }
-
-        html += '</div>';
-    }
-
-    container.innerHTML = html;
-}
-window.renderVendorGantt = renderVendorGantt;
-
-function setupVendorFilters() {
-    const filterBtns = document.querySelectorAll('#vendor-card-view .vendor-filter-btn');
-    filterBtns.forEach(btn => {
-        btn.addEventListener('click', () => {
-            filterBtns.forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            state.vendorFilter = btn.dataset.filter;
-            renderVendors();
-        });
-    });
-
-    // Dashboard vendor status card clicks
-    ['confirmed', 'pending', 'issues'].forEach(filter => {
-        const link = document.getElementById(`dashboard-${filter}-link`);
-        if (link) {
-            link.addEventListener('click', () => navigateToVendorFilter(filter));
-        }
-    });
-}
-
-function navigateToVendorFilter(filter) {
-    switchPage('vendors');
-
-    // Override the 'all' default that switchPage just set
-    state.vendorFilter = filter;
-
-    // Update nav active state
-    document.querySelectorAll('.nav-link').forEach(link => {
-        link.classList.toggle('active', link.dataset.page === 'vendors');
-    });
-    updateNavGroupIndicators();
-
-    // Update filter button active state
-    document.querySelectorAll('.vendor-filter-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.filter === filter);
-    });
-
-    renderVendors();
-}
-window.navigateToVendorFilter = navigateToVendorFilter;
+window.exportVendorLogisticsToExcel = exportVendorLogisticsToExcel;
 
 function updateTimelineStats() {
     const total = state.timeline.length;
@@ -4311,7 +4300,8 @@ function openBudgetModal(itemId = null) {
             'budget-in-kind': 'inKind',
             'budget-payment-status': 'paymentStatus',
             'budget-notes': 'notes',
-            'budget-confirmed': 'confirmed'
+            'budget-confirmed': 'confirmed',
+            'budget-off-site': 'offSite'
         },
         defaultValues: {
             'budget-payment-status': 'not-paid'
@@ -4437,6 +4427,7 @@ function setupFormHandlers() {
     setupStaffTeamInput();
     document.getElementById('setlist-form').addEventListener('submit', handleSetListSubmit);
     document.getElementById('packing-form').addEventListener('submit', handlePackingSubmit);
+    document.getElementById('marketing-packing-form').addEventListener('submit', handleMarketingPackingSubmit);
     document.getElementById('menu-form').addEventListener('submit', handleMenuSubmit);
     document.getElementById('print-form').addEventListener('submit', handlePrintSubmit);
     document.getElementById('da-form').addEventListener('submit', handleDASubmit);
@@ -4445,8 +4436,21 @@ function setupFormHandlers() {
 }
 
 // Generic form submission handler
+function describeRecord(data) {
+    return data.name || data.vendor || data.event || data.item || data.title || data.label || 'item';
+}
+
+function diffRecord(before, after) {
+    const skip = new Set(['updatedAt', 'updatedBy', 'updatedByName', 'createdAt', 'createdBy', 'createdByName']);
+    return Object.keys(after)
+        .filter(k => !skip.has(k))
+        .filter(k => JSON.stringify(before ? before[k] : undefined) !== JSON.stringify(after[k]))
+        .map(k => ({ field: k, before: before ? before[k] : undefined, after: after[k] }));
+}
+
 async function handleFormSubmit(e, config) {
     e.preventDefault();
+    if (blockIfViewer()) return;
 
     const data = {};
     Object.entries(config.fieldMap).forEach(([fieldId, dataKey]) => {
@@ -4467,6 +4471,8 @@ async function handleFormSubmit(e, config) {
     });
 
     data.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+    data.updatedBy = state.currentUser?.uid || null;
+    data.updatedByName = state.currentUser?.name || null;
 
     const id = document.getElementById(config.idFieldId).value;
 
@@ -4482,13 +4488,24 @@ async function handleFormSubmit(e, config) {
                     await collections[config.collection].doc(id).update(restSnapshot);
                 });
             }
+            logActivity({
+                action: 'edit', collection: config.collection, eventId: state.currentEventId,
+                docId: id, label: `${describeRecord(data)} — ${config.itemName}`,
+                changes: diffRecord(snapshot, data),
+            });
             showToast(`${config.itemName.charAt(0).toUpperCase() + config.itemName.slice(1)} updated`);
         } else {
             data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+            data.createdBy = state.currentUser?.uid || null;
+            data.createdByName = state.currentUser?.name || null;
             const docRef = await collections[config.collection].add(data);
             result = { isNew: true, docId: docRef.id };
             pushUndo(`Add ${config.itemName}`, async () => {
                 await collections[config.collection].doc(docRef.id).delete();
+            });
+            logActivity({
+                action: 'create', collection: config.collection, eventId: state.currentEventId,
+                docId: docRef.id, label: `${describeRecord(data)} — ${config.itemName}`,
             });
             showToast(`${config.itemName.charAt(0).toUpperCase() + config.itemName.slice(1)} added`);
         }
@@ -4525,7 +4542,8 @@ async function handleBudgetSubmit(e) {
             'budget-in-kind': 'inKind',
             'budget-payment-status': 'paymentStatus',
             'budget-notes': 'notes',
-            'budget-confirmed': 'confirmed'
+            'budget-confirmed': 'confirmed',
+            'budget-off-site': 'offSite'
         },
         numericFields: ['budgeted', 'actual']
     });
@@ -4615,6 +4633,7 @@ window.editBudgetItem = (id) => openBudgetModal(id);
 window.editTimelineItem = (id) => openTimelineModal(id);
 
 window.duplicateBudgetItem = async (id) => {
+    if (blockIfViewer()) return;
     const item = state.budget.find(i => i.id === id);
     if (!item) return;
 
@@ -4624,7 +4643,8 @@ window.duplicateBudgetItem = async (id) => {
     data.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
 
     try {
-        await collections.budget.add(data);
+        const docRef = await collections.budget.add(data);
+        logActivity({ action: 'create', collection: 'budget', eventId: state.currentEventId, docId: docRef.id, label: `${describeRecord(data)} — budget (duplicate)` });
         showToast('Item duplicated');
     } catch (error) {
         console.error('Error duplicating budget item:', error);
@@ -4635,6 +4655,7 @@ window.duplicateBudgetItem = async (id) => {
 // Generic delete handler factory
 function createDeleteHandler(collectionKey, itemName) {
     return async (id) => {
+        if (blockIfViewer()) return;
         if (confirm(`Are you sure you want to delete this ${itemName}?`)) {
             const item = state[collectionKey]?.find(i => i.id === id);
             const eventId = state.currentEventId;
@@ -4647,6 +4668,13 @@ function createDeleteHandler(collectionKey, itemName) {
             }
             try {
                 await collections[collectionKey].doc(id).delete();
+                if (item) {
+                    const { id: _id, ...data } = item;
+                    logActivity({
+                        action: 'delete', collection: collectionKey, eventId,
+                        docId: id, label: `${describeRecord(data)} — ${itemName}`, snapshot: data,
+                    });
+                }
                 showToast(`${itemName.charAt(0).toUpperCase() + itemName.slice(1)} deleted — Cmd+Z to undo`);
             } catch (error) {
                 console.error(`Error deleting ${itemName}:`, error);
@@ -4670,6 +4698,7 @@ window.deleteBudgetItem = async function(id) {
 };
 window.toggleBudgetConfirmed = toggleBudgetConfirmed;
 window.deleteTimelineItem = async (id) => {
+    if (blockIfViewer()) return;
     if (!confirm('Are you sure you want to delete this task?')) return;
     const item = state.timeline.find(i => i.id === id);
     const eventId = state.currentEventId;
@@ -4682,6 +4711,10 @@ window.deleteTimelineItem = async (id) => {
     }
     try {
         await collections.timeline.doc(id).delete();
+        if (item) {
+            const { id: _id, ...data } = item;
+            logActivity({ action: 'delete', collection: 'timeline', eventId, docId: id, label: `${describeRecord(data)} — timeline item`, snapshot: data });
+        }
         showToast('Task deleted — Cmd+Z to undo');
     } catch (error) {
         console.error('Error deleting task:', error);
@@ -4764,6 +4797,7 @@ document.addEventListener('click', (e) => {
 window.setTimelineColor = async (id, color) => {
     // Close the picker
     document.querySelectorAll('.color-swatch-dropdown.open').forEach(el => el.classList.remove('open'));
+    if (blockIfViewer()) return;
     try {
         const highlightColor = (color === '#ffffff') ? '' : color;
         await collections.timeline.doc(id).update({
@@ -4777,6 +4811,7 @@ window.setTimelineColor = async (id, color) => {
 };
 
 window.duplicateTimelineItem = async (id) => {
+    if (blockIfViewer()) return;
     const item = state.timeline.find(i => i.id === id);
     if (!item) return;
 
@@ -4787,7 +4822,8 @@ window.duplicateTimelineItem = async (id) => {
     data.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
 
     try {
-        await collections.timeline.add(data);
+        const docRef = await collections.timeline.add(data);
+        logActivity({ action: 'create', collection: 'timeline', eventId: state.currentEventId, docId: docRef.id, label: `${describeRecord(data)} — timeline item (duplicate)` });
         showToast('Task duplicated');
     } catch (error) {
         console.error('Error duplicating task:', error);
@@ -5185,7 +5221,7 @@ function setupExportAndPrint() {
 
     const exportVendorsBtn = document.getElementById('export-vendors-btn');
     if (exportVendorsBtn) {
-        exportVendorsBtn.addEventListener('click', exportBudgetToExcel);
+        exportVendorsBtn.addEventListener('click', exportVendorLogisticsToExcel);
     }
 
     const printSetListBtn = document.getElementById('print-setlist-btn');
@@ -5481,6 +5517,7 @@ function saveSingleCell(cell, row, keepEditing = false) {
         newValue = formatDuration(newValue);
     }
 
+    if (newValue !== oldValue && blockIfViewer()) newValue = oldValue;
 
     // Restore cell to display mode immediately (remove input so blur handler won't double-fire)
     cell.dataset.original = newValue;
@@ -5513,6 +5550,12 @@ function saveSingleCell(cell, row, keepEditing = false) {
         const current = state.timeline.find(i => i.id === id);
         if (current) current[field] = oldValue;
         await collections.timeline.doc(id).update({ [field]: oldValue, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    });
+
+    logActivity({
+        action: 'edit', collection: 'timeline', eventId, docId: id,
+        label: `${describeRecord(item)} — timeline item`,
+        changes: [{ field, before: oldValue, after: newValue }],
     });
 
     // Save to Firestore
@@ -5652,6 +5695,8 @@ function saveCueSheetCell(cell, row, keepEditing = false) {
     if (field === 'duration' && newValue) newValue = formatDuration(newValue);
     if (field === 'screenCue') newValue = normalizeScreenCue(newValue);
 
+    if (newValue !== oldValue && blockIfViewer()) newValue = oldValue;
+
     cell.dataset.original = newValue;
     restoreCueCellDisplay(cell);
 
@@ -5671,6 +5716,12 @@ function saveCueSheetCell(cell, row, keepEditing = false) {
         const current = state.timeline.find(i => i.id === id);
         if (current) current[field] = oldValue;
         await collections.timeline.doc(id).update({ [field]: oldValue, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    });
+
+    logActivity({
+        action: 'edit', collection: 'timeline', eventId, docId: id,
+        label: `${describeRecord(item)} — cue sheet`,
+        changes: [{ field, before: oldValue, after: newValue }],
     });
 
     const updates = { [field]: newValue, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
@@ -5804,6 +5855,13 @@ async function commitNewRow() {
         return;
     }
 
+    if (blockIfViewer()) {
+        state.pendingNewRow = {};
+        clearTimelineEditingFlag();
+        renderTimeline();
+        return;
+    }
+
     // Convert time to 24hr
     if (data.time) data.time = convertTo24Hour(data.time);
     if (data.duration) data.duration = formatDuration(data.duration);
@@ -5819,7 +5877,8 @@ async function commitNewRow() {
     state.pendingNewRow = {};
 
     try {
-        await collections.timeline.add(data);
+        const docRef = await collections.timeline.add(data);
+        logActivity({ action: 'create', collection: 'timeline', eventId: state.currentEventId, docId: docRef.id, label: `${describeRecord(data)} — timeline item` });
         showToast('Task added');
     } catch (error) {
         console.error('Error adding task:', error);
@@ -5835,6 +5894,7 @@ async function commitNewRow() {
 // reference row and whatever currently follows it.
 async function insertTimelineRowAfterCurrent() {
     if (!state.currentEventId) return;
+    if (blockIfViewer()) return;
 
     // "Where you are": the row containing focus right now, falling back to
     // the last row you edited/clicked, even if focus has since moved away.
@@ -5879,6 +5939,7 @@ async function insertTimelineRowAfterCurrent() {
 
     try {
         const ref = await collections.timeline.add(data);
+        logActivity({ action: 'create', collection: 'timeline', eventId: state.currentEventId, docId: ref.id, label: `${describeRecord(data)} — timeline item` });
         state.timelineLastActiveRowId = ref.id;
         // Render right off our own write instead of waiting on the listener's
         // round-trip — setupCollectionListener replaces state.timeline wholesale
@@ -6220,6 +6281,8 @@ function saveSingleBudgetCell(cell, row) {
         newValue = parseFloat(newValue) || 0;
     }
 
+    if (String(newValue) !== String(oldValue) && blockIfViewer()) newValue = oldValue;
+
     // Restore cell to display mode
     cell.dataset.original = String(newValue);
     restoreBudgetCellDisplay(cell, false);
@@ -6257,6 +6320,12 @@ function saveSingleBudgetCell(cell, row) {
         const current = state.budget.find(i => i.id === id);
         if (current) current[field] = oldValue;
         await collections.budget.doc(id).update({ [field]: oldValue, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    });
+
+    logActivity({
+        action: 'edit', collection: 'budget', eventId, docId: id,
+        label: `${describeRecord(item)} — budget`,
+        changes: [{ field, before: oldValue, after: newValue }],
     });
 
     // Save to Firestore
@@ -6362,7 +6431,7 @@ async function commitNewBudgetRow(phantomRow) {
 
     // Need at least one field populated
     const hasAnyData = BUDGET_FIELD_ORDER.some(f => data[f] && String(data[f]).trim());
-    if (!hasAnyData) {
+    if (!hasAnyData || blockIfViewer()) {
         state.pendingNewBudgetRow = {};
         clearBudgetEditingFlag();
         renderBudget();
@@ -6391,7 +6460,8 @@ async function commitNewBudgetRow(phantomRow) {
     clearBudgetEditingFlag();
 
     try {
-        await collections.budget.add(data);
+        const docRef = await collections.budget.add(data);
+        logActivity({ action: 'create', collection: 'budget', eventId: state.currentEventId, docId: docRef.id, label: `${describeRecord(data)} — budget` });
         showToast('Budget item added');
     } catch (error) {
         console.error('Error adding budget item:', error);
@@ -6660,6 +6730,7 @@ function saveSingleStageCell(cell, row, collectionName) {
     const item = stageData.find(i => i.id === id);
     const oldValue = item ? (item[field] || '') : '';
     if (newValue === oldValue) return;
+    if (blockIfViewer()) { cell.dataset.original = oldValue; cell.textContent = oldValue; return; }
 
     const eventId = state.currentEventId;
     pushUndo(`Edit ${field}`, async () => {
@@ -6667,6 +6738,12 @@ function saveSingleStageCell(cell, row, collectionName) {
         const current = stageData.find(i => i.id === id);
         if (current) current[field] = oldValue;
         await collections[collectionName].doc(id).update({ [field]: oldValue, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    });
+
+    logActivity({
+        action: 'edit', collection: collectionName, eventId, docId: id,
+        label: `${describeRecord(item)} — stage input`,
+        changes: [{ field, before: oldValue, after: newValue }],
     });
 
     // Save to Firestore
@@ -6743,7 +6820,7 @@ async function commitNewStageRow(collectionName) {
     const data = { ...state.pendingNewStageRow };
 
     // Need at least channel or instrument
-    if (!data.channel && !data.instrument) {
+    if ((!data.channel && !data.instrument) || blockIfViewer()) {
         state.pendingNewStageRow = {};
         clearStageEditingFlag();
         renderStageInputs();
@@ -6769,7 +6846,8 @@ async function commitNewStageRow(collectionName) {
     clearStageEditingFlag();
 
     try {
-        await collections[collectionName].add(data);
+        const docRef = await collections[collectionName].add(data);
+        logActivity({ action: 'create', collection: collectionName, eventId: state.currentEventId, docId: docRef.id, label: `${describeRecord(data)} — stage input` });
         showToast('Input added');
     } catch (error) {
         console.error('Error adding stage input:', error);
@@ -6779,9 +6857,15 @@ async function commitNewStageRow(collectionName) {
 
 // Delete a stage input row
 async function deleteStageInput(id, collectionName) {
+    if (blockIfViewer()) return;
     if (!confirm('Delete this input?')) return;
+    const item = state[collectionName]?.find(i => i.id === id);
     try {
         await collections[collectionName].doc(id).delete();
+        if (item) {
+            const { id: _id, ...data } = item;
+            logActivity({ action: 'delete', collection: collectionName, eventId: state.currentEventId, docId: id, label: `${describeRecord(data)} — stage input`, snapshot: data });
+        }
         showToast('Input deleted');
     } catch (error) {
         console.error('Error deleting stage input:', error);
@@ -7523,6 +7607,7 @@ window.addStaffTeam = addStaffTeam;
 
 async function handleStaffSubmit(e) {
     e.preventDefault();
+    if (blockIfViewer()) return;
 
     // Auto-add any typed-but-uncommitted team name
     const teamInput = document.getElementById('staff-team-input');
@@ -7548,7 +7633,9 @@ async function handleStaffSubmit(e) {
         },
         isPlaceholder: document.getElementById('staff-placeholder').checked,
         linkedBudgetId: newLinkedBudgetId,
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        updatedBy: state.currentUser?.uid || null,
+        updatedByName: state.currentUser?.name || null,
     };
 
     const staffId = document.getElementById('staff-id').value;
@@ -7556,13 +7643,18 @@ async function handleStaffSubmit(e) {
     try {
         let resolvedStaffId = staffId;
         if (staffId) {
+            const before = state.staff.find(s => s.id === staffId);
             await collections.staff.doc(staffId).update(staffData);
+            logActivity({ action: 'edit', collection: 'staff', eventId: state.currentEventId, docId: staffId, label: `${staffData.name} — staff`, changes: diffRecord(before, staffData) });
             showToast('Staff member updated');
         } else {
             staffData.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+            staffData.createdBy = state.currentUser?.uid || null;
+            staffData.createdByName = state.currentUser?.name || null;
             staffData.sortOrder = state.staff.length;
             const docRef = await collections.staff.add(staffData);
             resolvedStaffId = docRef.id;
+            logActivity({ action: 'create', collection: 'staff', eventId: state.currentEventId, docId: resolvedStaffId, label: `${staffData.name} — staff` });
             showToast('Staff member added');
         }
 
@@ -7642,13 +7734,15 @@ function loadRoleCategoryMap() {
 }
 
 async function addJobTemplate(name, category) {
+    if (!isAdmin()) { showToast('Job templates are admin-only', 'error'); return; }
     name = (name || '').trim();
     category = (category || '').trim();
     if (!name || !category) { showToast('Name and category are required', 'error'); return; }
     const exists = state.jobTemplates.some(t => t.name.trim().toLowerCase() === name.toLowerCase());
     if (exists) { showToast('A template for "' + name + '" already exists', 'error'); return; }
     try {
-        await jobTemplatesCol().add({ name, category, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+        const docRef = await jobTemplatesCol().add({ name, category, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+        logActivity({ action: 'create', collection: 'jobTemplates', docId: docRef.id, label: `${name} — job template` });
         showToast('Job template saved');
     } catch (e) {
         console.error('addJobTemplate error:', e);
@@ -7658,11 +7752,17 @@ async function addJobTemplate(name, category) {
 window.addJobTemplate = addJobTemplate;
 
 async function deleteJobTemplate(id) {
+    if (!isAdmin()) { showToast('Job templates are admin-only', 'error'); return; }
+    const item = state.jobTemplates.find(t => t.id === id);
     // Optimistic update
     state.jobTemplates = state.jobTemplates.filter(t => t.id !== id);
     renderJobTemplates();
     try {
         await jobTemplatesCol().doc(id).delete();
+        if (item) {
+            const { id: _id, ...data } = item;
+            logActivity({ action: 'delete', collection: 'jobTemplates', docId: id, label: `${describeRecord(data)} — job template`, snapshot: data });
+        }
     } catch (e) {
         console.error('deleteJobTemplate error:', e);
         showToast('Error deleting template', 'error');
@@ -7780,14 +7880,16 @@ async function upsertStaffContact(name, phone, email, role) {
                 email: email || existing.email || null,
                 roles
             });
+            logActivity({ action: 'edit', collection: 'staffDirectory', docId: existing.id, label: `${name} — directory contact` });
         } else {
-            await staffDirectoryCol().add({
+            const docRef = await staffDirectoryCol().add({
                 name: name.trim(),
                 phone: phone || null,
                 email: email || null,
                 roles: [role.trim()],
                 createdAt: firebase.firestore.FieldValue.serverTimestamp()
             });
+            logActivity({ action: 'create', collection: 'staffDirectory', docId: docRef.id, label: `${name} — directory contact` });
         }
     } catch (e) {
         console.warn('upsertStaffContact error:', e);
@@ -7808,6 +7910,7 @@ function openStaffIndex() {
 }
 
 function openJobTemplates() {
+    if (!isAdmin()) return;
     // Reuse the staff index modal but flip to the role mappings panel
     openStaffIndex();
     setTimeout(() => {
@@ -7829,7 +7932,7 @@ function openSbUserMenu() {
     const menu = document.getElementById('sb-user-menu');
     const inEvent = !!state.activeEvent;
     const managePages = document.getElementById('sb-menu-manage-pages');
-    if (managePages) managePages.style.display = inEvent ? '' : 'none';
+    if (managePages) managePages.classList.toggle('hidden', !inEvent);
     const divider = menu.querySelector('.sb-user-menu-divider');
     if (divider) divider.style.display = inEvent ? '' : 'none';
     menu.style.display = 'block';
@@ -7857,6 +7960,175 @@ function closeStaffIndex() {
     if (modal) modal.classList.remove('active');
 }
 window.closeStaffIndex = closeStaffIndex;
+
+// ── Manage Users (admin only) ──────────────────────────────────────
+let _unsubManageUsers = null;
+
+window.openManageUsers = function() {
+    if (!isAdmin()) return;
+    const modal = document.getElementById('manage-users-modal');
+    if (!modal) return;
+    renderManageUsers();
+    modal.classList.add('active');
+    document.getElementById('nav-menu')?.classList.remove('open');
+};
+
+window.closeManageUsers = function() {
+    document.getElementById('manage-users-modal')?.classList.remove('active');
+    if (_unsubManageUsers) { _unsubManageUsers(); _unsubManageUsers = null; }
+};
+
+function renderManageUsers() {
+    const container = document.getElementById('manage-users-content');
+    if (!container) return;
+    if (_unsubManageUsers) { _unsubManageUsers(); _unsubManageUsers = null; }
+    _unsubManageUsers = usersCollection.onSnapshot(snap => {
+        const users = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+            .sort((a, b) => (a.name || a.email || '').localeCompare(b.name || b.email || ''));
+        container.innerHTML = users.length ? users.map(u => {
+            const displayName = u.name || u.email || 'Unknown';
+            const isSelf = u.id === state.currentUser?.uid;
+            return `
+            <div class="mu-row">
+                <div class="mu-row-body">
+                    <div class="mu-row-name">${escapeHtml(displayName)}</div>
+                    <div class="mu-row-email">${escapeHtml(u.email || '')}</div>
+                </div>
+                ${isSelf
+                    ? `<span class="mu-self-note">that's you</span>`
+                    : `<select class="mu-role-select" onchange="changeUserRole('${u.id}', this.value, '${escapeHtml(displayName).replace(/'/g, "\\'")}')">
+                        <option value="viewer" ${u.role === 'viewer' ? 'selected' : ''}>Viewer</option>
+                        <option value="editor" ${u.role === 'editor' ? 'selected' : ''}>Editor</option>
+                        <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin</option>
+                    </select>`}
+            </div>`;
+        }).join('') : `<div class="al-empty">No users yet</div>`;
+    }, err => console.error('Manage Users listener error:', err));
+}
+
+window.changeUserRole = async function(uid, newRole, displayName) {
+    if (!isAdmin()) return;
+    try {
+        await usersCollection.doc(uid).update({ role: newRole });
+        logActivity({ action: 'edit', collection: 'users', docId: uid, label: `${displayName} — role changed to ${newRole}` });
+        showToast(`${displayName} is now ${newRole}`);
+    } catch (e) {
+        console.error('changeUserRole error:', e);
+        showToast('Error updating role', 'error');
+    }
+};
+
+// ── Activity Log (admin only) ──────────────────────────────────────
+window.openActivityLog = function() {
+    if (!isAdmin()) return;
+    const modal = document.getElementById('activity-log-modal');
+    if (!modal) return;
+    renderActivityLog();
+    modal.classList.add('active');
+    document.getElementById('nav-menu')?.classList.remove('open');
+};
+
+window.closeActivityLog = function() {
+    document.getElementById('activity-log-modal')?.classList.remove('active');
+};
+
+function _tsToMillis(ts) {
+    if (!ts) return 0;
+    if (typeof ts.toMillis === 'function') return ts.toMillis();
+    return 0;
+}
+
+function renderActivityEntry(e) {
+    const canRestore = e.action === 'delete' && e.snapshot && !e.restoredAt;
+    let label = e.label || '';
+    if (e.changes && e.changes.length === 1) {
+        const c = e.changes[0];
+        label += ` (${c.field}: ${JSON.stringify(c.before)} → ${JSON.stringify(c.after)})`;
+    }
+    return `
+    <div class="al-entry">
+        <span class="al-entry-action ${e.action}">${escapeHtml(e.action)}</span>
+        <span class="al-entry-label" title="${escapeHtml(label)}">${escapeHtml(label)}</span>
+        ${canRestore ? `<button class="al-restore-btn" onclick="restoreActivityEntry('${e.id}')">Restore</button>` : ''}
+        ${e.restoredAt ? `<span class="al-restored-tag">restored${e.restoredByName ? ' by ' + escapeHtml(e.restoredByName) : ''}</span>` : ''}
+    </div>`;
+}
+
+function renderActivityLog() {
+    const container = document.getElementById('activity-log-content');
+    if (!container) return;
+    container.innerHTML = `<div class="al-empty">Loading…</div>`;
+    activityLogCollection.orderBy('timestamp', 'desc').limit(300).get().then(snap => {
+        const entries = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        if (!entries.length) { container.innerHTML = `<div class="al-empty">No activity yet</div>`; return; }
+
+        // Group consecutive entries from the same actor within a 15-minute
+        // gap into a single collapsible "session" row, Sheets-style.
+        const SESSION_GAP_MS = 15 * 60 * 1000;
+        const sessions = [];
+        entries.forEach(e => {
+            const t = _tsToMillis(e.timestamp);
+            const last = sessions[sessions.length - 1];
+            if (last && last.actorUid === e.actorUid && (last.earliestMs - t) <= SESSION_GAP_MS) {
+                last.entries.push(e);
+                last.earliestMs = t;
+            } else {
+                sessions.push({ actorUid: e.actorUid, actorName: e.actorName, entries: [e], latestMs: t, earliestMs: t });
+            }
+        });
+
+        container.innerHTML = sessions.map((s, i) => {
+            const start = new Date(s.earliestMs);
+            const end = new Date(s.latestMs);
+            const dateStr = start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            const timeLabel = s.entries.length === 1
+                ? `${dateStr}, ${start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`
+                : `${dateStr}, ${start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}–${end.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+            return `
+            <div class="al-session" id="al-session-${i}">
+                <div class="al-session-hdr" onclick="document.getElementById('al-session-${i}').classList.toggle('expanded')">
+                    <span class="al-session-actor">${escapeHtml(s.actorName || 'Unknown')}</span>
+                    <span class="al-session-meta">${escapeHtml(timeLabel)}</span>
+                    <span class="al-session-count">${s.entries.length} change${s.entries.length !== 1 ? 's' : ''}</span>
+                </div>
+                <div class="al-session-body">
+                    ${s.entries.map(renderActivityEntry).join('')}
+                </div>
+            </div>`;
+        }).join('');
+    }).catch(err => {
+        console.error('renderActivityLog error:', err);
+        container.innerHTML = `<div class="al-empty">Error loading activity log</div>`;
+    });
+}
+
+window.restoreActivityEntry = async function(logId) {
+    if (!isAdmin()) return;
+    try {
+        const logDoc = await activityLogCollection.doc(logId).get();
+        if (!logDoc.exists) return;
+        const entry = logDoc.data();
+        if (entry.restoredAt) { showToast('Already restored', 'info'); return; }
+        if (entry.collection === 'events') {
+            await restoreEventFromSnapshot(entry.docId, entry.snapshot);
+        } else if (entry.eventId) {
+            await eventsCollection.doc(entry.eventId).collection(entry.collection).doc(entry.docId).set(entry.snapshot);
+        } else {
+            await db.collection(entry.collection).doc(entry.docId).set(entry.snapshot);
+        }
+        await activityLogCollection.doc(logId).update({
+            restoredAt: firebase.firestore.FieldValue.serverTimestamp(),
+            restoredBy: state.currentUser?.uid || null,
+            restoredByName: state.currentUser?.name || null,
+        });
+        logActivity({ action: 'restore', collection: entry.collection, eventId: entry.eventId || null, docId: entry.docId, label: entry.label });
+        showToast('Restored');
+        renderActivityLog();
+    } catch (e) {
+        console.error('restoreActivityEntry error:', e);
+        showToast('Error restoring. Please try again.', 'error');
+    }
+};
 
 async function syncStaffToDirectory(silent = false) {
     const staffToSync = (state.staff || []).filter(m => !m.isPlaceholder && m.name && m.role);
@@ -7890,6 +8162,7 @@ function toggleAddDirectoryContact() {
 window.toggleAddDirectoryContact = toggleAddDirectoryContact;
 
 async function saveDirectoryContact() {
+    if (blockIfViewer()) return;
     const name = (document.getElementById('dir-add-name')?.value || '').trim();
     const role = (document.getElementById('dir-add-role')?.value || '').trim();
     const phone = (document.getElementById('dir-add-phone')?.value || '').trim();
@@ -8072,6 +8345,7 @@ function toggleDirEditRow(contactId) {
 window.toggleDirEditRow = toggleDirEditRow;
 
 async function saveDirContactEdit(contactId) {
+    if (blockIfViewer()) return;
     const name  = (document.getElementById('de-name-'  + contactId)?.value || '').trim();
     const roles = (document.getElementById('de-roles-' + contactId)?.value || '')
         .split(',').map(r => r.trim()).filter(Boolean);
@@ -8091,6 +8365,7 @@ async function saveDirContactEdit(contactId) {
 
     try {
         await staffDirectoryCol().doc(contactId).update({ name, roles, phone: phone || null, email: email || null });
+        logActivity({ action: 'edit', collection: 'staffDirectory', docId: contactId, label: `${name} — directory contact` });
         showToast('Contact updated');
     } catch (e) {
         console.error('saveDirContactEdit error:', e);
@@ -8155,6 +8430,7 @@ window.reassignContactRole = async function(contactId, roleOrSelect) {
 };
 
 async function deleteDirectoryContact(id) {
+    if (blockIfViewer()) return;
     const contact = state.staffDirectory.find(c => c.id === id);
     if (!contact) return;
     if (!confirm('Remove ' + (contact.name || 'this contact') + ' from the directory?')) return;
@@ -8162,6 +8438,8 @@ async function deleteDirectoryContact(id) {
     renderStaffIndex();
     try {
         await staffDirectoryCol().doc(id).delete();
+        const { id: _id, ...data } = contact;
+        logActivity({ action: 'delete', collection: 'staffDirectory', docId: id, label: `${describeRecord(data)} — directory contact`, snapshot: data });
         showToast('Contact removed from directory');
     } catch (e) {
         console.error('deleteDirectoryContact error:', e);
@@ -8224,6 +8502,7 @@ const BUDGET_CATEGORIES = [
 ];
 
 function toggleRoleMappings() {
+    if (!isAdmin()) return;
     const panel = document.getElementById('role-mappings-panel');
     if (!panel) return;
     const showing = panel.style.display !== 'none';
@@ -8422,6 +8701,7 @@ function collectParents(listId) {
 }
 
 async function saveNewPerformer() {
+    if (blockIfViewer()) return;
     const name  = (document.getElementById('pa-name')?.value  || '').trim();
     const act   = (document.getElementById('pa-act')?.value   || '').trim();
     const phone = (document.getElementById('pa-phone')?.value || '').trim();
@@ -8429,10 +8709,11 @@ async function saveNewPerformer() {
     if (!name || !act) { showToast('Name and Act are required', 'error'); return; }
     const parents = collectParents('pa-parents-list');
     try {
-        await performerDirectoryCol().add({
+        const docRef = await performerDirectoryCol().add({
             name, act, phone: phone || null, email: email || null, parents,
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
         });
+        logActivity({ action: 'create', collection: 'performerDirectory', docId: docRef.id, label: `${name} — performer` });
         showToast('Performer added');
         toggleAddPerformer();
     } catch (e) {
@@ -8452,6 +8733,7 @@ function togglePerformerEditRow(performerId) {
 window.togglePerformerEditRow = togglePerformerEditRow;
 
 async function savePerformerEdit(performerId) {
+    if (blockIfViewer()) return;
     const name  = (document.getElementById('pe-name-'  + performerId)?.value || '').trim();
     const act   = (document.getElementById('pe-act-'   + performerId)?.value || '').trim();
     const phone = (document.getElementById('pe-phone-' + performerId)?.value || '').trim();
@@ -8468,6 +8750,7 @@ async function savePerformerEdit(performerId) {
 
     try {
         await performerDirectoryCol().doc(performerId).update({ name, act, phone: phone || null, email: email || null, parents });
+        logActivity({ action: 'edit', collection: 'performerDirectory', docId: performerId, label: `${name} — performer` });
         showToast('Performer updated');
     } catch (e) {
         console.error('savePerformerEdit error:', e);
@@ -8477,6 +8760,7 @@ async function savePerformerEdit(performerId) {
 window.savePerformerEdit = savePerformerEdit;
 
 async function deletePerformer(id) {
+    if (blockIfViewer()) return;
     const p = state.performerDirectory.find(p => p.id === id);
     if (!p) return;
     if (!confirm('Remove ' + (p.name || 'this performer') + ' from the directory?')) return;
@@ -8484,6 +8768,8 @@ async function deletePerformer(id) {
     renderPerformerIndex();
     try {
         await performerDirectoryCol().doc(id).delete();
+        const { id: _id, ...data } = p;
+        logActivity({ action: 'delete', collection: 'performerDirectory', docId: id, label: `${describeRecord(data)} — performer`, snapshot: data });
         showToast('Performer removed');
     } catch (e) {
         console.error('deletePerformer error:', e);
@@ -9551,6 +9837,7 @@ function openMenuModal(itemId = null) {
 
 async function handleMenuSubmit(e) {
     e.preventDefault();
+    if (blockIfViewer()) return;
 
     const data = {};
     Object.entries(MENU_FIELD_MAP).forEach(([fieldId, dataKey]) => {
@@ -9571,19 +9858,26 @@ async function handleMenuSubmit(e) {
     data.dietaryTags = dietaryTags;
 
     data.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+    data.updatedBy = state.currentUser?.uid || null;
+    data.updatedByName = state.currentUser?.name || null;
 
     const id = document.getElementById('menu-id').value;
 
     try {
         if (id) {
+            const before = state.menuItems.find(i => i.id === id);
             await collections.menuItems.doc(id).update(data);
+            logActivity({ action: 'edit', collection: 'menuItems', eventId: state.currentEventId, docId: id, label: `${describeRecord(data)} — menu item`, changes: diffRecord(before, data) });
             showToast('Menu item updated');
         } else {
             data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+            data.createdBy = state.currentUser?.uid || null;
+            data.createdByName = state.currentUser?.name || null;
             // Set sortOrder for new items
             const catItems = state.menuItems.filter(i => i.category === data.category);
             data.sortOrder = catItems.length;
-            await collections.menuItems.add(data);
+            const docRef = await collections.menuItems.add(data);
+            logActivity({ action: 'create', collection: 'menuItems', eventId: state.currentEventId, docId: docRef.id, label: `${describeRecord(data)} — menu item` });
             showToast('Menu item added');
         }
         closeAllModals();
@@ -10275,6 +10569,7 @@ window.clearAllPackingSelections = async function() {
 };
 
 window.toggleAdHocItem = async function(packDocId, checked) {
+    if (blockIfViewer()) return;
     try {
         await collections.packingList.doc(packDocId).update({
             deselected: !checked,
@@ -10285,17 +10580,19 @@ window.toggleAdHocItem = async function(packDocId, checked) {
 
 window.toggleItemForEvent = async function(inventoryId, existingPackDocId) {
     if (!state.activeEvent) return;
+    if (blockIfViewer()) return;
     if (existingPackDocId) {
         // Uncheck — remove from packing list
         try {
             await collections.packingList.doc(existingPackDocId).delete();
+            logActivity({ action: 'delete', collection: 'packingList', eventId: state.currentEventId, docId: existingPackDocId, label: 'inventory item removed from packing list' });
         } catch (err) { showToast('Error removing item', 'error'); }
     } else {
         // Check — add to packing list
         const inv = getInventoryItem(inventoryId);
         if (!inv) return;
         try {
-            await collections.packingList.add({
+            const docRef = await collections.packingList.add({
                 inventoryId,
                 name: inv.name,
                 category: inv.category || 'Misc',
@@ -10304,6 +10601,7 @@ window.toggleItemForEvent = async function(inventoryId, existingPackDocId) {
                 createdAt: firebase.firestore.FieldValue.serverTimestamp(),
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
             });
+            logActivity({ action: 'create', collection: 'packingList', eventId: state.currentEventId, docId: docRef.id, label: `${inv.name} — packing item` });
         } catch (err) { showToast('Error selecting item', 'error'); }
     }
 };
@@ -10338,6 +10636,7 @@ function openPackingModal(itemId = null) {
 
 async function handlePackingSubmit(e) {
     e.preventDefault();
+    if (blockIfViewer()) return;
     const data = {};
     Object.entries(PACKING_FIELD_MAP).forEach(([fieldId, dataKey]) => {
         const el = document.getElementById(fieldId);
@@ -10346,14 +10645,21 @@ async function handlePackingSubmit(e) {
     data.quantity = parseInt(data.quantity) || 1;
     data.isAdHoc = true;
     data.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+    data.updatedBy = state.currentUser?.uid || null;
+    data.updatedByName = state.currentUser?.name || null;
     const id = document.getElementById('packing-id').value;
     try {
         if (id) {
+            const before = state.packingList.find(i => i.id === id);
             await collections.packingList.doc(id).update(data);
+            logActivity({ action: 'edit', collection: 'packingList', eventId: state.currentEventId, docId: id, label: `${describeRecord(data)} — packing item`, changes: diffRecord(before, data) });
             showToast('Item updated');
         } else {
             data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
-            await collections.packingList.add(data);
+            data.createdBy = state.currentUser?.uid || null;
+            data.createdByName = state.currentUser?.name || null;
+            const docRef = await collections.packingList.add(data);
+            logActivity({ action: 'create', collection: 'packingList', eventId: state.currentEventId, docId: docRef.id, label: `${describeRecord(data)} — packing item` });
             showToast('Item added');
         }
         closeAllModals();
@@ -10559,6 +10865,277 @@ window.printPackingList = function() {
     printWithScope('printing-packing-list');
 };
 
+// ============================================================
+// MARKETING & DECOR LIST — a simple ad-hoc list (no equipment-inventory
+// linkage, unlike Packing List above), for marketing collateral, F&B tools,
+// and decor supplies. Mirrors Packing List's category-management pattern.
+// ============================================================
+
+const MARKETING_PACKING_FIELD_MAP = {
+    'marketing-packing-name': 'name',
+    'marketing-packing-category': 'category',
+    'marketing-packing-quantity': 'quantity',
+    'marketing-packing-location': 'location',
+    'marketing-packing-assignee': 'assignee',
+    'marketing-packing-notes': 'notes',
+};
+
+const MARKETING_PACKING_CATEGORIES_DEFAULT = ['F&B Tools & Accessories', 'Decor', 'Marketing Materials', 'Signage', 'Misc'];
+
+function getMarketingPackingCategories() {
+    return (state.activeEvent && state.activeEvent.marketingPackingCategories && state.activeEvent.marketingPackingCategories.length)
+        ? state.activeEvent.marketingPackingCategories
+        : MARKETING_PACKING_CATEGORIES_DEFAULT;
+}
+
+window.openMarketingPackingCategoriesModal = function() {
+    renderMarketingPackingCategoriesModal();
+    document.getElementById('marketing-packing-categories-modal').classList.add('is-open');
+};
+
+window.closeMarketingPackingCategoriesModal = function() {
+    document.getElementById('marketing-packing-categories-modal').classList.remove('is-open');
+};
+
+function renderMarketingPackingCategoriesModal() {
+    const cats = getMarketingPackingCategories();
+    const list = document.getElementById('marketing-packing-cat-list');
+    if (!list) return;
+    list.innerHTML = cats.map((c, i) => `
+        <div class="pcat-item">
+            <span class="pcat-name">${escapeHtml(c)}</span>
+            <button class="btn-icon-sm delete" onclick="removeMarketingPackingCategory(${i})" title="Remove">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>`).join('');
+}
+
+window.addMarketingPackingCategory = async function() {
+    if (blockIfViewer()) return;
+    const input = document.getElementById('new-marketing-packing-cat-input');
+    const name = (input?.value || '').trim();
+    if (!name) return;
+    const cats = getMarketingPackingCategories();
+    if (cats.includes(name)) { showToast('Category already exists', 'error'); return; }
+    const updated = [...cats, name];
+    try {
+        await eventsCollection.doc(state.activeEvent.id).update({ marketingPackingCategories: updated });
+        state.activeEvent.marketingPackingCategories = updated;
+        input.value = '';
+        renderMarketingPackingCategoriesModal();
+        populateMarketingPackingCategorySelects();
+    } catch (err) { showToast('Error saving category', 'error'); }
+};
+
+window.removeMarketingPackingCategory = async function(index) {
+    if (blockIfViewer()) return;
+    const cats = getMarketingPackingCategories();
+    const name = cats[index];
+    const inUse = state.marketingPackingList.some(i => i.category === name);
+    if (inUse && !confirm(`"${name}" is used by existing items. Remove it anyway?`)) return;
+    const updated = cats.filter((_, i) => i !== index);
+    try {
+        await eventsCollection.doc(state.activeEvent.id).update({ marketingPackingCategories: updated });
+        state.activeEvent.marketingPackingCategories = updated;
+        renderMarketingPackingCategoriesModal();
+        populateMarketingPackingCategorySelects();
+        renderMarketingPackingList();
+    } catch (err) { showToast('Error removing category', 'error'); }
+};
+
+function populateMarketingPackingCategorySelects() {
+    const cats = getMarketingPackingCategories();
+    const catOptions = cats.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+
+    const filterEl = document.getElementById('marketing-packing-category-filter');
+    if (filterEl) {
+        const cur = filterEl.value;
+        filterEl.innerHTML = `<option value="all">All Categories</option>${catOptions}`;
+        if (cats.includes(cur)) filterEl.value = cur;
+    }
+
+    const modalCatEl = document.getElementById('marketing-packing-category');
+    if (modalCatEl) {
+        const cur2 = modalCatEl.value;
+        modalCatEl.innerHTML = `<option value="">Select category...</option>${catOptions}`;
+        if (cats.includes(cur2)) modalCatEl.value = cur2;
+    }
+}
+
+function renderMarketingPackingList() {
+    const container = document.getElementById('marketing-packing-list-container');
+    if (!container) return;
+
+    populateMarketingPackingCategorySelects();
+
+    let items = state.marketingPackingList;
+    const q = (state.marketingPackingSearch || '').toLowerCase();
+    if (q) items = items.filter(i => (i.name || '').toLowerCase().includes(q) || (i.category || '').toLowerCase().includes(q));
+    if (state.marketingPackingCategoryFilter !== 'all') items = items.filter(i => i.category === state.marketingPackingCategoryFilter);
+
+    const sc = document.getElementById('marketing-packing-search-count');
+    if (sc) {
+        const anyFilter = q || state.marketingPackingCategoryFilter !== 'all';
+        sc.textContent = anyFilter ? `${items.length} result${items.length !== 1 ? 's' : ''}` : '';
+    }
+
+    const grouped = {};
+    items.forEach(i => {
+        const cat = i.category || 'Misc';
+        if (!grouped[cat]) grouped[cat] = [];
+        grouped[cat].push(i);
+    });
+
+    const cats = getMarketingPackingCategories();
+    const sortedCats = Object.keys(grouped).sort((a, b) => {
+        const ai = cats.indexOf(a), bi = cats.indexOf(b);
+        return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+    });
+
+    if (sortedCats.length === 0) {
+        container.innerHTML = '<p class="empty-state">No items added yet.</p>';
+        return;
+    }
+
+    let rows = '';
+    sortedCats.forEach(cat => {
+        const catItems = grouped[cat];
+        rows += `<tr class="pl-category-row">
+            <td colspan="6">
+                <span class="pl-cat-name">${escapeHtml(cat)}</span>
+                <span class="pl-cat-count">${catItems.length} item${catItems.length !== 1 ? 's' : ''}</span>
+            </td>
+        </tr>`;
+        catItems.forEach(item => {
+            const qty = item.quantity || 1;
+            rows += `<tr class="pl-item-row">
+                <td class="pl-name-cell">
+                    <span class="pl-item-name">${escapeHtml(item.name || 'Unnamed')}</span>
+                </td>
+                <td class="pl-qty-cell">${qty > 1 ? `<span class="pl-qty">×${qty}</span>` : '<span class="pl-muted">—</span>'}</td>
+                <td>${escapeHtml(item.location || '') || '<span class="pl-muted">—</span>'}</td>
+                <td>${escapeHtml(item.assignee || '') || '<span class="pl-muted">—</span>'}</td>
+                <td class="pl-notes-cell">
+                    <input type="text" class="pl-notes-input" value="${escapeHtml(item.notes || '')}" placeholder="Add a note…" onblur="saveMarketingPackingNote('${item.id}', this.value)" onkeydown="if(event.key==='Enter')this.blur()">
+                </td>
+                <td class="pl-actions-cell">
+                    <div class="pl-actions">
+                        <button class="btn-icon-sm" onclick="openMarketingPackingModal('${item.id}')" title="Edit item">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                        </button>
+                        <button class="btn-icon-sm delete" onclick="deleteMarketingPackingItem('${item.id}')" title="Remove">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+                        </button>
+                    </div>
+                </td>
+            </tr>`;
+        });
+    });
+
+    container.innerHTML = `
+    <table class="pl-table">
+        <thead>
+            <tr>
+                <th class="pl-name-cell">Item</th>
+                <th class="pl-qty-cell">Qty</th>
+                <th>Location</th>
+                <th>Responsible</th>
+                <th class="pl-th-notes">Notes</th>
+                <th class="pl-actions-cell"></th>
+            </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+    </table>`;
+}
+
+window.saveMarketingPackingNote = async function(id, value) {
+    if (blockIfViewer()) return;
+    try {
+        await collections.marketingPackingList.doc(id).update({
+            notes: value,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        });
+    } catch (err) { showToast('Error saving note', 'error'); }
+};
+
+function openMarketingPackingModal(itemId = null) {
+    openModal({
+        modalId: 'marketing-packing-modal',
+        formId: 'marketing-packing-form',
+        title: itemId ? 'Edit Item' : 'Add Item',
+        stateKey: 'marketingPackingList',
+        itemId: itemId,
+        idFieldId: 'marketing-packing-id',
+        fieldMap: MARKETING_PACKING_FIELD_MAP,
+        defaultValues: { 'marketing-packing-quantity': '1' }
+    });
+}
+window.openMarketingPackingModal = openMarketingPackingModal;
+
+async function handleMarketingPackingSubmit(e) {
+    e.preventDefault();
+    if (blockIfViewer()) return;
+    const data = {};
+    Object.entries(MARKETING_PACKING_FIELD_MAP).forEach(([fieldId, dataKey]) => {
+        const el = document.getElementById(fieldId);
+        if (el) data[dataKey] = el.value;
+    });
+    data.quantity = parseInt(data.quantity) || 1;
+    data.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+    data.updatedBy = state.currentUser?.uid || null;
+    data.updatedByName = state.currentUser?.name || null;
+    const id = document.getElementById('marketing-packing-id').value;
+    try {
+        if (id) {
+            const before = state.marketingPackingList.find(i => i.id === id);
+            await collections.marketingPackingList.doc(id).update(data);
+            logActivity({ action: 'edit', collection: 'marketingPackingList', eventId: state.currentEventId, docId: id, label: `${describeRecord(data)} — marketing/decor item`, changes: diffRecord(before, data) });
+            showToast('Item updated');
+        } else {
+            data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+            data.createdBy = state.currentUser?.uid || null;
+            data.createdByName = state.currentUser?.name || null;
+            const docRef = await collections.marketingPackingList.add(data);
+            logActivity({ action: 'create', collection: 'marketingPackingList', eventId: state.currentEventId, docId: docRef.id, label: `${describeRecord(data)} — marketing/decor item` });
+            showToast('Item added');
+        }
+        closeAllModals();
+    } catch (err) {
+        console.error('Error saving marketing/decor item:', err);
+        showToast('Error saving item', 'error');
+    }
+}
+
+window.deleteMarketingPackingItem = createDeleteHandler('marketingPackingList', 'marketing/decor item');
+
+function handleMarketingPackingSearch(value) {
+    state.marketingPackingSearch = value;
+    const clearBtn = document.getElementById('marketing-packing-search-clear');
+    if (clearBtn) clearBtn.style.display = value ? 'block' : 'none';
+    renderMarketingPackingList();
+}
+window.handleMarketingPackingSearch = handleMarketingPackingSearch;
+
+function clearMarketingPackingSearch() {
+    state.marketingPackingSearch = '';
+    const input = document.getElementById('marketing-packing-search-input');
+    if (input) input.value = '';
+    const clearBtn = document.getElementById('marketing-packing-search-clear');
+    if (clearBtn) clearBtn.style.display = 'none';
+    renderMarketingPackingList();
+}
+window.clearMarketingPackingSearch = clearMarketingPackingSearch;
+
+function handleMarketingPackingCategoryFilter(value) {
+    state.marketingPackingCategoryFilter = value;
+    renderMarketingPackingList();
+}
+window.handleMarketingPackingCategoryFilter = handleMarketingPackingCategoryFilter;
+
+window.printMarketingPackingList = function() {
+    printWithScope('printing-marketing-packing-list');
+};
+
 // --- Inventory Picker Modal ---
 window.openInventoryPickerModal = function() {
     state._inventoryPickerSelected = new Set();
@@ -10760,6 +11337,7 @@ async function handleInventoryImageChange(e) {
 
 window.handleInventorySubmit = async function(e) {
     e.preventDefault();
+    if (blockIfViewer()) return;
     const itemId = document.getElementById('inv-id').value;
     const data = {};
     Object.entries(INVENTORY_FIELD_MAP).forEach(([elId, field]) => {
@@ -10774,11 +11352,13 @@ window.handleInventorySubmit = async function(e) {
         let newId = itemId;
         if (itemId) {
             await db.collection('inventory').doc(itemId).update(data);
+            logActivity({ action: 'edit', collection: 'inventory', docId: itemId, label: `${describeRecord(data)} — inventory item` });
             showToast('Inventory item updated');
         } else {
             data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
             const ref = await db.collection('inventory').add(data);
             newId = ref.id;
+            logActivity({ action: 'create', collection: 'inventory', docId: newId, label: `${describeRecord(data)} — inventory item` });
             showToast('Item added to inventory');
         }
         // Upload pending image for new items
@@ -10799,9 +11379,15 @@ window.handleInventorySubmit = async function(e) {
 };
 
 window.deleteInventoryItem = async function(itemId) {
+    if (blockIfViewer()) return;
     if (!confirm('Remove this item from your inventory?')) return;
+    const item = (state.inventory || []).find(i => i.id === itemId);
     try {
         await db.collection('inventory').doc(itemId).delete();
+        if (item) {
+            const { id: _id, ...data } = item;
+            logActivity({ action: 'delete', collection: 'inventory', docId: itemId, label: `${describeRecord(data)} — inventory item`, snapshot: data });
+        }
         showToast('Removed from inventory');
     } catch (err) { showToast('Error removing item', 'error'); }
 };
@@ -10888,13 +11474,16 @@ window.saveInvField = async function(invId, field, value) {
 };
 
 window.cycleInvConditionInTable = async function(invId, btn) {
+    if (blockIfViewer()) return;
     const inv = getInventoryItem(invId);
     if (!inv) return;
     const order = ['working', 'damaged', 'broken'];
     const labels = { working: 'Working', damaged: 'Damaged', broken: 'Broken' };
-    const next = order[(order.indexOf(inv.condition || 'working') + 1) % order.length];
+    const prev = inv.condition || 'working';
+    const next = order[(order.indexOf(prev) + 1) % order.length];
     try {
         await db.collection('inventory').doc(invId).update({ condition: next });
+        logActivity({ action: 'edit', collection: 'inventory', docId: invId, label: `${inv.name} — inventory item`, changes: [{ field: 'condition', before: prev, after: next }] });
         btn.textContent = labels[next];
         btn.className = `pl-condition-badge cond-${next}`;
     } catch (err) { showToast('Error updating condition', 'error'); }
@@ -10912,6 +11501,7 @@ window.handleInventoryImport = async function(e) {
     const file = e.target.files[0];
     if (!file) return;
     e.target.value = '';
+    if (!isAdmin()) { showToast('Bulk import is admin-only', 'error'); return; }
     try {
         const data = await file.arrayBuffer();
         const wb = XLSX.read(data);
@@ -10935,9 +11525,486 @@ window.handleInventoryImport = async function(e) {
             count++;
         });
         await batch.commit();
+        logActivity({ action: 'create', collection: 'inventory', docId: 'bulk-import', label: `Bulk import — ${count} inventory item${count !== 1 ? 's' : ''}` });
         showToast(`Imported ${count} item${count !== 1 ? 's' : ''}`, 'success');
     } catch (err) {
         console.error('Import failed:', err);
+        showToast('Import failed — check file format', 'error');
+    }
+};
+
+window.handleBudgetImport = async function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    e.target.value = '';
+    if (!isAdmin()) { showToast('Bulk import is admin-only', 'error'); return; }
+    if (!state.currentEventId) { showToast('Open an event first', 'error'); return; }
+    try {
+        const data = await file.arrayBuffer();
+        const wb = XLSX.read(data);
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws);
+        if (rows.length === 0) { showToast('No data found in file', 'error'); return; }
+        const batch = db.batch();
+        let count = 0;
+        rows.forEach(row => {
+            const vendor = row['Vendor/Item'] || row['Vendor'] || row['vendor'] || row['Item'] || row['item'] || '';
+            if (!String(vendor).trim()) return;
+            const ref = collections.budget.doc();
+            batch.set(ref, {
+                vendor: String(vendor).trim(),
+                category: String(row['Category'] || row['category'] || 'Uncategorized').trim(),
+                owner: String(row['Owner'] || row['owner'] || '').trim(),
+                budgeted: parseFloat(row['Budgeted'] || row['budgeted'] || 0) || 0,
+                actual: parseFloat(row['Actual'] || row['actual'] || 0) || 0,
+                paymentStatus: String(row['Payment Status'] || row['paymentStatus'] || 'not-paid').toLowerCase().replace(/\s+/g, '-'),
+                notes: String(row['Notes'] || row['notes'] || '').trim(),
+                confirmed: false,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                createdBy: state.currentUser?.uid || null,
+                createdByName: state.currentUser?.name || null,
+            });
+            count++;
+        });
+        await batch.commit();
+        logActivity({ action: 'create', collection: 'budget', eventId: state.currentEventId, docId: 'bulk-import', label: `Bulk import — ${count} budget item${count !== 1 ? 's' : ''}` });
+        showToast(`Imported ${count} budget item${count !== 1 ? 's' : ''}`, 'success');
+    } catch (err) {
+        console.error('Budget import failed:', err);
+        showToast('Import failed — check file format', 'error');
+    }
+};
+
+window.handleTimelineImport = async function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    e.target.value = '';
+    if (!isAdmin()) { showToast('Bulk import is admin-only', 'error'); return; }
+    if (!state.currentEventId) { showToast('Open an event first', 'error'); return; }
+    try {
+        const data = await file.arrayBuffer();
+        const wb = XLSX.read(data);
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws);
+        if (rows.length === 0) { showToast('No data found in file', 'error'); return; }
+        const batch = db.batch();
+        let count = 0;
+        rows.forEach(row => {
+            const event = row['Event'] || row['event'] || '';
+            const time = row['Time'] || row['time'] || '';
+            if (!String(event).trim() && !String(time).trim()) return;
+            const ref = collections.timeline.doc();
+            batch.set(ref, {
+                day: String(row['Day'] || row['day'] || state.currentDay).trim(),
+                time: String(time).trim(),
+                duration: String(row['Duration'] || row['duration'] || '').trim(),
+                event: String(event).trim(),
+                responsible: String(row['Responsible'] || row['responsible'] || '').trim(),
+                staff: String(row['Staff'] || row['staff'] || '').trim(),
+                production: false,
+                tag: '', notes: '', highlightColor: '',
+                completed: /^y(es)?$/i.test(String(row['Completed'] || row['completed'] || '')),
+                status: 'not-started',
+                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                createdBy: state.currentUser?.uid || null,
+                createdByName: state.currentUser?.name || null,
+            });
+            count++;
+        });
+        await batch.commit();
+        logActivity({ action: 'create', collection: 'timeline', eventId: state.currentEventId, docId: 'bulk-import', label: `Bulk import — ${count} timeline item${count !== 1 ? 's' : ''}` });
+        showToast(`Imported ${count} timeline item${count !== 1 ? 's' : ''}`, 'success');
+    } catch (err) {
+        console.error('Timeline import failed:', err);
+        showToast('Import failed — check file format', 'error');
+    }
+};
+
+// One uploaded workbook = one event. Each tab is matched by name (and, if
+// unmatched, its columns) against the pages we actually have real per-row
+// data for. A tab only gets flagged as unrecognized if nothing in the app
+// corresponds to it at all — everything else gets imported and that page
+// gets enabled ("unlocked") on the new event.
+// Matches an imported budget category's free-text label (e.g. "Talent/
+// Performers & Host") against the app's standard lettered scheme (e.g.
+// "6811a - Talent/Performers & Hosts") so imported rows land in the same
+// buckets as manually-added ones instead of spawning duplicate categories.
+// Mirrors getBudgetCategories()'s default ('a-g', code '6811') shape — the
+// only shape a freshly-imported event's budgetSetup ever uses.
+function normalizeBudgetCategoryText(s) {
+    return String(s || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .split(' ')
+        .filter(Boolean)
+        .map(w => w.replace(/s$/, ''))
+        .join(' ');
+}
+const BUDGET_CATEGORY_LOOKUP = new Map([
+    ['a', 'Talent/Performers & Hosts'],
+    ['b', 'A/V Production'],
+    ['c', 'Venue & Permits'],
+    ['d', 'Food & Beverage'],
+    ['e', 'Staff & Labor'],
+    ['f', 'Marketing, Promotion & Branding'],
+    ['g', 'Decor & Miscellaneous Supplies'],
+].map(([letter, label]) => [normalizeBudgetCategoryText(label), `6811${letter} - ${label}`]));
+
+function mapBudgetCategory(raw) {
+    if (!raw) return 'Uncategorized';
+    return BUDGET_CATEGORY_LOOKUP.get(normalizeBudgetCategoryText(raw)) || raw;
+}
+
+const EVENT_IMPORT_TARGETS = [
+    { key: 'budget', pageId: 'budget', collection: 'budget',
+      aliases: ['budget', 'expenses', 'expense', 'costs', 'finance', 'financial'],
+      columns: { vendor: ['vendor/item', 'vendor name', 'vendor', 'item'], description: ['description/role', 'description'], category: ['category'], owner: ['owner'], budgeted: ['budgeted', 'budget'], actual: ['actual'], paymentStatus: ['payment status'], notes: ['notes'] },
+      build: v => ({ vendor: v.vendor || '', description: v.description || '', category: mapBudgetCategory(v.category), owner: v.owner || '', budgeted: parseFloat(v.budgeted) || 0, actual: parseFloat(v.actual) || 0, paymentStatus: (v.paymentStatus || 'not-paid').toLowerCase().replace(/\s+/g, '-'), notes: v.notes || '', confirmed: false }) },
+    { key: 'vendors', pageId: 'vendors', collection: 'vendors',
+      aliases: ['vendors', 'vendor', 'in kind', 'in-kind'],
+      columns: { description: ['description', 'in kind item', 'item'], vendor: ['vendor', 'company name', 'company'], contactName: ['contact name', 'name of contact'], contactNumber: ['contact number', 'phone number', 'phone', 'email'], category: ['category'], notes: ['form status', 'needs', 'notes'], requirements: ['requirements'], serviceTime: ['service time'] },
+      build: v => ({ description: v.description || '', vendor: v.vendor || '', contactName: v.contactName || '', contactNumber: v.contactNumber || '', category: v.category || 'Uncategorized', notes: v.notes || '', requirements: v.requirements || '', serviceTime: v.serviceTime || '' }) },
+    { key: 'timeline', pageId: 'timeline', collection: 'timeline',
+      aliases: ['timeline', 'ros', 'run of show', 'runofshow', 'schedule', 'agenda', 'production schedule', 'cue sheet', 'technical cue sheet'],
+      columns: { day: ['day'], time: ['time'], duration: ['duration'], event: ['event'], responsible: ['responsible', 'team lead'], staff: ['staff'], completed: ['completed'] },
+      build: v => ({ day: v.day || 'Thursday', time: v.time ? convertTo24Hour(v.time) : '', duration: v.duration || '', event: v.event || '', responsible: v.responsible || '', staff: v.staff || '', production: false, tag: '', notes: '', highlightColor: '', completed: /^y(es)?$/i.test(v.completed || ''), status: 'not-started' }) },
+    { key: 'staff', pageId: 'staff', collection: 'staff',
+      aliases: ['staff', 'crew', 'crew list', 'team', 'personnel'],
+      columns: { name: ['name'], role: ['role'], phone: ['phone'], email: ['email'] },
+      build: v => ({ name: v.name || '', role: v.role || '', phone: v.phone || null, email: v.email || null, teams: [], schedule: {}, isPlaceholder: !v.name }) },
+    { key: 'guests', pageId: 'guests', collection: 'guests',
+      aliases: ['guests', 'guest list', 'seating', 'rsvp'],
+      columns: { firstName: ['first name'], lastName: ['last name'], party: ['party', 'group'], email: ['email'], phone: ['phone'], dietary: ['dietary', 'diet'], notes: ['notes'] },
+      build: v => ({ firstName: v.firstName || '', lastName: v.lastName || '', party: v.party || '', tableId: '', email: v.email || '', phone: v.phone || '', dietary: v.dietary || '', notes: v.notes || '' }) },
+    { key: 'packingList', pageId: 'packing-list', collection: 'packingList',
+      aliases: ['packing list', 'packing', 'gear', 'equipment', 'inventory', 'avl', 'a/v', 'audio visual'],
+      columns: { name: ['name', 'item'], category: ['category'], quantity: ['quantity', 'qty'], assignee: ['assignee'], notes: ['notes'] },
+      build: v => ({ name: v.name || '', category: v.category || 'Misc', quantity: parseInt(v.quantity) || 1, assignee: v.assignee || '', notes: v.notes || '', isAdHoc: true }) },
+    { key: 'marketingPackingList', pageId: 'marketing-packing-list', collection: 'marketingPackingList',
+      aliases: ['fnb', 'f&b', 'decor', 'marketing packing', 'marketing/decor', 'marketing & decor'],
+      columns: { name: ['type', 'name', 'item'], category: ['category'], quantity: ['quantity', 'qty'], location: ['location'], assignee: ['responsible', 'assignee'], notes: ['notes'] },
+      build: v => ({ name: v.name || '', category: v.category || 'Misc', quantity: parseInt(v.quantity) || 1, location: v.location || '', assignee: v.assignee || '', notes: v.notes || '' }) },
+    { key: 'menuItems', pageId: 'menu', collection: 'menuItems',
+      aliases: ['menu', 'catering', 'food'],
+      columns: { name: ['name', 'item'], category: ['category'], subcategory: ['subcategory'], servingStyle: ['serving style'], quantity: ['quantity'], notes: ['notes'] },
+      build: v => ({ name: v.name || '', category: v.category || '', subcategory: v.subcategory || '', servingStyle: v.servingStyle || '', status: 'pending', quantity: v.quantity || '', notes: v.notes || '' }) },
+    { key: 'printedMaterials', pageId: 'printed-materials', collection: 'printedMaterials',
+      aliases: ['printed materials', 'print', 'signage'],
+      columns: { name: ['name', 'item', 'asset'], quantity: ['quantity'], size: ['size'], material: ['material'], vendor: ['vendor'], notes: ['notes'] },
+      build: v => ({ name: v.name || '', quantity: v.quantity || '', size: v.size || '', material: v.material || '', vendor: v.vendor || '', holder: '', fileLink: '', notes: v.notes || '', status: 'pending' }) },
+    { key: 'digitalAssets', pageId: 'digital-assets', collection: 'digitalAssets',
+      aliases: ['digital assets', 'graphics', 'assets'],
+      columns: { name: ['name', 'item', 'asset'], format: ['format'], resolution: ['resolution'], destination: ['destination'], creator: ['creator'], notes: ['notes'] },
+      build: v => ({ name: v.name || '', format: v.format || '', resolution: v.resolution || '', destination: v.destination || '', creator: v.creator || '', duration: '', fileLink: '', notes: v.notes || '', status: 'pending' }) },
+    { key: 'setLists', pageId: 'set-lists', collection: 'setLists',
+      aliases: ['performers', 'set list', 'set lists', 'acts'],
+      columns: { performer: ['performer', 'name', 'act'], stage: ['stage'], notes: ['notes'] },
+      build: v => ({ performer: v.performer || '', stage: v.stage || '', songs: [], members: [], arrivals: {}, performanceOverrides: {}, estimatedDuration: '', generalNotes: v.notes || '' }) },
+    { key: 'quoteLines', pageId: 'quote', collection: 'quoteLines',
+      aliases: ['quote', 'quote lines'],
+      columns: { section: ['section'], description: ['description'], qty: ['qty', 'quantity'], unitCost: ['unit cost', 'unitcost'], notes: ['notes'] },
+      build: (v, i) => ({ section: v.section || 'talent', description: v.description || '', qty: parseInt(v.qty) || 1, unitCost: parseFloat(v.unitCost) || 0, notes: v.notes || '', order: Date.now() + i }) },
+    { key: 'mainStageInputs', pageId: 'input-lists', collection: 'mainStageInputs',
+      aliases: ['input list', 'input lists', 'main stage', 'audio inputs', 'stage plot'],
+      columns: { channel: ['channel'], subsnake: ['subsnake', 'sub snake'], instrument: ['instrument'], mics: ['mic', 'mics'], stands: ['stand', 'stands'], notes: ['notes'] },
+      build: v => ({ channel: v.channel || '', subsnake: v.subsnake || '', instrument: v.instrument || '', mics: v.mics || '', stands: v.stands || '', notes: v.notes || '', symbol: '' }) },
+    // Not a subcollection — lives on the event doc's own `resources` array
+    // (the Dashboard's Resources panel), handled as a special case below.
+    { key: 'resources', pageId: null, collection: null,
+      aliases: ['resources', 'links', 'resource links'],
+      columns: { name: ['name', 'label', 'resource'], url: ['url', 'link'] },
+      build: v => ({ name: v.name || '', url: v.url || '' }) },
+    // Single form doc (events/{id}/intake/main), not row-based — parsed as
+    // Field/Value pairs instead of entity rows, handled as a special case below.
+    { key: 'intake', pageId: 'intake', collection: null,
+      aliases: ['intake'] },
+];
+
+// The ~40 named scalar fields on the Intake form (js/app.js INTAKE_SCHEMA) —
+// pre_show_rows/run_of_show_rows are dynamic/freeform and not covered here.
+const INTAKE_FIELD_KEYS = [
+    'venue_contact_name', 'venue_phone', 'venue_email', 'venue_org',
+    'nature_of_performance', 'num_guests', 'other_activations',
+    'event_name', 'venue_name', 'venue_address', 'staff_entrance', 'performing_bands', 'event_date',
+    'event_access', 'dress_code', 'parking_info', 'truck_parking', 'food_provider', 'walkthrough', 'alcohol_served', 'stage_plot_link',
+    'stage_provider', 'sound_provider', 'lights_provider', 'power_situation', 'sound_setup', 'photographer', 'photographer_contact', 'additional_services',
+    'should_promote', 'ymu_table', 'ymu_donations', 'ymu_promotion', 'flyer_status',
+    'insured_party1', 'insured_address', 'booking_name', 'booking_email', 'booking_phone', 'booking_org', 'contact2_name', 'contact2_email', 'contact2_phone', 'contact2_org',
+    'invoice_org', 'billing_address', 'staff_name', 'staff_email', 'amount',
+];
+
+function normalizeIntakeLabel(s) {
+    return String(s || '').trim().toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ');
+}
+
+// A key-value sheet: column A is a short field label, column B its value —
+// one row per Intake field, matched against INTAKE_FIELD_KEYS by normalizing
+// both sides the same way. Rows that don't match a known field but still
+// have a value are treated as the two dynamic run-of-show sections: they
+// accumulate as pre_show_rows until a row whose label contains "run of
+// show" is seen, then as run_of_show_rows for everything after.
+function parseIntakeSheet(ws) {
+    const raw = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, blankrows: false });
+    const fieldByLabel = {};
+    INTAKE_FIELD_KEYS.forEach(k => { fieldByLabel[normalizeIntakeLabel(k)] = k; });
+
+    const data = {};
+    const preShowRows = [];
+    const runOfShowRows = [];
+    let mode = 'fields';
+
+    // Row 1 is a header ("Venue - Day of Contact | INFO | NOTES") describing
+    // the columns below, not a real field/value pair — skip it.
+    raw.slice(1).forEach(r => {
+        const rawLabel = String(r[0] || '').trim();
+        if (!rawLabel) return;
+        const label = normalizeIntakeLabel(rawLabel);
+        const value = String(r[1] || '').trim();
+
+        if (label.includes('run of show')) { mode = 'runOfShow'; return; }
+
+        const key = fieldByLabel[label];
+        if (key) { if (value) data[key] = value; return; }
+
+        if (!value) return; // section header with no data of its own (e.g. "Event Info")
+        (mode === 'runOfShow' ? runOfShowRows : preShowRows).push({ label: rawLabel, time: value });
+    });
+
+    if (preShowRows.length) data.pre_show_rows = preShowRows;
+    if (runOfShowRows.length) data.run_of_show_rows = runOfShowRows;
+    return data;
+}
+
+// The Resources tab's actual URL isn't in the cell text at all — it's a
+// hyperlink behind display text like "LINK", so the raw worksheet cells are
+// scanned directly for a hyperlink target rather than reusing the generic
+// text-based parser. Section-header rows (e.g. "OPERATIONS") have a name in
+// column A but no hyperlink anywhere in the row, so they're skipped for free.
+function parseResourcesSheet(ws) {
+    if (!ws['!ref']) return [];
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    const resources = [];
+    for (let r = range.s.r + 1; r <= range.e.r; r++) {
+        const nameCell = ws[XLSX.utils.encode_cell({ r, c: 0 })];
+        const name = nameCell ? String(nameCell.v || '').trim() : '';
+        if (!name) continue;
+        let url = '';
+        for (let c = 1; c <= range.e.c; c++) {
+            const cell = ws[XLSX.utils.encode_cell({ r, c })];
+            if (cell && cell.l && cell.l.Target) { url = cell.l.Target; break; }
+        }
+        if (url) resources.push({ name, url });
+    }
+    return resources;
+}
+
+// Leading-word-boundary match, not plain substring — a tab named e.g.
+// "...SponsorsIn Kind Ma" (Excel-truncated) would otherwise false-match the
+// "in kind" alias just because those letters happen to appear glued inside
+// "SponsorsIn", with no real word boundary before them. Only requiring the
+// boundary at the *start* of the alias (not the end) still lets aliases
+// like "print" match a real word variant like "Printed".
+function matchImportTarget(sheetName) {
+    const norm = sheetName.trim().toLowerCase().replace(/\s+/g, ' ');
+    return EVENT_IMPORT_TARGETS.find(t => t.aliases.some(a => {
+        const re = new RegExp('\\b' + a.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+        return re.test(norm);
+    }));
+}
+
+function fuzzyHeaderMatch(header, alias) {
+    return header.includes(alias) || alias.includes(header);
+}
+
+// Reads one sheet against a target's column aliases. Real-world sheets vary
+// a lot from a clean "row 1 = header" table:
+//  - Headers rarely match our alias guesses exactly ("Vendor Name" vs
+//    "vendor", "#7 Budget " vs "budgeted") — matched fuzzily as substrings.
+//  - Some sheets have a title row above the real header row, so the first
+//    few rows are scanned and whichever matches the most columns wins.
+//  - Many of these sheets group rows under a section/category label that
+//    only occupies column A (e.g. "OPERATIONS", "Talent/Performers - A",
+//    "CONSOLES + STAGE SNAKES") — detected as a row with column-A text but
+//    no data in any other mapped column, and carried forward as `category`
+//    on the rows underneath instead of being imported as a row itself.
+// Falls back to treating column A as the target's first (primary) field if
+// nothing in the first few rows looks like a real header at all.
+function parseImportSheet(ws, target) {
+    const raw = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, dateNF: 'yyyy-mm-dd', blankrows: false });
+    if (!raw.length) return [];
+
+    const fields = Object.keys(target.columns);
+    let headerRowIdx = -1, colIndex = {}, bestScore = 0;
+    for (let i = 0; i < Math.min(3, raw.length); i++) {
+        const row = raw[i].map(c => String(c || '').trim().toLowerCase());
+        const candidate = {};
+        fields.forEach(f => {
+            const idx = row.findIndex(h => h && target.columns[f].some(alias => fuzzyHeaderMatch(h, alias)));
+            if (idx >= 0) candidate[f] = idx;
+        });
+        if (Object.keys(candidate).length > bestScore) {
+            bestScore = Object.keys(candidate).length;
+            headerRowIdx = i;
+            colIndex = candidate;
+        }
+    }
+    const looksLikeHeader = bestScore > 0;
+    const dataRows = looksLikeHeader ? raw.slice(headerRowIdx + 1) : raw;
+    if (!looksLikeHeader) colIndex[fields[0]] = 0;
+
+    let currentCategory = null;
+    const rows = [];
+    dataRows.forEach(r => {
+        const v = {};
+        fields.forEach(f => { if (colIndex[f] !== undefined) v[f] = String(r[colIndex[f]] || '').trim(); });
+        const col0Text = String(r[0] || '').trim();
+        const otherFieldsHaveData = fields.some(f => colIndex[f] !== undefined && colIndex[f] !== 0 && v[f]);
+
+        if (col0Text && !otherFieldsHaveData && !(colIndex[fields[0]] === 0 && Object.keys(colIndex).length === 1)) {
+            // Section/category header row — nothing else on this row has
+            // data, so it's a label for the rows that follow, not a row itself.
+            currentCategory = col0Text.replace(/\s*-\s*[a-z]$/i, '').trim();
+            return;
+        }
+        if (!Object.values(v).some(val => val)) return;
+        if (fields.includes('category') && !v.category && currentCategory) v.category = currentCategory;
+        rows.push(v);
+    });
+
+    return rows.map((v, i) => target.build(v, i));
+}
+
+window.handleEventsImport = function(e) {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (file) importEventWorkbook(file);
+};
+
+function setupHubImportDropzone() {
+    const zone = document.getElementById('events-hub');
+    if (!zone) return;
+    let dragDepth = 0;
+    zone.addEventListener('dragenter', (e) => {
+        if (state.currentPage !== 'events-hub') return;
+        e.preventDefault();
+        dragDepth++;
+        zone.classList.add('hub-drag-over');
+    });
+    zone.addEventListener('dragover', (e) => { if (state.currentPage === 'events-hub') e.preventDefault(); });
+    zone.addEventListener('dragleave', () => {
+        dragDepth = Math.max(0, dragDepth - 1);
+        if (dragDepth === 0) zone.classList.remove('hub-drag-over');
+    });
+    zone.addEventListener('drop', (e) => {
+        if (state.currentPage !== 'events-hub') return;
+        e.preventDefault();
+        dragDepth = 0;
+        zone.classList.remove('hub-drag-over');
+        const file = e.dataTransfer.files[0];
+        if (file) importEventWorkbook(file);
+    });
+}
+
+async function importEventWorkbook(file) {
+    if (!isAdmin()) { showToast('Bulk import is admin-only', 'error'); return; }
+    try {
+        const data = await file.arrayBuffer();
+        const wb = XLSX.read(data);
+
+        const eventName = file.name.replace(/\.[^.]+$/, '').trim() || 'Imported Event';
+        const slug = eventName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+        const eventId = `${slug}-${Date.now()}`;
+        const eventRef = eventsCollection.doc(eventId);
+
+        const unrecognizedTabs = [];
+        const emptyMatchedTabs = [];
+        const importedSummary = [];
+        const enabledPageIds = new Set(['dashboard']);
+        let resources = null;
+        let intakeData = null;
+
+        for (const sheetName of wb.SheetNames) {
+            const target = matchImportTarget(sheetName);
+            if (!target) { unrecognizedTabs.push(sheetName); continue; }
+
+            if (target.key === 'intake') {
+                const parsed = parseIntakeSheet(wb.Sheets[sheetName]);
+                const fieldCount = Object.keys(parsed).length;
+                // Matched by name even with nothing readable in it — still
+                // enable the page so it's there to fill in by hand, rather
+                // than silently treating it the same as a truly-unmatched tab.
+                enabledPageIds.add('intake');
+                if (!fieldCount) { emptyMatchedTabs.push(`${sheetName} (Intake)`); continue; }
+                intakeData = parsed;
+                importedSummary.push(`intake (${fieldCount} fields)`);
+                continue;
+            }
+
+            if (target.key === 'resources') {
+                const parsed = parseResourcesSheet(wb.Sheets[sheetName]);
+                if (!parsed.length) { emptyMatchedTabs.push(`${sheetName} (Resources)`); continue; }
+                resources = parsed;
+                importedSummary.push(`resources (${parsed.length})`);
+                continue;
+            }
+
+            const rows = parseImportSheet(wb.Sheets[sheetName], target);
+            enabledPageIds.add(target.pageId);
+            if (!rows.length) { emptyMatchedTabs.push(`${sheetName} (${target.key})`); continue; }
+
+            for (let i = 0; i < rows.length; i += 499) {
+                const batch = db.batch();
+                rows.slice(i, i + 499).forEach(row => {
+                    batch.set(eventRef.collection(target.collection).doc(), {
+                        ...row,
+                        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                        createdBy: state.currentUser?.uid || null,
+                        createdByName: state.currentUser?.name || null,
+                    });
+                });
+                await batch.commit();
+            }
+            importedSummary.push(`${target.key} (${rows.length})`);
+        }
+
+        if (!importedSummary.length && !emptyMatchedTabs.length) {
+            showToast("Couldn't recognize any tabs in this file — nothing was imported", 'error');
+            return;
+        }
+
+        await eventRef.set({
+            name: eventName,
+            date: '', lead: '', phase: 'phase-0',
+            enabledPages: [...enabledPageIds],
+            season: state.currentSeason,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            createdBy: state.currentUser?.uid || null,
+            createdByName: state.currentUser?.name || null,
+            ...(resources ? { resources } : {}),
+            // The Budget page hides real line items behind a one-time setup
+            // modal until this flag exists — unrelated to whether any budget
+            // rows actually exist, so it has to be set explicitly here too.
+            ...(enabledPageIds.has('budget') ? { budgetSetup: { categorySet: 'a-g', code: '' } } : {}),
+        });
+        if (intakeData) await eventRef.collection('intake').doc('main').set(intakeData, { merge: true });
+
+        logActivity({ action: 'create', collection: 'events', eventId, docId: eventId, label: `${eventName} — event imported from workbook (${importedSummary.join(', ') || 'no data, tabs enabled only'})` });
+        showToast(importedSummary.length ? `Created "${eventName}" — imported ${importedSummary.join(', ')}` : `Created "${eventName}"`, 'success', 8000);
+
+        if (emptyMatchedTabs.length) {
+            showToast(`Matched but nothing to import — enabled the page anyway so it's ready to fill in: ${emptyMatchedTabs.join(', ')}`, 'info', 8000);
+            console.warn('Events import: matched tabs with no readable data:', emptyMatchedTabs);
+        }
+        if (unrecognizedTabs.length) {
+            showToast(`Nothing in the app matches: ${unrecognizedTabs.join(', ')} — tell me if these need a real feature`, 'warning', 8000);
+            console.warn('Events import: unrecognized tabs:', unrecognizedTabs);
+        }
+        loadEvents();
+    } catch (err) {
+        console.error('Events import failed:', err);
         showToast('Import failed — check file format', 'error');
     }
 };
@@ -11154,11 +12221,17 @@ async function handlePrintSubmit(e) {
 }
 
 async function deletePrintedMaterial(itemId) {
+    if (blockIfViewer()) return;
     const id = itemId || document.getElementById('print-id').value;
     if (!id) return;
     if (confirm('Are you sure you want to delete this printed material?')) {
+        const item = state.printedMaterials.find(i => i.id === id);
         try {
             await collections.printedMaterials.doc(id).delete();
+            if (item) {
+                const { id: _id, ...data } = item;
+                logActivity({ action: 'delete', collection: 'printedMaterials', eventId: state.currentEventId, docId: id, label: `${describeRecord(data)} — printed material`, snapshot: data });
+            }
             showToast('Printed material deleted');
             closeAllModals();
         } catch (error) {
@@ -11475,11 +12548,17 @@ async function handleDASubmit(e) {
 }
 
 async function deleteDigitalAsset(itemId) {
+    if (blockIfViewer()) return;
     const id = itemId || document.getElementById('da-id').value;
     if (!id) return;
     if (confirm('Are you sure you want to delete this digital asset?')) {
+        const item = state.digitalAssets.find(i => i.id === id);
         try {
             await collections.digitalAssets.doc(id).delete();
+            if (item) {
+                const { id: _id, ...data } = item;
+                logActivity({ action: 'delete', collection: 'digitalAssets', eventId: state.currentEventId, docId: id, label: `${describeRecord(data)} — digital asset`, snapshot: data });
+            }
             showToast('Digital asset deleted');
             closeAllModals();
         } catch (error) {
@@ -11833,6 +12912,7 @@ function setupVenueMap() {
 }
 
 async function vmProcessMapFile(file) {
+    if (blockIfViewer()) return;
     showToast('Processing map…', 'info');
     try {
         let dataUrl;
@@ -11861,6 +12941,7 @@ async function vmProcessMapFile(file) {
         const compressed = tmp.toDataURL('image/jpeg', 0.85);
 
         await collections.venueMapLayers.doc('default').set({ bgImageData: compressed }, { merge: true });
+        logActivity({ action: 'edit', collection: 'venueMapLayers', eventId: state.currentEventId, docId: 'default', label: 'venue map background image' });
         const prompt = document.getElementById('vm-upload-prompt');
         if (prompt) prompt.style.display = 'none';
         vmResetCanvas();
@@ -12826,6 +13907,7 @@ function vmUpdateSaveStatus(text) {
 
 async function vmSaveLayers() {
     if (!state.vmCanvas || !state.vmImageLoaded) return;
+    if (isViewer()) return;
 
     // Serialize each layer: metadata + its canvas objects
     const layersData = state.vmLayers.map(layer => {
@@ -12848,6 +13930,7 @@ async function vmSaveLayers() {
             layers: JSON.stringify(layersData),
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         });
+        logActivity({ action: 'edit', collection: 'venueMapLayers', eventId: state.currentEventId, docId: 'default', label: 'venue map' });
         vmUpdateSaveStatus('Saved');
         setTimeout(() => vmUpdateSaveStatus(''), 2000);
     } catch (error) {
@@ -14571,6 +15654,7 @@ function removeSongRow(btn) {
 
 async function handleSetListSubmit(e) {
     e.preventDefault();
+    if (blockIfViewer()) return;
 
     const songRows = document.querySelectorAll('#setlist-songs-container .song-edit-row');
     const songs = Array.from(songRows)
@@ -14607,7 +15691,9 @@ async function handleSetListSubmit(e) {
         performanceOverrides: performanceOverrides,
         estimatedDuration: document.getElementById('setlist-duration').value,
         generalNotes: document.getElementById('setlist-notes').value,
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        updatedBy: state.currentUser?.uid || null,
+        updatedByName: state.currentUser?.name || null,
     };
 
     const id = document.getElementById('setlist-id').value;
@@ -14623,11 +15709,16 @@ async function handleSetListSubmit(e) {
 
     try {
         if (id) {
+            const before = state.setLists.find(s => s.id === id);
             await collections.setLists.doc(id).update(data);
+            logActivity({ action: 'edit', collection: 'setLists', eventId: state.currentEventId, docId: id, label: `${data.performer} — performer`, changes: diffRecord(before, data) });
             showToast('Performer updated');
         } else {
             data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
-            await collections.setLists.add(data);
+            data.createdBy = state.currentUser?.uid || null;
+            data.createdByName = state.currentUser?.name || null;
+            const docRef = await collections.setLists.add(data);
+            logActivity({ action: 'create', collection: 'setLists', eventId: state.currentEventId, docId: docRef.id, label: `${data.performer} — performer` });
             showToast('Performer added');
         }
         closeAllModals();
@@ -15318,6 +16409,8 @@ function saveSingleSeatingCell(cell, row, keepEditing = false) {
     const item = state.guests.find(g => g.id === id);
     const oldValue = item ? (item[field] || '') : '';
 
+    if (newValue !== oldValue && blockIfViewer()) newValue = oldValue;
+
     // Capacity check
     if (field === 'tableId' && newValue && newValue !== oldValue) {
         const target = state.seatingTables.find(t => t.id === newValue);
@@ -15363,6 +16456,12 @@ function saveSingleSeatingCell(cell, row, keepEditing = false) {
         await collections.guests.doc(id).update({ [field]: oldValue, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
     });
 
+    logActivity({
+        action: 'edit', collection: 'guests', eventId, docId: id,
+        label: `${describeRecord(item)} — seating`,
+        changes: [{ field, before: oldValue, after: newValue }],
+    });
+
     collections.guests.doc(id).update({
         [field]: newValue,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -15376,7 +16475,7 @@ function saveSingleSeatingCell(cell, row, keepEditing = false) {
 
 async function commitNewGuestRow() {
     const data = { ...state.pendingNewGuestRow };
-    if (!data.firstName && !data.lastName) {
+    if ((!data.firstName && !data.lastName) || blockIfViewer()) {
         state.pendingNewGuestRow = {};
         clearSeatingEditingFlag();
         renderSeatingTable();
@@ -15407,7 +16506,8 @@ async function commitNewGuestRow() {
     };
     state.pendingNewGuestRow = {};
     try {
-        await collections.guests.add(newGuest);
+        const docRef = await collections.guests.add(newGuest);
+        logActivity({ action: 'create', collection: 'guests', eventId: state.currentEventId, docId: docRef.id, label: `${newGuest.firstName} ${newGuest.lastName} — seating guest`.trim() });
         clearSeatingEditingFlag();
     } catch (err) {
         console.error('Error adding guest:', err);
@@ -15470,6 +16570,7 @@ const _baseDeleteGuest = createDeleteHandler('guests', 'guest');
 async function deleteGuest(id) { return _baseDeleteGuest(id); }
 
 async function duplicateGuest(id) {
+    if (blockIfViewer()) return;
     const g = state.guests.find(x => x.id === id);
     if (!g) return;
     const { id: _id, createdAt, updatedAt, ...data } = g;
@@ -15478,7 +16579,8 @@ async function duplicateGuest(id) {
     data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
     data.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
     try {
-        await collections.guests.add(data);
+        const docRef = await collections.guests.add(data);
+        logActivity({ action: 'create', collection: 'guests', eventId: state.currentEventId, docId: docRef.id, label: `${data.firstName} ${data.lastName || ''} — seating guest (duplicate)`.trim() });
         showToast('Guest duplicated');
     } catch (err) {
         console.error('Error duplicating guest:', err);
@@ -15768,6 +16870,7 @@ async function unseatGuest(guestId) {
 }
 
 async function setTableCapacity(tableId, capacity) {
+    if (blockIfViewer()) return;
     const table = state.seatingTables.find(t => t.id === tableId);
     if (!table || table.kind === 'lounge') return;
     const count = getTableAssignedCount(tableId);
@@ -15791,6 +16894,7 @@ async function setTableCapacity(tableId, capacity) {
 
 async function importGuestsFromXlsx(file) {
     if (!file) return;
+    if (!isAdmin()) { showToast('Bulk import is admin-only', 'error'); return; }
     if (typeof XLSX === 'undefined') {
         showToast('XLSX library not loaded', 'error');
         return;
@@ -15835,6 +16939,7 @@ async function importGuestsFromXlsx(file) {
             });
             await batch.commit();
         }
+        logActivity({ action: 'create', collection: 'guests', eventId: state.currentEventId, docId: 'bulk-import', label: `Bulk import — ${rows.length} guests` });
         showToast(`Imported ${rows.length} guests`, 'success');
         document.getElementById('seating-import-input').value = '';
     } catch (err) {
@@ -16247,6 +17352,7 @@ async function saveGuestField(invId, field, value) {
     if (!state.currentEventId || !collections.invitees) return;
     const item = (state.invitees || []).find(i => i.id === invId);
     const oldValue = item ? (item[field] ?? '') : '';
+    if (oldValue !== value && blockIfViewer()) return;
     try {
         await collections.invitees.doc(invId).update({
             [field]: value,
@@ -16259,6 +17365,11 @@ async function saveGuestField(invId, field, value) {
                 const current = (state.invitees || []).find(i => i.id === invId);
                 if (current) current[field] = oldValue;
                 await collections.invitees.doc(invId).update({ [field]: oldValue, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+            });
+            logActivity({
+                action: 'edit', collection: 'invitees', eventId, docId: invId,
+                label: `${describeRecord(item || {})} — guest`,
+                changes: [{ field, before: oldValue, after: value }],
             });
         }
     } catch(e) { console.error('saveGuestField:', e); }
@@ -16321,6 +17432,7 @@ window.selectGuestPriority = selectGuestPriority;
 
 // ── Add / Delete ─────────────────────────────────────────────
 async function saveNewGuest() {
+    if (blockIfViewer()) return;
     const r = state.guestPendingNew;
     if (!r.name?.trim() || !state.currentEventId || !collections.invitees) return;
     const data = {
@@ -16336,6 +17448,7 @@ async function saveNewGuest() {
     try {
         const doc = await collections.invitees.add(data);
         state.guestLastAddedId = doc.id;
+        logActivity({ action: 'create', collection: 'invitees', eventId: state.currentEventId, docId: doc.id, label: `${data.name} — guest` });
     } catch(e) { console.error('saveNewGuest:', e); }
 }
 
@@ -16357,8 +17470,16 @@ window.closeDeleteGuestModal = closeDeleteGuestModal;
 
 async function confirmDeleteGuest(invId) {
     closeDeleteGuestModal();
+    if (blockIfViewer()) return;
     if (!state.currentEventId || !collections.invitees) return;
-    try { await collections.invitees.doc(invId).delete(); }
+    const item = (state.invitees || []).find(g => g.id === invId);
+    try {
+        await collections.invitees.doc(invId).delete();
+        if (item) {
+            const { id: _id, ...data } = item;
+            logActivity({ action: 'delete', collection: 'invitees', eventId: state.currentEventId, docId: invId, label: `${describeRecord(data)} — guest`, snapshot: data });
+        }
+    }
     catch(e) { console.error('confirmDeleteGuest:', e); }
 }
 
@@ -16788,6 +17909,7 @@ function renderQuote() {
 
 window.saveQuoteMeta = async function(field, value) {
     if (!state.currentEventId) return;
+    if (blockIfViewer()) return;
     try {
         await db.collection('events').doc(state.currentEventId).update({ [field]: value });
         if (state.activeEvent) state.activeEvent[field] = value;
@@ -16800,17 +17922,21 @@ window.saveQuoteMeta = async function(field, value) {
 
 window.saveQuoteField = async function(lineId, field, value) {
     if (!state.currentEventId) return;
+    if (blockIfViewer()) return;
+    const before = (state.quoteLines || []).find(l => l.id === lineId);
     try {
         await db.collection('events').doc(state.currentEventId).collection('quoteLines').doc(lineId).update({ [field]: value });
+        logActivity({ action: 'edit', collection: 'quoteLines', eventId: state.currentEventId, docId: lineId, label: 'quote line', changes: [{ field, before: before ? before[field] : undefined, after: value }] });
     } catch(err) { showToast('Error saving', 'error'); }
 };
 
 window.addQuoteLine = async function(section = 'talent') {
+    if (blockIfViewer()) return;
     showToast('Adding…', 'info');
     if (!state.currentEventId) { showToast('No event selected', 'error'); return; }
     try {
         const ref = db.collection('events').doc(state.currentEventId).collection('quoteLines');
-        await ref.add({
+        const docRef = await ref.add({
             section,
             description: '',
             qty: 1,
@@ -16819,13 +17945,20 @@ window.addQuoteLine = async function(section = 'talent') {
             order: Date.now(),
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
         });
+        logActivity({ action: 'create', collection: 'quoteLines', eventId: state.currentEventId, docId: docRef.id, label: `${section} — quote line` });
     } catch(err) { showToast('Error adding line: ' + err.message, 'error'); console.error(err); }
 };
 
 window.deleteQuoteLine = async function(lineId) {
+    if (blockIfViewer()) return;
     if (!state.currentEventId) return;
+    const item = (state.quoteLines || []).find(l => l.id === lineId);
     try {
         await db.collection('events').doc(state.currentEventId).collection('quoteLines').doc(lineId).delete();
+        if (item) {
+            const { id: _id, ...data } = item;
+            logActivity({ action: 'delete', collection: 'quoteLines', eventId: state.currentEventId, docId: lineId, label: `${describeRecord(data)} — quote line`, snapshot: data });
+        }
     } catch(err) { showToast('Error deleting line', 'error'); }
 };
 
