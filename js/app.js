@@ -92,6 +92,10 @@ const state = {
     _pendingPackingImageItemId: null,
     _pendingPackingImageInventoryId: null,
     _inventoryPickerSelected: new Set(),
+    // Marketing & Decor list state
+    marketingPackingList: [],
+    marketingPackingSearch: '',
+    marketingPackingCategoryFilter: 'all',
     // Quote state
     quoteLines: [],
     // Menu state
@@ -304,6 +308,7 @@ const ALL_PAGES = [
     { id: 'budget',              label: 'Budget' },
     { id: 'staff',               label: 'Staff' },
     { id: 'packing-list',        label: 'Packing List' },
+    { id: 'marketing-packing-list', label: 'Marketing & Decor List' },
     { id: 'seating',             label: 'Seating' },
     { id: 'printed-materials',   label: 'Printed Materials' },
     { id: 'digital-assets',      label: 'Digital Assets' },
@@ -437,6 +442,7 @@ function setActiveEvent(eventId) {
         setLists:              ref.collection('setLists'),
         packingList:           ref.collection('packingList'),
         packingCategoryColors: ref.collection('packingCategoryColors'),
+        marketingPackingList:  ref.collection('marketingPackingList'),
         menuItems:             ref.collection('menuItems'),
         printedMaterials:      ref.collection('printedMaterials'),
         digitalAssets:         ref.collection('digitalAssets'),
@@ -969,6 +975,7 @@ function loadAllData() {
     setupCollectionListener('setLists', 'setLists', [renderSetLists, updateDashboard, renderTimeline]);
     setupCollectionListener('packingList', 'packingList', [renderPackingList]);
     setupCollectionListener('packingCategoryColors', 'packingCategoryColors', [renderPackingList]);
+    setupCollectionListener('marketingPackingList', 'marketingPackingList', [renderMarketingPackingList]);
     setupCollectionListener('menuItems', 'menuItems', [renderMenu, updateDashboard]);
     setupCollectionListener('printedMaterials', 'printedMaterials', [renderPrintedMaterials]);
     setupCollectionListener('digitalAssets', 'digitalAssets', [renderDigitalAssets]);
@@ -1589,7 +1596,7 @@ window.updateEventPhase = async function(eventId, phaseId, selectEl) {
 const EVENT_SUBCOLLECTIONS = [
     'vendors', 'budget', 'timeline', 'mainStageInputs', 'cocktailStageInputs',
     'staff', 'event-info', 'stagePlots', 'venueMapLayers', 'setLists',
-    'packingList', 'packingCategoryColors', 'menuItems', 'printedMaterials',
+    'packingList', 'packingCategoryColors', 'marketingPackingList', 'menuItems', 'printedMaterials',
     'digitalAssets', 'guests', 'seatingTables', 'invitees', 'intake',
 ];
 
@@ -1738,7 +1745,7 @@ async function enterEvent(eventId) {
     // restored page never briefly shows the previous event's rows.
     [
         'budget', 'timeline', 'mainStageInputs', 'cocktailStageInputs',
-        'staff', 'setLists', 'packingList', 'packingCategoryColors',
+        'staff', 'setLists', 'packingList', 'packingCategoryColors', 'marketingPackingList',
         'menuItems', 'printedMaterials', 'digitalAssets', 'guests', 'seatingTables',
         'invitees', 'vendors',
     ].forEach(k => { state[k] = []; });
@@ -1958,7 +1965,7 @@ window.confirmDuplicateEvent = async function() {
 
     const SUBCOLLECTIONS = [
         'budget', 'timeline', 'mainStageInputs', 'cocktailStageInputs',
-        'staff', 'setLists', 'packingList', 'packingCategoryColors',
+        'staff', 'setLists', 'packingList', 'packingCategoryColors', 'marketingPackingList',
         'menuItems', 'printedMaterials', 'digitalAssets', 'guests', 'seatingTables',
         'invitees', 'vendors', 'venueMapLayers', 'event-info',
     ];
@@ -4420,6 +4427,7 @@ function setupFormHandlers() {
     setupStaffTeamInput();
     document.getElementById('setlist-form').addEventListener('submit', handleSetListSubmit);
     document.getElementById('packing-form').addEventListener('submit', handlePackingSubmit);
+    document.getElementById('marketing-packing-form').addEventListener('submit', handleMarketingPackingSubmit);
     document.getElementById('menu-form').addEventListener('submit', handleMenuSubmit);
     document.getElementById('print-form').addEventListener('submit', handlePrintSubmit);
     document.getElementById('da-form').addEventListener('submit', handleDASubmit);
@@ -10857,6 +10865,277 @@ window.printPackingList = function() {
     printWithScope('printing-packing-list');
 };
 
+// ============================================================
+// MARKETING & DECOR LIST — a simple ad-hoc list (no equipment-inventory
+// linkage, unlike Packing List above), for marketing collateral, F&B tools,
+// and decor supplies. Mirrors Packing List's category-management pattern.
+// ============================================================
+
+const MARKETING_PACKING_FIELD_MAP = {
+    'marketing-packing-name': 'name',
+    'marketing-packing-category': 'category',
+    'marketing-packing-quantity': 'quantity',
+    'marketing-packing-location': 'location',
+    'marketing-packing-assignee': 'assignee',
+    'marketing-packing-notes': 'notes',
+};
+
+const MARKETING_PACKING_CATEGORIES_DEFAULT = ['F&B Tools & Accessories', 'Decor', 'Marketing Materials', 'Signage', 'Misc'];
+
+function getMarketingPackingCategories() {
+    return (state.activeEvent && state.activeEvent.marketingPackingCategories && state.activeEvent.marketingPackingCategories.length)
+        ? state.activeEvent.marketingPackingCategories
+        : MARKETING_PACKING_CATEGORIES_DEFAULT;
+}
+
+window.openMarketingPackingCategoriesModal = function() {
+    renderMarketingPackingCategoriesModal();
+    document.getElementById('marketing-packing-categories-modal').classList.add('is-open');
+};
+
+window.closeMarketingPackingCategoriesModal = function() {
+    document.getElementById('marketing-packing-categories-modal').classList.remove('is-open');
+};
+
+function renderMarketingPackingCategoriesModal() {
+    const cats = getMarketingPackingCategories();
+    const list = document.getElementById('marketing-packing-cat-list');
+    if (!list) return;
+    list.innerHTML = cats.map((c, i) => `
+        <div class="pcat-item">
+            <span class="pcat-name">${escapeHtml(c)}</span>
+            <button class="btn-icon-sm delete" onclick="removeMarketingPackingCategory(${i})" title="Remove">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>`).join('');
+}
+
+window.addMarketingPackingCategory = async function() {
+    if (blockIfViewer()) return;
+    const input = document.getElementById('new-marketing-packing-cat-input');
+    const name = (input?.value || '').trim();
+    if (!name) return;
+    const cats = getMarketingPackingCategories();
+    if (cats.includes(name)) { showToast('Category already exists', 'error'); return; }
+    const updated = [...cats, name];
+    try {
+        await eventsCollection.doc(state.activeEvent.id).update({ marketingPackingCategories: updated });
+        state.activeEvent.marketingPackingCategories = updated;
+        input.value = '';
+        renderMarketingPackingCategoriesModal();
+        populateMarketingPackingCategorySelects();
+    } catch (err) { showToast('Error saving category', 'error'); }
+};
+
+window.removeMarketingPackingCategory = async function(index) {
+    if (blockIfViewer()) return;
+    const cats = getMarketingPackingCategories();
+    const name = cats[index];
+    const inUse = state.marketingPackingList.some(i => i.category === name);
+    if (inUse && !confirm(`"${name}" is used by existing items. Remove it anyway?`)) return;
+    const updated = cats.filter((_, i) => i !== index);
+    try {
+        await eventsCollection.doc(state.activeEvent.id).update({ marketingPackingCategories: updated });
+        state.activeEvent.marketingPackingCategories = updated;
+        renderMarketingPackingCategoriesModal();
+        populateMarketingPackingCategorySelects();
+        renderMarketingPackingList();
+    } catch (err) { showToast('Error removing category', 'error'); }
+};
+
+function populateMarketingPackingCategorySelects() {
+    const cats = getMarketingPackingCategories();
+    const catOptions = cats.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+
+    const filterEl = document.getElementById('marketing-packing-category-filter');
+    if (filterEl) {
+        const cur = filterEl.value;
+        filterEl.innerHTML = `<option value="all">All Categories</option>${catOptions}`;
+        if (cats.includes(cur)) filterEl.value = cur;
+    }
+
+    const modalCatEl = document.getElementById('marketing-packing-category');
+    if (modalCatEl) {
+        const cur2 = modalCatEl.value;
+        modalCatEl.innerHTML = `<option value="">Select category...</option>${catOptions}`;
+        if (cats.includes(cur2)) modalCatEl.value = cur2;
+    }
+}
+
+function renderMarketingPackingList() {
+    const container = document.getElementById('marketing-packing-list-container');
+    if (!container) return;
+
+    populateMarketingPackingCategorySelects();
+
+    let items = state.marketingPackingList;
+    const q = (state.marketingPackingSearch || '').toLowerCase();
+    if (q) items = items.filter(i => (i.name || '').toLowerCase().includes(q) || (i.category || '').toLowerCase().includes(q));
+    if (state.marketingPackingCategoryFilter !== 'all') items = items.filter(i => i.category === state.marketingPackingCategoryFilter);
+
+    const sc = document.getElementById('marketing-packing-search-count');
+    if (sc) {
+        const anyFilter = q || state.marketingPackingCategoryFilter !== 'all';
+        sc.textContent = anyFilter ? `${items.length} result${items.length !== 1 ? 's' : ''}` : '';
+    }
+
+    const grouped = {};
+    items.forEach(i => {
+        const cat = i.category || 'Misc';
+        if (!grouped[cat]) grouped[cat] = [];
+        grouped[cat].push(i);
+    });
+
+    const cats = getMarketingPackingCategories();
+    const sortedCats = Object.keys(grouped).sort((a, b) => {
+        const ai = cats.indexOf(a), bi = cats.indexOf(b);
+        return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+    });
+
+    if (sortedCats.length === 0) {
+        container.innerHTML = '<p class="empty-state">No items added yet.</p>';
+        return;
+    }
+
+    let rows = '';
+    sortedCats.forEach(cat => {
+        const catItems = grouped[cat];
+        rows += `<tr class="pl-category-row">
+            <td colspan="6">
+                <span class="pl-cat-name">${escapeHtml(cat)}</span>
+                <span class="pl-cat-count">${catItems.length} item${catItems.length !== 1 ? 's' : ''}</span>
+            </td>
+        </tr>`;
+        catItems.forEach(item => {
+            const qty = item.quantity || 1;
+            rows += `<tr class="pl-item-row">
+                <td class="pl-name-cell">
+                    <span class="pl-item-name">${escapeHtml(item.name || 'Unnamed')}</span>
+                </td>
+                <td class="pl-qty-cell">${qty > 1 ? `<span class="pl-qty">×${qty}</span>` : '<span class="pl-muted">—</span>'}</td>
+                <td>${escapeHtml(item.location || '') || '<span class="pl-muted">—</span>'}</td>
+                <td>${escapeHtml(item.assignee || '') || '<span class="pl-muted">—</span>'}</td>
+                <td class="pl-notes-cell">
+                    <input type="text" class="pl-notes-input" value="${escapeHtml(item.notes || '')}" placeholder="Add a note…" onblur="saveMarketingPackingNote('${item.id}', this.value)" onkeydown="if(event.key==='Enter')this.blur()">
+                </td>
+                <td class="pl-actions-cell">
+                    <div class="pl-actions">
+                        <button class="btn-icon-sm" onclick="openMarketingPackingModal('${item.id}')" title="Edit item">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                        </button>
+                        <button class="btn-icon-sm delete" onclick="deleteMarketingPackingItem('${item.id}')" title="Remove">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+                        </button>
+                    </div>
+                </td>
+            </tr>`;
+        });
+    });
+
+    container.innerHTML = `
+    <table class="pl-table">
+        <thead>
+            <tr>
+                <th class="pl-name-cell">Item</th>
+                <th class="pl-qty-cell">Qty</th>
+                <th>Location</th>
+                <th>Responsible</th>
+                <th class="pl-th-notes">Notes</th>
+                <th class="pl-actions-cell"></th>
+            </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+    </table>`;
+}
+
+window.saveMarketingPackingNote = async function(id, value) {
+    if (blockIfViewer()) return;
+    try {
+        await collections.marketingPackingList.doc(id).update({
+            notes: value,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        });
+    } catch (err) { showToast('Error saving note', 'error'); }
+};
+
+function openMarketingPackingModal(itemId = null) {
+    openModal({
+        modalId: 'marketing-packing-modal',
+        formId: 'marketing-packing-form',
+        title: itemId ? 'Edit Item' : 'Add Item',
+        stateKey: 'marketingPackingList',
+        itemId: itemId,
+        idFieldId: 'marketing-packing-id',
+        fieldMap: MARKETING_PACKING_FIELD_MAP,
+        defaultValues: { 'marketing-packing-quantity': '1' }
+    });
+}
+window.openMarketingPackingModal = openMarketingPackingModal;
+
+async function handleMarketingPackingSubmit(e) {
+    e.preventDefault();
+    if (blockIfViewer()) return;
+    const data = {};
+    Object.entries(MARKETING_PACKING_FIELD_MAP).forEach(([fieldId, dataKey]) => {
+        const el = document.getElementById(fieldId);
+        if (el) data[dataKey] = el.value;
+    });
+    data.quantity = parseInt(data.quantity) || 1;
+    data.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+    data.updatedBy = state.currentUser?.uid || null;
+    data.updatedByName = state.currentUser?.name || null;
+    const id = document.getElementById('marketing-packing-id').value;
+    try {
+        if (id) {
+            const before = state.marketingPackingList.find(i => i.id === id);
+            await collections.marketingPackingList.doc(id).update(data);
+            logActivity({ action: 'edit', collection: 'marketingPackingList', eventId: state.currentEventId, docId: id, label: `${describeRecord(data)} — marketing/decor item`, changes: diffRecord(before, data) });
+            showToast('Item updated');
+        } else {
+            data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+            data.createdBy = state.currentUser?.uid || null;
+            data.createdByName = state.currentUser?.name || null;
+            const docRef = await collections.marketingPackingList.add(data);
+            logActivity({ action: 'create', collection: 'marketingPackingList', eventId: state.currentEventId, docId: docRef.id, label: `${describeRecord(data)} — marketing/decor item` });
+            showToast('Item added');
+        }
+        closeAllModals();
+    } catch (err) {
+        console.error('Error saving marketing/decor item:', err);
+        showToast('Error saving item', 'error');
+    }
+}
+
+window.deleteMarketingPackingItem = createDeleteHandler('marketingPackingList', 'marketing/decor item');
+
+function handleMarketingPackingSearch(value) {
+    state.marketingPackingSearch = value;
+    const clearBtn = document.getElementById('marketing-packing-search-clear');
+    if (clearBtn) clearBtn.style.display = value ? 'block' : 'none';
+    renderMarketingPackingList();
+}
+window.handleMarketingPackingSearch = handleMarketingPackingSearch;
+
+function clearMarketingPackingSearch() {
+    state.marketingPackingSearch = '';
+    const input = document.getElementById('marketing-packing-search-input');
+    if (input) input.value = '';
+    const clearBtn = document.getElementById('marketing-packing-search-clear');
+    if (clearBtn) clearBtn.style.display = 'none';
+    renderMarketingPackingList();
+}
+window.clearMarketingPackingSearch = clearMarketingPackingSearch;
+
+function handleMarketingPackingCategoryFilter(value) {
+    state.marketingPackingCategoryFilter = value;
+    renderMarketingPackingList();
+}
+window.handleMarketingPackingCategoryFilter = handleMarketingPackingCategoryFilter;
+
+window.printMarketingPackingList = function() {
+    printWithScope('printing-marketing-packing-list');
+};
+
 // --- Inventory Picker Modal ---
 window.openInventoryPickerModal = function() {
     state._inventoryPickerSelected = new Set();
@@ -11403,6 +11682,10 @@ const EVENT_IMPORT_TARGETS = [
       aliases: ['packing list', 'packing', 'gear', 'equipment', 'inventory', 'avl', 'a/v', 'audio visual'],
       columns: { name: ['name', 'item'], category: ['category'], quantity: ['quantity', 'qty'], assignee: ['assignee'], notes: ['notes'] },
       build: v => ({ name: v.name || '', category: v.category || 'Misc', quantity: parseInt(v.quantity) || 1, assignee: v.assignee || '', notes: v.notes || '', isAdHoc: true }) },
+    { key: 'marketingPackingList', pageId: 'marketing-packing-list', collection: 'marketingPackingList',
+      aliases: ['fnb', 'f&b', 'decor', 'marketing packing', 'marketing/decor', 'marketing & decor'],
+      columns: { name: ['type', 'name', 'item'], category: ['category'], quantity: ['quantity', 'qty'], location: ['location'], assignee: ['responsible', 'assignee'], notes: ['notes'] },
+      build: v => ({ name: v.name || '', category: v.category || 'Misc', quantity: parseInt(v.quantity) || 1, location: v.location || '', assignee: v.assignee || '', notes: v.notes || '' }) },
     { key: 'menuItems', pageId: 'menu', collection: 'menuItems',
       aliases: ['menu', 'catering', 'food'],
       columns: { name: ['name', 'item'], category: ['category'], subcategory: ['subcategory'], servingStyle: ['serving style'], quantity: ['quantity'], notes: ['notes'] },

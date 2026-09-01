@@ -146,6 +146,10 @@
                             <i class="ti ti-package nav-icon"></i>
                             <span class="nav-label">Packing List</span>
                         </a>
+                        <a href="#marketing-packing-list" class="nav-link" data-page="marketing-packing-list">
+                            <i class="ti ti-brush nav-icon"></i>
+                            <span class="nav-label">Marketing &amp; Decor List</span>
+                        </a>
                         <a href="#seating" class="nav-link" data-page="seating">
                             <i class="ti ti-armchair nav-icon"></i>
                             <span class="nav-label">Seating</span>
@@ -1000,6 +1004,42 @@
             <!-- Items Table -->
             <div id="packing-list-container">
                 <p class="empty-state">No items added. Start by selecting from your inventory.</p>
+            </div>
+        </div>
+
+        <!-- Marketing & Decor List Page -->
+        <div id="marketing-packing-list" class="page">
+            <div class="page-header">
+                <h1>Marketing &amp; Decor List</h1>
+                <div class="header-actions">
+                    <button class="btn btn-icon" onclick="printMarketingPackingList()" title="Print list">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                    </button>
+                    <button class="btn btn-icon" onclick="openMarketingPackingCategoriesModal()" title="Edit categories">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                    </button>
+                    <button class="btn btn-primary-gold" onclick="openMarketingPackingModal()">+ Add Item</button>
+                </div>
+            </div>
+
+            <!-- Search & Filters -->
+            <div class="page-search-bar">
+                <div class="page-search-wrapper">
+                    <svg class="page-search-icon" viewBox="0 0 20 20" fill="currentColor" width="16" height="16">
+                        <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"/>
+                    </svg>
+                    <input type="text" id="marketing-packing-search-input" class="search-input" placeholder="Search items..." oninput="handleMarketingPackingSearch(this.value)">
+                    <button type="button" id="marketing-packing-search-clear" class="page-search-clear" onclick="clearMarketingPackingSearch()" style="display: none;">&times;</button>
+                </div>
+                <select id="marketing-packing-category-filter" class="filter-select" onchange="handleMarketingPackingCategoryFilter(this.value)">
+                    <option value="all">All Categories</option>
+                </select>
+                <span id="marketing-packing-search-count" class="page-search-count"></span>
+            </div>
+
+            <!-- Items Table -->
+            <div id="marketing-packing-list-container">
+                <p class="empty-state">No items added yet.</p>
             </div>
         </div>
 
@@ -2083,6 +2123,55 @@
         </div>
     </div>
 
+    <!-- Marketing & Decor List Modal -->
+    <div id="marketing-packing-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="marketing-packing-modal-title">Add Item</h2>
+                <button class="close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="marketing-packing-form">
+                    <input type="hidden" id="marketing-packing-id">
+                    <div class="form-group">
+                        <label for="marketing-packing-name">Item Name *</label>
+                        <input type="text" id="marketing-packing-name" required>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="marketing-packing-category">Category *</label>
+                            <select id="marketing-packing-category" required>
+                                <option value="">Select category...</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="marketing-packing-quantity">Quantity</label>
+                            <input type="number" id="marketing-packing-quantity" min="1" value="1">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="marketing-packing-location">Location</label>
+                            <input type="text" id="marketing-packing-location" placeholder="Where it's stored/packed">
+                        </div>
+                        <div class="form-group">
+                            <label for="marketing-packing-assignee">Responsible</label>
+                            <input type="text" id="marketing-packing-assignee" placeholder="Who's responsible">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="marketing-packing-notes">Notes</label>
+                        <textarea id="marketing-packing-notes" rows="2" placeholder="Special instructions, etc."></textarea>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-secondary cancel-btn">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Save Item</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <!-- Inventory Picker Modal -->
     <div id="inv-picker-modal" class="hub-modal-overlay">
         <div class="hub-modal inv-picker-modal-box">
@@ -2194,6 +2283,27 @@
             </div>
             <div class="hub-modal-footer">
                 <button class="btn btn-secondary" onclick="closePackingCategoriesModal()">Done</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Marketing & Decor Categories Modal -->
+    <div id="marketing-packing-categories-modal" class="hub-modal-overlay">
+        <div class="hub-modal" style="width:400px">
+            <div class="hub-modal-header">
+                <h2>Marketing &amp; Decor Categories</h2>
+                <button class="hub-modal-close" onclick="closeMarketingPackingCategoriesModal()">&times;</button>
+            </div>
+            <div class="hub-modal-body">
+                <p style="font-size:0.8rem;color:var(--text-tertiary);margin-bottom:14px;">Categories are saved per event. Changes only affect this event.</p>
+                <div id="marketing-packing-cat-list" class="pcat-list"></div>
+                <div class="pcat-add-row">
+                    <input type="text" id="new-marketing-packing-cat-input" class="search-input" placeholder="New category name..." onkeydown="if(event.key==='Enter'){event.preventDefault();addMarketingPackingCategory();}">
+                    <button class="btn btn-primary-gold" onclick="addMarketingPackingCategory()">Add</button>
+                </div>
+            </div>
+            <div class="hub-modal-footer">
+                <button class="btn btn-secondary" onclick="closeMarketingPackingCategoriesModal()">Done</button>
             </div>
         </div>
     </div>

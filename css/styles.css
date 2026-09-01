@@ -2856,11 +2856,18 @@ body.printing-vendors .no-print,
 body.printing-vendors .page-header .header-actions,
 body.printing-vendors .page-search-bar,
 body.printing-packing-list .navbar,
+body.printing-marketing-packing-list .navbar,
 body.printing-packing-list .no-print,
+body.printing-marketing-packing-list .no-print,
 body.printing-packing-list .page-header .header-actions,
+body.printing-marketing-packing-list .page-header .header-actions,
 body.printing-packing-list .page-search-bar,
+body.printing-marketing-packing-list .page-search-bar,
 body.printing-packing-list .packing-progress-bar-container,
+body.printing-marketing-packing-list .packing-progress-bar-container,
 body.printing-packing-list .stats-grid,
+body.printing-marketing-packing-list .stats-grid,
+body.printing-marketing-packing-list .pl-stats ,
 body.printing-packing-list .pl-stats {
     display: none !important;
 }
@@ -2871,6 +2878,7 @@ body.printing-packing-list .pl-stats {
 body.printing-timeline *,
 body.printing-stage-inputs *,
 body.printing-vendors *,
+body.printing-marketing-packing-list * ,
 body.printing-packing-list * {
     animation: none !important;
     transition: none !important;
@@ -2886,6 +2894,7 @@ body.printing-timeline .si-overlay:not(.active),
 body.printing-stage-inputs .si-overlay:not(.active),
 body.printing-cue-sheet .si-overlay:not(.active),
 body.printing-vendors .si-overlay:not(.active),
+body.printing-marketing-packing-list .si-overlay:not(.active) ,
 body.printing-packing-list .si-overlay:not(.active) {
     opacity: 0 !important;
     pointer-events: none !important;
@@ -2894,6 +2903,7 @@ body.printing-packing-list .si-overlay:not(.active) {
 body.printing-timeline,
 body.printing-stage-inputs,
 body.printing-vendors,
+body.printing-marketing-packing-list ,
 body.printing-packing-list {
     background: #fff !important;
 }
@@ -2901,6 +2911,7 @@ body.printing-packing-list {
 body.printing-timeline .container,
 body.printing-stage-inputs .container,
 body.printing-vendors .container,
+body.printing-marketing-packing-list .container ,
 body.printing-packing-list .container {
     max-width: none !important;
     padding: 0 !important;
@@ -2929,6 +2940,7 @@ body.printing-vendors .phantom-placeholder {
 body.printing-timeline .page:not(.active),
 body.printing-stage-inputs .page:not(.active),
 body.printing-vendors .page:not(.active),
+body.printing-marketing-packing-list .page:not(.active) ,
 body.printing-packing-list .page:not(.active) {
     display: none !important;
 }
@@ -2936,6 +2948,9 @@ body.printing-timeline #timeline.page.active,
 body.printing-stage-inputs #input-lists.page.active,
 body.printing-vendors #vendors.page.active,
 body.printing-packing-list #packing-list.page.active {
+body.printing-marketing-packing-list #marketing-packing-list.page.active {
+    display: block !important;
+}
     display: block !important;
 }
 
@@ -3366,11 +3381,13 @@ body.printing-vendors .vl-table tr {
 }
 
 /* ---------- Packing List: branded compact table ---------- */
+body.printing-marketing-packing-list .page-header ,
 body.printing-packing-list .page-header {
     padding: 0 0 10px 0 !important;
     border-bottom: 2px solid #c9a961 !important;
     margin: 0 0 16px 0 !important;
 }
+body.printing-marketing-packing-list .page-header h1 ,
 body.printing-packing-list .page-header h1 {
     font-family: 'Cormorant Garamond', Georgia, serif !important;
     font-size: 19pt !important;
@@ -3379,15 +3396,22 @@ body.printing-packing-list .page-header h1 {
     letter-spacing: 0.3px !important;
 }
 body.printing-packing-list .pl-view-toggle { display: none !important; }
+body.printing-marketing-packing-list .pl-view-toggle { display: none !important; }
 body.printing-packing-list .pl-actions-cell,
+body.printing-marketing-packing-list .pl-actions-cell,
 body.printing-packing-list .pl-thumb-cell,
+body.printing-marketing-packing-list .pl-thumb-cell,
 body.printing-packing-list .pl-th-img,
+body.printing-marketing-packing-list .pl-th-img,
 body.printing-packing-list .pl-condition-cell,
+body.printing-marketing-packing-list .pl-condition-cell,
+body.printing-marketing-packing-list .pl-cat-broken-flag ,
 body.printing-packing-list .pl-cat-broken-flag {
     display: none !important;
 }
 /* Keep checkboxes (useful as a physical checklist while packing) and notes
    text (useful info) — just strip the interactive/form-field look. */
+body.printing-marketing-packing-list .pl-notes-input ,
 body.printing-packing-list .pl-notes-input {
     border: none !important;
     background: none !important;
@@ -3395,6 +3419,8 @@ body.printing-packing-list .pl-notes-input {
     padding: 0 !important;
 }
 body.printing-packing-list .pl-notes-input::placeholder { color: transparent !important; }
+body.printing-marketing-packing-list .pl-notes-input::placeholder { color: transparent !important; }
+body.printing-marketing-packing-list .pl-table ,
 body.printing-packing-list .pl-table {
     width: 100% !important;
     border-collapse: collapse !important;
@@ -3402,6 +3428,8 @@ body.printing-packing-list .pl-table {
     font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
 }
 body.printing-packing-list .pl-table th,
+body.printing-marketing-packing-list .pl-table th,
+body.printing-marketing-packing-list .pl-table td ,
 body.printing-packing-list .pl-table td {
     padding: 6px 8px !important;
     font-size: 9pt !important;
@@ -3410,6 +3438,7 @@ body.printing-packing-list .pl-table td {
     background: #fff !important;
     color: #2d2d2d !important;
 }
+body.printing-marketing-packing-list .pl-table th ,
 body.printing-packing-list .pl-table th {
     color: #0f2621 !important;
     font-weight: 700 !important;
@@ -3419,13 +3448,18 @@ body.printing-packing-list .pl-table th {
     border-bottom: 2px solid #0f2621 !important;
 }
 body.printing-packing-list .pl-th-check { width: 4% !important; }
+body.printing-marketing-packing-list .pl-th-check { width: 4% !important; }
 body.printing-packing-list .pl-name-cell { width: 38% !important; }
+body.printing-marketing-packing-list .pl-name-cell { width: 38% !important; }
 body.printing-packing-list .pl-qty-cell { width: 8% !important; white-space: nowrap !important; }
+body.printing-marketing-packing-list .pl-qty-cell { width: 8% !important; white-space: nowrap !important; }
+body.printing-marketing-packing-list .pl-table tbody tr:nth-child(even) td ,
 body.printing-packing-list .pl-table tbody tr:nth-child(even) td {
     background: #faf8f3 !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
 }
+body.printing-marketing-packing-list .pl-category-row td ,
 body.printing-packing-list .pl-category-row td {
     background: #faf8f3 !important;
     padding-top: 10px !important;
@@ -3435,17 +3469,20 @@ body.printing-packing-list .pl-category-row td {
 /* .pl-cat-name/.pl-cat-count set their own on-screen (dark-theme) text
    color directly on the span, which wins over the td's inherited color
    above — override them explicitly or they print unreadably light. */
+body.printing-marketing-packing-list .pl-cat-name ,
 body.printing-packing-list .pl-cat-name {
     color: #0f2621 !important;
     font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
     font-size: 9pt !important;
     letter-spacing: 0.04em !important;
 }
+body.printing-marketing-packing-list .pl-cat-count ,
 body.printing-packing-list .pl-cat-count {
     color: #888 !important;
 }
 /* Match the item name's weight so it doesn't look like an editable form
    pill, and keep it from wrapping mid-word when the column is narrow. */
+body.printing-marketing-packing-list .pl-adhoc-tag ,
 body.printing-packing-list .pl-adhoc-tag {
     background: none !important;
     border: 1px solid #e5e1d6 !important;
@@ -3453,6 +3490,7 @@ body.printing-packing-list .pl-adhoc-tag {
     white-space: nowrap !important;
     display: inline-block !important;
 }
+body.printing-marketing-packing-list .pl-item-name ,
 body.printing-packing-list .pl-item-name {
     font-weight: 600 !important;
 }
