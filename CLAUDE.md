@@ -34,6 +34,8 @@ Dashboard, Vendors, Budget, Timeline (run-of-show), Input Lists (audio/tech), St
 
 **Timeline dual-field:** Completion sets both `completed: true` and `status: 'complete'` (legacy). Reads check both: `item.completed === true || item.status === 'complete'`.
 
+**Dates are Eastern time (America/New_York).** For "today" use `todayET()` and for a stored `YYYY-MM-DD` use `parseDateOnly()` (both in `js/dates.js`, loaded before `app.js`). Never use `new Date().toISOString().split('T')[0]` (UTC — already tomorrow after 8 PM EDT) or `new Date('YYYY-MM-DD')` (UTC midnight — shows the previous day). Tests: `node --test tests/`.
+
 ## Firestore Collections
 budget, timeline, mainStageInputs, cocktailStageInputs, staff
 
