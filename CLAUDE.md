@@ -34,7 +34,12 @@ Dashboard, Vendors, Budget, Timeline (run-of-show), Input Lists (audio/tech), St
 
 **Timeline dual-field:** Completion sets both `completed: true` and `status: 'complete'` (legacy). Reads check both: `item.completed === true || item.status === 'complete'`.
 
-**Dates are Eastern time (America/New_York).** For "today" use `todayET()` and for a stored `YYYY-MM-DD` use `parseDateOnly()` (both in `js/dates.js`, loaded before `app.js`). Never use `new Date().toISOString().split('T')[0]` (UTC — already tomorrow after 8 PM EDT) or `new Date('YYYY-MM-DD')` (UTC midnight — shows the previous day). Tests: `node --test tests/`.
+## Dates and time zones
+
+- Dates are Eastern time (America/New_York, `APP_TZ` in `js/dates.js`). Always use the helpers in `js/dates.js` (loaded before `app.js`): `todayET()` for today, `formatDateOnly()` / `parseDateOnly()` for a stored `YYYY-MM-DD`, and pass `timeZone: APP_TZ` when formatting a timestamp.
+- Never use raw `Date` for calendar dates: no `toISOString().split('T')[0]` (UTC — tomorrow after 8 PM EDT), no `new Date('YYYY-MM-DD')` (UTC midnight — the previous day), no `toLocaleDateString` without `timeZone`.
+- Servers stay on UTC; don't set `TZ`.
+- `npm run check:dates` (also `npm run lint`) enforces this; tests: `npm test` (runs with `TZ=UTC`). A genuine exception needs a `dates-ok: <reason>` comment.
 
 ## Firestore Collections
 budget, timeline, mainStageInputs, cocktailStageInputs, staff

@@ -1224,7 +1224,7 @@ function renderHub() {
         return;
     }
 
-    const fmtDate = d => d ? new Date(d + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+    const fmtDate = d => d ? formatDateOnly(d, { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
 
     // Build event rows tagged with their sort key
     const eventRows = seasonEvents.map(ev => {
@@ -2445,7 +2445,7 @@ function renderDashboard() {
     let dateStr = '';
     if (event.date) {
         try {
-            dateStr = new Date(event.date + 'T12:00:00').toLocaleDateString('en-US',
+            dateStr = formatDateOnly(event.date,
                 { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
         } catch(e) { dateStr = event.date; }
     }
@@ -2480,7 +2480,7 @@ function renderDashboard() {
         const evDate  = ev.date ? new Date(ev.date + 'T12:00:00') : null;
         const daysOut = evDate ? Math.ceil((evDate - today) / 86400000) : null;
         const evDateStr = evDate
-            ? evDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+            ? formatDateOnly(ev.date, { month: 'short', day: 'numeric' })
             : 'TBD';
         const evDateSub = daysOut === null ? '' : daysOut > 0
             ? `${daysOut} day${daysOut !== 1 ? 's' : ''} out`
@@ -4844,12 +4844,9 @@ function formatCurrency(amount) {
 function formatDate(dateString) {
     if (!dateString) return '';
     // Event dates are date-only; new Date('YYYY-MM-DD') would show the day before in ET.
-    const date = /^\d{4}-\d{2}-\d{2}$/.test(dateString) ? parseDateOnly(dateString) : new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric'
-    });
+    const opts = { month: 'short', day: 'numeric', year: 'numeric' };
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) return formatDateOnly(dateString, opts);
+    return new Date(dateString).toLocaleDateString('en-US', { ...opts, timeZone: APP_TZ });
 }
 
 // Accepts "1h 30m", "1:30", "90" (minutes), "1.5h", "2 hours 15 min" etc.
@@ -8081,10 +8078,10 @@ function renderActivityLog() {
         container.innerHTML = sessions.map((s, i) => {
             const start = new Date(s.earliestMs);
             const end = new Date(s.latestMs);
-            const dateStr = start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            const dateStr = start.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: APP_TZ });
             const timeLabel = s.entries.length === 1
-                ? `${dateStr}, ${start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`
-                : `${dateStr}, ${start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}–${end.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+                ? `${dateStr}, ${start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: APP_TZ })}`
+                : `${dateStr}, ${start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: APP_TZ })}–${end.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: APP_TZ })}`;
             return `
             <div class="al-session" id="al-session-${i}">
                 <div class="al-session-hdr" onclick="document.getElementById('al-session-${i}').classList.toggle('expanded')">
@@ -8964,7 +8961,7 @@ function buildCalendarDescription() {
     let dateStr = '';
     const rawDate = d.event_date || ev.date || '';
     if (rawDate) {
-        try { dateStr = new Date(rawDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }); }
+        try { dateStr = formatDateOnly(rawDate, { month: 'long', day: 'numeric', year: 'numeric' }); }
         catch(e) { dateStr = rawDate; }
     }
 
@@ -9024,7 +9021,7 @@ function buildCrewCalendarDescription() {
 
     const fmtDate = (raw) => {
         if (!raw) return '';
-        try { return new Date(raw + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }); }
+        try { return formatDateOnly(raw, { month: 'long', day: 'numeric', year: 'numeric' }); }
         catch(e) { return raw; }
     };
 
@@ -17699,7 +17696,7 @@ function generateGuestDirectoryPdf() {
 
     let eventDate = '';
     if (event.date) {
-        try { eventDate = new Date(event.date+'T12:00:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'}); }
+        try { eventDate = formatDateOnly(event.date,{weekday:'long',month:'long',day:'numeric',year:'numeric'}); }
         catch(e) { eventDate = event.date; }
     }
 

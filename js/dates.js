@@ -22,12 +22,23 @@
         return new Date(String(value).slice(0, 10) + 'T12:00:00');
     }
 
+    /**
+     * Format a date-only string ("YYYY-MM-DD") with toLocaleDateString options.
+     * Pinned to UTC noon so the printed day never shifts with the viewer's zone.
+     */
+    function formatDateOnly(value, options, locale) {
+        var ymd = String(value).slice(0, 10).split('-').map(Number);
+        var d = new Date(Date.UTC(ymd[0], ymd[1] - 1, ymd[2], 12));
+        var opts = Object.assign({}, options || {}, { timeZone: 'UTC' });
+        return d.toLocaleDateString(locale || 'en-US', opts);
+    }
+
     /** True when a date-only due date is before today's Eastern date. */
     function isBeforeTodayET(value, now) {
         return !!value && String(value).slice(0, 10) < todayET(now);
     }
 
-    var api = { APP_TZ: APP_TZ, todayET: todayET, parseDateOnly: parseDateOnly, isBeforeTodayET: isBeforeTodayET };
+    var api = { APP_TZ: APP_TZ, todayET: todayET, parseDateOnly: parseDateOnly, isBeforeTodayET: isBeforeTodayET, formatDateOnly: formatDateOnly };
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     for (var k in api) root[k] = api[k];
 })(typeof window !== 'undefined' ? window : globalThis);
