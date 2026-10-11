@@ -1,0 +1,10 @@
+{
+  "name": "shows-control-center",
+  "private": true,
+  "description": "Static site; no build step. Scripts are dev checks only.",
+  "scripts": {
+    "check:dates": "node scripts/check-dates.mjs",
+    "lint": "node scripts/check-dates.mjs",
+    "test": "TZ=UTC node --test tests/"
+  }
+}

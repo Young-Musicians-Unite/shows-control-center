@@ -1224,7 +1224,7 @@ function renderHub() {
         return;
     }
 
-    const fmtDate = d => d ? new Date(d + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+    const fmtDate = d => d ? formatDateOnly(d, { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
 
     // Build event rows tagged with their sort key
     const eventRows = seasonEvents.map(ev => {
@@ -2445,7 +2445,7 @@ function renderDashboard() {
     let dateStr = '';
     if (event.date) {
         try {
-            dateStr = new Date(event.date + 'T12:00:00').toLocaleDateString('en-US',
+            dateStr = formatDateOnly(event.date,
                 { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
         } catch(e) { dateStr = event.date; }
     }
@@ -2480,7 +2480,7 @@ function renderDashboard() {
         const evDate  = ev.date ? new Date(ev.date + 'T12:00:00') : null;
         const daysOut = evDate ? Math.ceil((evDate - today) / 86400000) : null;
         const evDateStr = evDate
-            ? evDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+            ? formatDateOnly(ev.date, { month: 'short', day: 'numeric' })
             : 'TBD';
         const evDateSub = daysOut === null ? '' : daysOut > 0
             ? `${daysOut} day${daysOut !== 1 ? 's' : ''} out`
@@ -3318,7 +3318,7 @@ function exportVendorLogisticsToExcel() {
     const ws = XLSX.utils.json_to_sheet(rows);
     ws['!cols'] = [{ wch: 18 }, ...columns.map(() => ({ wch: 22 }))];
     XLSX.utils.book_append_sheet(wb, ws, 'Vendor Logistics');
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayET();
     XLSX.writeFile(wb, `Vendor_Logistics_${today}.xlsx`);
 }
 window.exportVendorLogisticsToExcel = exportVendorLogisticsToExcel;
@@ -3329,7 +3329,7 @@ function updateTimelineStats() {
     const inProgress = state.timeline.filter(t => t.status === 'in-progress').length;
     const overdue = state.timeline.filter(t => {
         if (!t.dueDate || t.status === 'complete') return false;
-        return new Date(t.dueDate) < new Date();
+        return isBeforeTodayET(t.dueDate); // due today is not overdue
     }).length;
 
     const el = (id) => document.getElementById(id);
@@ -4843,12 +4843,10 @@ function formatCurrency(amount) {
 
 function formatDate(dateString) {
     if (!dateString) return '';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric'
-    });
+    // Event dates are date-only; new Date('YYYY-MM-DD') would show the day before in ET.
+    const opts = { month: 'short', day: 'numeric', year: 'numeric' };
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) return formatDateOnly(dateString, opts);
+    return new Date(dateString).toLocaleDateString('en-US', { ...opts, timeZone: APP_TZ });
 }
 
 // Accepts "1h 30m", "1:30", "90" (minutes), "1.5h", "2 hours 15 min" etc.
@@ -5278,7 +5276,7 @@ function exportTimelineToExcel() {
     });
 
     // Generate filename with today's date
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayET();
     const filename = `YMU_Gala_Complete_Timeline_${today}.xlsx`;
 
     // Download
@@ -5345,7 +5343,7 @@ function exportBudgetToExcel() {
     XLSX.utils.book_append_sheet(wb, wsSummary, 'Summary');
 
     // Download
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayET();
     XLSX.writeFile(wb, `YMU_Gala_Budget_${today}.xlsx`);
 }
 
@@ -6999,7 +6997,7 @@ function exportStageInputsToExcel() {
     ];
     XLSX.utils.book_append_sheet(wb, wsCocktail, 'Cocktail Stage');
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayET();
     XLSX.writeFile(wb, `Stage_Input_Lists_${today}.xlsx`);
 }
 
@@ -8080,10 +8078,10 @@ function renderActivityLog() {
         container.innerHTML = sessions.map((s, i) => {
             const start = new Date(s.earliestMs);
             const end = new Date(s.latestMs);
-            const dateStr = start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            const dateStr = start.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: APP_TZ });
             const timeLabel = s.entries.length === 1
-                ? `${dateStr}, ${start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`
-                : `${dateStr}, ${start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}–${end.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+                ? `${dateStr}, ${start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: APP_TZ })}`
+                : `${dateStr}, ${start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: APP_TZ })}–${end.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: APP_TZ })}`;
             return `
             <div class="al-session" id="al-session-${i}">
                 <div class="al-session-hdr" onclick="document.getElementById('al-session-${i}').classList.toggle('expanded')">
@@ -8963,7 +8961,7 @@ function buildCalendarDescription() {
     let dateStr = '';
     const rawDate = d.event_date || ev.date || '';
     if (rawDate) {
-        try { dateStr = new Date(rawDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }); }
+        try { dateStr = formatDateOnly(rawDate, { month: 'long', day: 'numeric', year: 'numeric' }); }
         catch(e) { dateStr = rawDate; }
     }
 
@@ -9023,7 +9021,7 @@ function buildCrewCalendarDescription() {
 
     const fmtDate = (raw) => {
         if (!raw) return '';
-        try { return new Date(raw + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }); }
+        try { return formatDateOnly(raw, { month: 'long', day: 'numeric', year: 'numeric' }); }
         catch(e) { return raw; }
     };
 
@@ -12341,7 +12339,7 @@ function exportPrintedMaterialsToExcel() {
     const vendorSuffix = state.printVendorFilter !== 'all' ? ' - ' + state.printVendorFilter : '';
     XLSX.utils.book_append_sheet(wb, ws, 'Printed Materials');
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayET();
     XLSX.writeFile(wb, 'Printed_Materials' + vendorSuffix.replace(/[^a-zA-Z0-9 _-]/g, '') + '_' + today + '.xlsx');
 }
 
@@ -12611,7 +12609,7 @@ function exportDigitalAssetsToExcel() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Digital Assets');
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayET();
     XLSX.writeFile(wb, 'Digital_Assets_' + today + '.xlsx');
 }
 
@@ -12672,7 +12670,7 @@ function exportStaffToExcel() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Staff');
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayET();
     XLSX.writeFile(wb, 'Staff_List_' + today + '.xlsx');
 }
 
@@ -14604,7 +14602,7 @@ function generatePerformerContactWindow(items) {
         c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const dayOrder = ['thursday', 'friday', 'saturday', 'sunday'];
     const dayLabels = { thursday: 'Thu', friday: 'Fri', saturday: 'Sat', sunday: 'Sun' };
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayET();
     const total = items.length;
 
     const pagesHtml = items.map((sl, idx) => {
@@ -14923,7 +14921,7 @@ function generateStaffPrintWindow(selectedTeams) {
     }
 
     const totalPages = teamOrder.length;
-    const printedDate = new Date().toISOString().split('T')[0];
+    const printedDate = todayET();
 
     const dayKeys = ['thursday', 'friday', 'saturday', 'sunday'];
     const dayLabels = ['Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -15303,7 +15301,7 @@ function generateCheckInPrintWindow(days) {
     const esc = (s) => String(s || '').replace(/[&<>"']/g,
         c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const dash = '<span class="empty">—</span>';
-    const printedDate = new Date().toISOString().split('T')[0];
+    const printedDate = todayET();
 
     const people = buildCheckInPeople();
 
@@ -15876,7 +15874,7 @@ function exportSetListToExcel() {
         XLSX.utils.book_append_sheet(wb, mem, 'Members');
     }
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayET();
     XLSX.writeFile(wb, `Performers_${today}.xlsx`);
 }
 
@@ -16975,7 +16973,7 @@ function exportSeatingToXlsx() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(guestsRows), 'Guests');
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(tablesRows), 'Tables');
-    const date = new Date().toISOString().slice(0, 10);
+    const date = todayET();
     XLSX.writeFile(wb, `gala-seating-${date}.xlsx`);
 }
 
@@ -17698,7 +17696,7 @@ function generateGuestDirectoryPdf() {
 
     let eventDate = '';
     if (event.date) {
-        try { eventDate = new Date(event.date+'T12:00:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'}); }
+        try { eventDate = formatDateOnly(event.date,{weekday:'long',month:'long',day:'numeric',year:'numeric'}); }
         catch(e) { eventDate = event.date; }
     }
 
